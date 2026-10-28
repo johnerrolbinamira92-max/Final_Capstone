@@ -27,32 +27,41 @@ def show_login_page():
             st.title("HFRC Admin Login")
             st.write("Sign in to access the Brothers of Charity record archive.")
 
-            with st.form("admin_login"):
-                username = st.text_input("Username", autocomplete="username")
-                password = st.text_input(
-                    "Password",
-                    type="password",
-                    autocomplete="current-password",
-                )
-                submitted = st.form_submit_button("Log in", type="primary")
+            st.html(
+                """
+                <style>
+                [data-testid="stTextInput"] [data-testid="InputInstructions"] {
+                    display: none;
+                }
+                button[aria-label="Show password"],
+                button[aria-label="Hide password"] {
+                    display: none;
+                }
+                </style>
+                """
+            )
+            username = st.text_input("Username", autocomplete="username")
+            password = st.text_input(
+                "Password",
+                type="password",
+                autocomplete="current-password",
+            )
 
-    if submitted:
-        valid_username = hmac.compare_digest(username, ADMIN_USERNAME)
-        valid_password = hmac.compare_digest(password, ADMIN_PASSWORD)
-        if valid_username and valid_password:
-            st.session_state["admin_authenticated"] = True
-            st.rerun()
-        st.error("Invalid username or password.")
+            if st.button("Log in", type="primary"):
+                valid_username = hmac.compare_digest(username, ADMIN_USERNAME)
+                valid_password = hmac.compare_digest(password, ADMIN_PASSWORD)
+                if valid_username and valid_password:
+                    st.session_state["admin_authenticated"] = True
+                    st.rerun()
+                st.error("Invalid username or password.")
 
 
 if not st.session_state.get("admin_authenticated", False):
-    show_login_page()
+    login_page = st.Page(show_login_page, title="Login")
+    st.navigation([login_page], position="hidden").run()
     st.stop()
 
 with st.sidebar:
-    st.markdown("### Brothers of Charity\nHFRC Patient Records")
-    st.divider()
-    st.write("Signed in as **admin**")
     if st.button("Log out"):
         st.session_state["admin_authenticated"] = False
         st.rerun()
