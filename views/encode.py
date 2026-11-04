@@ -90,10 +90,11 @@ def show_encode_page():
     with c_name4: ext_name = st.text_input("Suffix", placeholder="Jr., III", key=widget_key("extension_name"))
 
     st.write("**Complete Client Residential Demographics:**")
-    c_add1, c_add2, c_add3 = st.columns(3)
+    c_add1, c_add2, c_add3, c_add4 = st.columns(4)
     with c_add1: street_address = st.text_input("Street / House Number", placeholder="Block 5 Lot 2", key=widget_key("street_address"))
-    with c_add2: barangay = st.text_input("Barangay Location", placeholder="San Roque", key=widget_key("barangay"))
-    with c_add3: city_municipality = st.text_input("City / Municipality", placeholder="Tabaco City", key=widget_key("city_municipality"))
+    with c_add2: purok = st.text_input("Purok", placeholder="Purok 1", key=widget_key("purok"))
+    with c_add3: barangay = st.text_input("Barangay Location", placeholder="San Roque", key=widget_key("barangay"))
+    with c_add4: city_municipality = st.text_input("City / Municipality", placeholder="Tabaco City", key=widget_key("city_municipality"))
 
     c_demo1, c_demo2, c_demo3, c_demo4 = st.columns(4)
     with c_demo1:
@@ -199,7 +200,8 @@ def show_encode_page():
                     "interview_date": str(interview_date) if interview_date else None, "interview_place": interview_place,
                     "interview_persons_present": interview_persons_present, "primary_source_of_information": primary_source_info,
                     "last_name": last_name, "first_name": first_name, "middle_name": middle_name, "extension_name": ext_name,
-                    "calculated_age": int(calculated_age), "street_address": street_address, "barangay": barangay,
+                    "calculated_age": int(calculated_age), "street_address": street_address,
+                    "purok": purok, "barangay": barangay,
                     "city_municipality": city_municipality, "province": province, "date_of_birth": str(dob) if dob else None,
                     "sex": sex, "civil_status": civil_status, "religion": religion, "educational_attainment": educational,
                     "status": status, "work_experience": work_experience, "guardian_last_name": g_last_name,

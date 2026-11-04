@@ -45,6 +45,7 @@ def initialize_local_database():
         extension_name TEXT,
         calculated_age INTEGER DEFAULT 0,
         street_address TEXT,
+        purok TEXT,
         barangay TEXT,
         city_municipality TEXT,
         province TEXT,
@@ -96,6 +97,10 @@ def initialize_local_database():
     existing_columns = {
         row[1] for row in cursor.execute("PRAGMA table_info(patients)").fetchall()
     }
+    if "purok" not in existing_columns:
+        cursor.execute("ALTER TABLE patients ADD COLUMN purok TEXT")
+        existing_columns.add("purok")
+
     legacy_guardian_columns = {
         "g_barangay": "guardian_barangay",
         "g_city": "guardian_city_municipality",

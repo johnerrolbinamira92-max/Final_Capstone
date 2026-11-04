@@ -152,6 +152,7 @@ def show_manage_page():
         # --- DROP DOWN 3: RESIDENTIAL RESIDENCE ---
         with st.expander("📍 Page 3: Residential Address Demographics"):
             street = st.text_input("Street / House Number", value=p["street_address"] or "")
+            purok = st.text_input("Purok", value=p["purok"] or "")
             brgy = st.text_input("Barangay", value=p["barangay"] or "")
             city = st.text_input("City / Municipality", value=p["city_municipality"] or "")
             prov = st.text_input("Province", value=p["province"] or "")
@@ -227,7 +228,7 @@ def show_manage_page():
                         UPDATE patients SET 
                             referral_noted_by = ?, means_of_referral = ?, interview_date = ?, interview_place = ?, interview_persons_present = ?, primary_source_of_information = ?,
                             first_name = ?, middle_name = ?, last_name = ?, extension_name = ?, calculated_age = ?, sex = ?, date_of_birth = ?, civil_status = ?, religion = ?, educational_attainment = ?, status = ?, work_experience = ?,
-                            street_address = ?, barangay = ?, city_municipality = ?, province = ?,
+                            street_address = ?, purok = ?, barangay = ?, city_municipality = ?, province = ?,
                             guardian_last_name = ?, guardian_first_name = ?, guardian_middle_name = ?, guardian_street_address = ?, g_barangay = ?, g_city = ?, g_province = ?, guardian_contact_person = ?, g_contact_number = ?,
                             family_composition = ?, total_annual_income = ?, poverty_threshold_per_year = ?, poverty_rating = ?, classification_after_interview = ?, classification_after_home_visit = ?,
                             chief_complaint_patient = ?, chief_complaint_relatives = ?, complaint_duration = ?, complaint_recent = ?, complaint_onset = ?, complaint_previous_hospitalization = ?,
@@ -236,7 +237,7 @@ def show_manage_page():
                     """, (
                         ref_by, means_ref, int_date, int_place, int_present, primary_src,
                         f_name, m_name, l_name, ext_name, int(calc_age), sex, dob_str, civ_status, religion, edu, adm_status, work_exp,
-                        street, brgy, city, prov,
+                        street, purok, brgy, city, prov,
                         g_last, g_first, g_mid, g_street, g_brgy, g_city, g_prov, g_contact, g_contact_number,
                         dataframe_to_storage(edited_family_table), float(ann_inc), float(pov_thresh), pov_rate, class_int, class_visit,
                         cc_pat, cc_rel, c_dur, c_rec, c_onset, c_hosp,

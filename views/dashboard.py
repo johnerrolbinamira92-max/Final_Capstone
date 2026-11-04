@@ -1,170 +1,189 @@
-import streamlit as st
 import pandas as pd
+import streamlit as st
 from database import get_local_connection
+
+
+def _normalize_location(value):
+    if pd.isna(value) or not str(value).strip():
+        return "Not Specified"
+    return str(value).strip().title()
+
+
+def _reset_barangay_selection():
+    st.session_state["geo_barangay"] = None
+
+
+def _reset_city_selection():
+    st.session_state["geo_city"] = None
+    st.session_state["geo_barangay"] = None
 
 
 def _render_distribution_card(title, data, category_column, count_column, color, alt):
     sorted_data = data.sort_values(count_column, ascending=False)
-    chart_data = sorted_data.head(10)
-    chart_height = max(220, min(360, 38 * (len(chart_data) + 2)))
 
     with st.container(border=True):
         st.markdown(f"**{title}**")
         st.bar_chart(
-            chart_data,
+            sorted_data,
             x=category_column,
             y=count_column,
             color=color,
-            horizontal=True,
+            horizontal=False,
             sort=False,
-            height=chart_height,
+            height=360,
             width="stretch",
             alt=alt,
         )
-        if len(sorted_data) > len(chart_data):
-            st.caption("Chart shows the 10 most common categories; the table includes all categories.")
         st.dataframe(
             sorted_data,
             hide_index=True,
             width="stretch",
-            height=min(320, max(120, 38 * (len(sorted_data) + 1))),
+            height=min(500, max(120, 38 * (len(sorted_data) + 1))),
             alt=f"{title} counts",
         )
+
+
+def _location_counts(data, group_column, label):
+    counts = (
+        data[group_column]
+        .value_counts()
+        .rename_axis(label)
+        .reset_index(name="Patient Count")
+    )
+    return counts
 
 
 def show_dashboard_page():
     try:
         conn = get_local_connection()
-        query = "SELECT city_municipality, province, status, total_annual_income, poverty_rating FROM patients"
         try:
-            df = pd.read_sql_query(query, conn)
+            df = pd.read_sql_query(
+                """
+                SELECT province, city_municipality, barangay, purok, status
+                FROM patients
+                """,
+                conn,
+            )
         finally:
             conn.close()
 
-        total_records = len(df)
         st.title("Patient Statistics")
-        st.write("A summary of archived records, demographics, and household income.")
-
-        records_col, selector_col = st.columns([1, 3], vertical_alignment="bottom")
-        with records_col:
-            st.metric("Total records", total_records, border=True)
-        with selector_col:
-            analytics_view = st.selectbox(
-                "Statistics category",
-                [
-                    "Patient Administrative Status",
-                    "Geographical Regional Distributions",
-                    "Socio-Economic Income Classifications",
-                ],
-                index=None,
-                placeholder="Choose a statistics category",
-            )
+        st.write("Explore the geographical distribution of archived patient records.")
 
         if df.empty:
-            st.info("No patient record folders have been archived yet. Statistics will appear once records are submitted.")
-            return
-
-        if analytics_view is None:
-            return
-
-        if analytics_view == "Patient Administrative Status":
-            st.markdown("### Current Patient Administrative Status")
-            df["status"] = df["status"].fillna("Alive").str.strip().str.title()
-            status_counts = df["status"].value_counts()
-            alive_count = int(status_counts.get("Alive", 0))
-            deceased_count = int(status_counts.get("Deceased", 0))
-
-            m1, m2 = st.columns(2)
-            with m1:
-                st.metric(label="Active (Alive) Patients", value=alive_count, border=True)
-            with m2:
-                st.metric(label="Deceased Records", value=deceased_count, border=True)
-
-            status_df = pd.DataFrame({
-                "Administrative Status": ["Alive", "Deceased"],
-                "Total Patients": [alive_count, deceased_count],
-            })
-            _render_distribution_card(
-                "Patient records by status",
-                status_df,
-                "Administrative Status",
-                "Total Patients",
-                "#0796A1",
-                "Patient counts for active and deceased administrative statuses",
+            total_col, alive_col, deceased_col = st.columns(3)
+            total_col.metric("Total Patients", 0, border=True)
+            alive_col.metric("Alive Patients", 0, border=True)
+            deceased_col.metric("Deceased Patients", 0, border=True)
+            st.info(
+                "No patient record folders have been archived yet. "
+                "Statistics will appear once records are submitted."
             )
+            return
 
-        elif analytics_view == "Geographical Regional Distributions":
-            st.markdown("### Bicol Region Geographic Breakdown")
-            geo_col1, geo_col2 = st.columns(2)
-            
-            with geo_col1:
-                st.markdown("#### Municipalities and Cities")
-                df["city_municipality"] = (
-                    df["city_municipality"].fillna("Not Specified").str.strip().str.title()
-                )
-                city_counts = df["city_municipality"].value_counts().reset_index()
-                city_counts.columns = ["Municipality / City", "Patient Count"]
-                _render_distribution_card(
-                    "Patient records by municipality or city",
-                    city_counts,
-                    "Municipality / City",
-                    "Patient Count",
-                    "#0796A1",
-                    "Patient counts by municipality or city",
-                )
+        for column in ("province", "city_municipality", "barangay", "purok"):
+            df[column] = df[column].map(_normalize_location)
+        df["status"] = df["status"].fillna("Alive").str.strip().str.title()
 
-            with geo_col2:
-                st.markdown("#### Provinces")
-                df["province"] = (
-                    df["province"].fillna("Not Specified").str.strip().str.title()
-                )
-                province_counts = df["province"].value_counts().reset_index()
-                province_counts.columns = ["Province", "Patient Count"]
-                _render_distribution_card(
-                    "Patient records by province",
-                    province_counts,
-                    "Province",
-                    "Patient Count",
-                    "#3671C8",
-                    "Patient counts by province",
-                )
+        province_options = sorted(df["province"].unique().tolist())
+        province = st.selectbox(
+            "Province",
+            province_options,
+            index=None,
+            placeholder="Choose a province",
+            key="geo_province",
+            on_change=_reset_city_selection,
+        )
 
-        elif analytics_view == "Socio-Economic Income Classifications":
-            st.markdown("### Socio-Economic Metrics")
-            fin_col1, fin_col2 = st.columns(2)
-            
-            with fin_col1:
-                st.markdown("#### Poverty Threshold Standings")
-                df["poverty_rating"] = (
-                    df["poverty_rating"].fillna("Unrated / Pending").str.strip().str.title()
-                )
-                pov_counts = df["poverty_rating"].value_counts().reset_index()
-                pov_counts.columns = ["Poverty Rating Group", "Patient Count"]
-                _render_distribution_card(
-                    "Patient records by poverty rating",
-                    pov_counts,
-                    "Poverty Rating Group",
-                    "Patient Count",
-                    "#D08A2D",
-                    "Patient counts by poverty rating group",
-                )
-                
-            with fin_col2:
-                st.markdown("#### Household Income")
-                avg_income = df['total_annual_income'].mean()
-                max_income = df['total_annual_income'].max()
-                
-                st.metric(
-                    label="Average Annual Household Income",
-                    value=f"₱ {avg_income:,.2f}",
-                    border=True,
-                )
-                st.metric(
-                    label="Highest Registered Household Income",
-                    value=f"₱ {max_income:,.2f}",
-                    border=True,
-                )
-                st.caption("Based on household income values in archived patient records.")
+        province_data = (
+            df[df["province"] == province] if province else df.iloc[0:0]
+        )
+        city_options = sorted(province_data["city_municipality"].unique().tolist())
+        city = st.selectbox(
+            "City / Municipality",
+            city_options,
+            index=None,
+            placeholder="Choose a province first",
+            key="geo_city",
+            disabled=province is None,
+            on_change=_reset_barangay_selection,
+        )
+
+        city_data = (
+            province_data[province_data["city_municipality"] == city]
+            if city
+            else province_data.iloc[0:0]
+        )
+        barangay_options = sorted(city_data["barangay"].unique().tolist())
+        barangay = st.selectbox(
+            "Barangay",
+            barangay_options,
+            index=None,
+            placeholder="Choose a city / municipality first",
+            key="geo_barangay",
+            disabled=city is None,
+        )
+
+        selected_data = df
+        location_label = "Overall"
+        if province is not None:
+            selected_data = selected_data[selected_data["province"] == province]
+            location_label = province
+        if city is not None:
+            selected_data = selected_data[
+                selected_data["city_municipality"] == city
+            ]
+            location_label = city
+        if barangay is not None:
+            selected_data = selected_data[selected_data["barangay"] == barangay]
+            location_label = barangay
+
+        total_col, alive_col, deceased_col = st.columns(3)
+        total_col.metric(
+            f"Total Patients — {location_label}",
+            len(selected_data),
+            border=True,
+        )
+        alive_col.metric(
+            "Alive Patients",
+            int((selected_data["status"] == "Alive").sum()),
+            border=True,
+        )
+        deceased_col.metric(
+            "Deceased Patients",
+            int((selected_data["status"] == "Deceased").sum()),
+            border=True,
+        )
+
+        if province is None:
+            chart_data = _location_counts(df, "province", "Province")
+            chart_title = "Patient records by province"
+            category_label = "Province"
+        elif city is None:
+            chart_data = _location_counts(
+                province_data, "city_municipality", "City / Municipality"
+            )
+            chart_title = f"Patient records by city / municipality in {province}"
+            category_label = "City / Municipality"
+        elif barangay is None:
+            chart_data = _location_counts(city_data, "barangay", "Barangay")
+            chart_title = f"Patient records by barangay in {city}"
+            category_label = "Barangay"
+        else:
+            barangay_data = city_data[city_data["barangay"] == barangay]
+            chart_data = _location_counts(barangay_data, "purok", "Purok")
+            chart_title = f"Patient records by purok in {barangay}"
+            category_label = "Purok"
+
+        st.markdown("### Geographical Distribution")
+        _render_distribution_card(
+            chart_title,
+            chart_data,
+            category_label,
+            "Patient Count",
+            "#0796A1",
+            chart_title,
+        )
 
     except Exception as e:
         st.error(f"❌ Analytics Processing Failure: {e}")
