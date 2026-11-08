@@ -11,6 +11,7 @@ load_dotenv()
 DB_FILE = os.getenv("DB_FILE", "hfrc_local_archive.db")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
 # --- ENGINE 1: LOCAL OFFLINE SQLITE ENGINE ---
 def get_local_connection():
@@ -151,6 +152,41 @@ def initialize_local_database():
 
     conn.commit()
     conn.close()
+
+def authenticate_admin(email: str, password: str) -> dict:
+    """Authenticate a private-app administrator through Supabase Auth and RLS."""
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        raise RuntimeError(
+            "Missing SUPABASE_URL or SUPABASE_ANON_KEY in the private app environment."
+        )
+
+    auth_client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    response = auth_client.auth.sign_in_with_password(
+        {"email": email.strip(), "password": password}
+    )
+    if not response.user:
+        raise PermissionError("Invalid administrator email or password.")
+
+    try:
+        admin = (
+            auth_client.table("admin_users")
+            .select("user_id,display_name")
+            .eq("user_id", response.user.id)
+            .maybe_single()
+            .execute()
+        )
+        if not admin.data:
+            raise PermissionError(
+                "This Supabase account is not authorized for the admin system."
+            )
+        return {
+            "user_id": response.user.id,
+            "email": response.user.email,
+            "display_name": admin.data["display_name"],
+        }
+    finally:
+        auth_client.auth.sign_out()
+
 
 # --- ENGINE 2: CLOUD SUPABASE ENGINE (Patient Web/Mobile App) ---
 @st.cache_resource

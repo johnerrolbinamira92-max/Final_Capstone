@@ -1,19 +1,18 @@
 import streamlit as st
-import hmac
-import os
+from database import authenticate_admin
+from views.appointments import show_appointments_page
+from views.audit import show_audit_page
 from views.dashboard import show_dashboard_page
 from views.encode import show_encode_page
-from views.search import show_search_page
+from views.helpline import show_helpline_page
 from views.manage import show_manage_page
-from views.audit import show_audit_page
-from views.appointments import show_appointments_page
+from views.search import show_search_page
 
-# --- GLOBAL APPLICATION WINDOW INTERFACE LAYOUT CONFIGURATION ---
 st.set_page_config(
     page_title="Brothers of Charity - HFRC Records",
     page_icon="🏥",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
 st.markdown(
@@ -29,7 +28,6 @@ st.markdown(
         --hfrc-muted: #a9c7c1;
         --hfrc-teal: #367a75;
         --hfrc-teal-bright: #83b9b0;
-        --hfrc-coral: #e58b7d;
     }
 
     [data-testid="stAppViewContainer"] {
@@ -76,10 +74,7 @@ st.markdown(
         background: var(--hfrc-surface);
     }
 
-    .st-key-admin-login-card [data-testid="stHeading"] {
-        text-align: center;
-    }
-
+    .st-key-admin-login-card [data-testid="stHeading"],
     .st-key-admin-login-card [data-testid="stMarkdownContainer"] {
         text-align: center;
     }
@@ -115,12 +110,7 @@ st.markdown(
         letter-spacing: -0.025em;
     }
 
-    h1 {
-        color: var(--hfrc-text);
-        font-weight: 500;
-    }
-
-    h2, h3 {
+    h1, h2, h3 {
         color: var(--hfrc-text);
         font-weight: 500;
     }
@@ -216,9 +206,9 @@ st.markdown(
     }
 
     [data-testid="stDataFrame"] {
+        overflow: hidden;
         border: 1px solid var(--hfrc-line);
         border-radius: 16px;
-        overflow: hidden;
     }
 
     [data-testid="stAlert"] {
@@ -249,8 +239,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "1234")
 
 def show_login_page():
     with st.container(key="admin-login-page"):
@@ -259,9 +247,9 @@ def show_login_page():
             st.markdown("Welcome back! Please enter your account.")
 
             with st.form("admin_login_form", border=False):
-                username = st.text_input(
-                    "Username",
-                    placeholder="Email or username",
+                email = st.text_input(
+                    "Email",
+                    placeholder="Email",
                     icon=":material/person:",
                     autocomplete="username",
                     label_visibility="collapsed",
@@ -281,12 +269,16 @@ def show_login_page():
                 )
 
             if submitted:
-                valid_username = hmac.compare_digest(username, ADMIN_USERNAME)
-                valid_password = hmac.compare_digest(password, ADMIN_PASSWORD)
-                if valid_username and valid_password:
+                try:
+                    admin = authenticate_admin(email, password)
+                except PermissionError as error:
+                    st.error(str(error))
+                except Exception as error:
+                    st.error(f"Unable to authenticate with Supabase: {error}")
+                else:
                     st.session_state["admin_authenticated"] = True
+                    st.session_state["admin_profile"] = admin
                     st.rerun()
-                st.error("Invalid username or password.")
 
 
 if not st.session_state.get("admin_authenticated", False):
@@ -295,62 +287,68 @@ if not st.session_state.get("admin_authenticated", False):
     st.stop()
 
 with st.sidebar:
+    profile = st.session_state.get("admin_profile", {})
+    if profile.get("display_name"):
+        st.caption(f"Signed in as {profile['display_name']}")
     if st.button("Log out"):
         st.session_state["admin_authenticated"] = False
+        st.session_state.pop("admin_profile", None)
         st.rerun()
 
-# --- INSTANTIATE LOGICAL RUNTIME ROUTING ENDPOINTS ---
 dashboard_page = st.Page(
-    show_dashboard_page, 
-    title="Dashboard & Stats", 
-    icon=":material/analytics:"
+    show_dashboard_page,
+    title="Dashboard & Stats",
+    icon=":material/analytics:",
 )
 
 encode_page = st.Page(
-    show_encode_page, 
-    title="Encode New Folder", 
-    icon=":material/person_add:"
+    show_encode_page,
+    title="Encode New Folder",
+    icon=":material/person_add:",
 )
 
 search_page = st.Page(
-    show_search_page, 
-    title="Search Records", 
-    icon=":material/search:"
+    show_search_page,
+    title="Search Records",
+    icon=":material/search:",
 )
 
 manage_page = st.Page(
-    show_manage_page, 
-    title="Manage Folders", 
-    icon=":material/folder_managed:"
+    show_manage_page,
+    title="Manage Folders",
+    icon=":material/folder_managed:",
 )
 
 appointments_page = st.Page(
     show_appointments_page,
     title="Appointments",
-    icon=":material/calendar_month:"
+    icon=":material/calendar_month:",
+)
+
+helpline_page = st.Page(
+    show_helpline_page,
+    title="Helpline Requests",
+    icon=":material/volunteer_activism:",
 )
 
 audit_page = st.Page(
     show_audit_page,
     title="Audit Ledger",
-    icon=":material/history:"
+    icon=":material/history:",
 )
 
-# --- GENERATE COMPREHENSIVE ADMIN NAVIGATION SCHEMA LAYOUT ---
-pg = st.navigation({
-    "Analytical Overview": [
-        dashboard_page
-    ],
-    "Administrative Archiving": [
-        encode_page, 
-        search_page, 
-        manage_page,
-        appointments_page
-    ],
-    "Administrative Audit": [
-        audit_page
-    ]
-})
+pg = st.navigation(
+    {
+        "Analytical Overview": [dashboard_page],
+        "Administrative Archiving": [
+            encode_page,
+            search_page,
+            manage_page,
+            appointments_page,
+            helpline_page,
+        ],
+        "Administrative Audit": [audit_page],
+    }
+)
 
-# Execute current viewport view thread automatically
 pg.run()
