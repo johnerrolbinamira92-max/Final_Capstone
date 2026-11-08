@@ -410,6 +410,108 @@ def _render_schedule_list(appointments, client):
                     st.rerun()
 
 
+def _render_help_requests(client):
+    st.caption(
+        "Messages in this queue were explicitly sent by patients asking for help. "
+        "Keep them confidential and contact the patient using their selected schedule."
+    )
+    try:
+        response = (
+            client.table("patient_help_requests")
+            .select(
+                "request_id, patient_name, patient_age, contact_number, message, "
+                "requested_date, requested_time_slot, approval_status, created_at"
+            )
+            .order("created_at", desc=True)
+            .limit(500)
+            .execute()
+        )
+    except Exception as error:
+        st.error(
+            "Unable to load confidential help requests. Run "
+            "supabase/patient_help_requests.sql and verify that the admin app uses "
+            "a server-side Supabase service-role/secret key."
+        )
+        with st.expander("Technical details"):
+            st.code(str(error))
+        return
+
+    requests = response.data or []
+    if not requests:
+        st.info("There are no confidential help requests yet.")
+        return
+
+    st.caption(f"{len(requests)} most recent request(s), newest first.")
+    for request in requests:
+        request_id = request["request_id"]
+        status = request["approval_status"] or "Pending"
+        requested_date = request.get("requested_date") or "Date not set"
+        requested_time = _format_time(request.get("requested_time_slot"))
+        with st.expander(
+            f"Callback requested: {requested_date} · {requested_time}  |  {status}"
+        ):
+            patient_col, schedule_col = st.columns(2)
+            with patient_col:
+                st.text(f"Patient: {request['patient_name']}")
+                st.text(f"Age: {request['patient_age']}")
+                st.text(f"Contact: {request['contact_number']}")
+            with schedule_col:
+                st.text(f"Requested callback: {requested_date} · {requested_time}")
+                st.text(f"Received: {request.get('created_at', 'Unknown')}")
+                st.text(f"Status: {status}")
+
+            st.markdown("**Message from the patient**")
+            st.text(request["message"])
+
+            statuses = list(APPOINTMENT_STATUSES)
+            if status not in statuses:
+                statuses.insert(0, status)
+            selected_status = st.selectbox(
+                "Update request status",
+                statuses,
+                index=statuses.index(status),
+                key=f"help_request_status_{request_id}",
+            )
+            if st.button(
+                "Save request status",
+                key=f"help_request_save_status_{request_id}",
+                disabled=selected_status == status,
+            ):
+                try:
+                    updated = (
+                        client.table("patient_help_requests")
+                        .update({"approval_status": selected_status})
+                        .eq("request_id", request_id)
+                        .select("request_id")
+                        .execute()
+                    )
+                    if not updated.data:
+                        raise RuntimeError(
+                            "No help request was updated. Check the request ID "
+                            "and UPDATE permissions."
+                        )
+                except Exception as error:
+                    st.error("Unable to update the confidential request status.")
+                    with st.expander("Technical details"):
+                        st.code(str(error))
+                else:
+                    try:
+                        _log_appointment_action(
+                            "HELP REQUEST STATUS",
+                            f"Updated confidential help request {request_id} "
+                            f"to {selected_status}",
+                        )
+                    except Exception as error:
+                        st.warning(
+                            "The request status was updated, but its local audit "
+                            f"entry could not be written: {error}"
+                        )
+                    st.session_state["appointment_flash"] = (
+                        f"Help request status updated to {selected_status}."
+                    )
+                    st.rerun()
+
+
 def show_appointments_page():
     st.title("Appointment Schedule")
     st.write(
@@ -480,7 +582,9 @@ def show_appointments_page():
     metrics[1].metric("Pending requests", pending_count, border=True)
     metrics[2].metric("Active visits this month", len(active_month), border=True)
 
-    calendar_tab, list_tab = st.tabs(["Calendar", "Schedule list"])
+    calendar_tab, list_tab, help_tab = st.tabs(
+        ["Calendar", "Schedule list", "Confidential help requests"]
+    )
     with calendar_tab:
         selected_date = st.session_state["appointment_selected_date"]
         calendar_col, detail_col = st.columns([3, 2])
@@ -496,6 +600,10 @@ def show_appointments_page():
     with list_tab:
         with st.container(border=True):
             _render_schedule_list(appointments, client)
+
+    with help_tab:
+        with st.container(border=True):
+            _render_help_requests(client)
 
 
 if __name__ == "__main__":

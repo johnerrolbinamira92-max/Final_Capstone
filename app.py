@@ -16,38 +16,271 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+st.markdown(
+    """
+    <style>
+    :root {
+        --hfrc-page: #102321;
+        --hfrc-page-deep: #0c1d1b;
+        --hfrc-surface: #183330;
+        --hfrc-surface-raised: #21423e;
+        --hfrc-line: #31534f;
+        --hfrc-text: #f5f1e7;
+        --hfrc-muted: #a9c7c1;
+        --hfrc-teal: #367a75;
+        --hfrc-teal-bright: #83b9b0;
+        --hfrc-coral: #e58b7d;
+    }
+
+    [data-testid="stAppViewContainer"] {
+        background: var(--hfrc-page);
+    }
+
+    [data-testid="stHeader"] {
+        background: color-mix(in srgb, var(--hfrc-page-deep) 94%, transparent);
+        border-bottom: 1px solid var(--hfrc-line);
+    }
+
+    [data-testid="stMainBlockContainer"] {
+        max-width: 1440px;
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+    }
+
+    [data-testid="stMainBlockContainer"]:has(.st-key-admin-login-page) {
+        min-height: calc(100vh - 3.5rem);
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        padding-top: 1.5rem;
+        padding-bottom: 2rem;
+    }
+
+    [data-testid="stMainBlockContainer"]:has(.st-key-admin-login-page) > [data-testid="stVerticalBlock"] {
+        justify-content: safe center;
+    }
+
+    .st-key-admin-login-page {
+        width: 100%;
+        align-items: center;
+    }
+
+    .st-key-admin-login-card {
+        width: 100%;
+        max-width: 560px;
+        height: auto;
+        margin-inline: auto;
+        padding: 2.5rem 2.75rem;
+        border-color: var(--hfrc-line);
+        border-radius: 24px;
+        background: var(--hfrc-surface);
+    }
+
+    .st-key-admin-login-card [data-testid="stHeading"] {
+        text-align: center;
+    }
+
+    .st-key-admin-login-card [data-testid="stMarkdownContainer"] {
+        text-align: center;
+    }
+
+    .st-key-admin-login-card [data-testid="stTextInput"] [data-testid="InputInstructions"] {
+        display: none;
+    }
+
+    .st-key-admin-login-card [data-testid="stTextInput"] input {
+        min-height: 3rem;
+        border-radius: 999px;
+        background: var(--hfrc-surface-raised);
+    }
+
+    .st-key-admin-login-card [data-testid="stFormSubmitButton"] {
+        width: 100%;
+    }
+
+    .st-key-admin-login-card [data-testid="stFormSubmitButton"] button {
+        width: 100%;
+        min-height: 3rem;
+        margin-top: 0.75rem;
+    }
+
+    @media (max-width: 640px) {
+        .st-key-admin-login-card {
+            padding: 1.75rem 1.25rem;
+        }
+    }
+
+    h1, h2, h3, [data-testid="stHeading"] {
+        font-family: "Playfair Display", Georgia, serif;
+        letter-spacing: -0.025em;
+    }
+
+    h1 {
+        color: var(--hfrc-text);
+        font-weight: 500;
+    }
+
+    h2, h3 {
+        color: var(--hfrc-text);
+        font-weight: 500;
+    }
+
+    [data-testid="stCaptionContainer"],
+    [data-testid="stMarkdownContainer"] small {
+        color: var(--hfrc-muted);
+    }
+
+    [data-testid="stSidebar"] {
+        background: var(--hfrc-page-deep);
+        border-right: 1px solid var(--hfrc-line);
+    }
+
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
+        color: var(--hfrc-text);
+    }
+
+    [data-testid="stSidebar"] button[kind="secondary"] {
+        border-color: var(--hfrc-line);
+        background: var(--hfrc-surface);
+    }
+
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        border-color: var(--hfrc-line);
+        border-radius: 20px;
+        background: var(--hfrc-surface);
+    }
+
+    [data-testid="stBaseButton-primary"],
+    button[kind="primary"] {
+        min-height: 2.75rem;
+        border: 1px solid var(--hfrc-teal);
+        border-radius: 999px;
+        background: var(--hfrc-teal);
+        color: #fff;
+        font-family: "DM Sans", sans-serif;
+        font-weight: 700;
+        transition: filter 140ms ease, transform 140ms ease;
+    }
+
+    [data-testid="stBaseButton-primary"]:hover,
+    button[kind="primary"]:hover {
+        border-color: var(--hfrc-teal-bright);
+        background: var(--hfrc-teal);
+        filter: brightness(1.1);
+        transform: translateY(-1px);
+    }
+
+    [data-testid="stBaseButton-secondary"],
+    button[kind="secondary"] {
+        min-height: 2.65rem;
+        border: 1px solid var(--hfrc-line);
+        border-radius: 999px;
+        background: transparent;
+        color: var(--hfrc-text);
+        font-family: "DM Sans", sans-serif;
+        font-weight: 600;
+    }
+
+    [data-testid="stBaseButton-secondary"]:hover,
+    button[kind="secondary"]:hover {
+        border-color: var(--hfrc-teal-bright);
+        color: var(--hfrc-text);
+    }
+
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"] input,
+    [data-testid="stDateInput"] input,
+    [data-testid="stTimeInput"] input,
+    [data-testid="stTextArea"] textarea,
+    [data-testid="stSelectbox"] [data-baseweb="select"] > div,
+    [data-testid="stMultiSelect"] [data-baseweb="select"] > div {
+        border-color: var(--hfrc-line);
+        border-radius: 12px;
+        background: var(--hfrc-surface-raised);
+    }
+
+    [data-testid="stTextInput"] input:focus,
+    [data-testid="stNumberInput"] input:focus,
+    [data-testid="stTextArea"] textarea:focus {
+        border-color: var(--hfrc-teal-bright);
+        box-shadow: 0 0 0 1px var(--hfrc-teal-bright);
+    }
+
+    [data-testid="stTabs"] [role="tab"] {
+        font-family: "DM Sans", sans-serif;
+        font-weight: 600;
+    }
+
+    [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+        color: var(--hfrc-teal-bright);
+    }
+
+    [data-testid="stDataFrame"] {
+        border: 1px solid var(--hfrc-line);
+        border-radius: 16px;
+        overflow: hidden;
+    }
+
+    [data-testid="stAlert"] {
+        border-radius: 14px;
+    }
+
+    [data-testid="stExpander"] {
+        border-color: var(--hfrc-line);
+        border-radius: 14px;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    [role="tab"]:focus-visible {
+        outline: 2px solid var(--hfrc-teal-bright);
+        outline-offset: 2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            scroll-behavior: auto !important;
+            transition-duration: 0.01ms !important;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "1234")
 
-
 def show_login_page():
-    _, login_col, _ = st.columns([1, 2, 1])
-    with login_col:
-        with st.container(border=True):
-            st.title("HFRC Admin Login")
-            st.write("Sign in to access the Brothers of Charity record archive.")
+    with st.container(key="admin-login-page"):
+        with st.container(border=True, key="admin-login-card"):
+            st.title("Admin Login")
+            st.markdown("Welcome back! Please enter your account.")
 
-            st.html(
-                """
-                <style>
-                [data-testid="stTextInput"] [data-testid="InputInstructions"] {
-                    display: none;
-                }
-                button[aria-label="Show password"],
-                button[aria-label="Hide password"] {
-                    display: none;
-                }
-                </style>
-                """
-            )
-            username = st.text_input("Username", autocomplete="username")
-            password = st.text_input(
-                "Password",
-                type="password",
-                autocomplete="current-password",
-            )
+            with st.form("admin_login_form", border=False):
+                username = st.text_input(
+                    "Username",
+                    placeholder="Email or username",
+                    icon=":material/person:",
+                    autocomplete="username",
+                    label_visibility="collapsed",
+                )
+                password = st.text_input(
+                    "Password",
+                    type="password",
+                    placeholder="Password",
+                    icon=":material/lock:",
+                    autocomplete="current-password",
+                    label_visibility="collapsed",
+                )
+                submitted = st.form_submit_button(
+                    "Log in",
+                    type="primary",
+                    width="stretch",
+                )
 
-            if st.button("Log in", type="primary"):
+            if submitted:
                 valid_username = hmac.compare_digest(username, ADMIN_USERNAME)
                 valid_password = hmac.compare_digest(password, ADMIN_PASSWORD)
                 if valid_username and valid_password:

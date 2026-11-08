@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#102321">
+    <meta name="description" content="A private space to share what is weighing on you and request confidential support from Holy Face Center.">
+    <title>Your safe space | Holy Face Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href="#" aria-label="Holy Face Center home">
+          <span class="brand-mark" aria-hidden="true"><span>✦</span><span>♡</span></span>
+          <span class="brand-copy"><span class="brand-kicker">Brothers of Charity</span><strong>Holy Face Center</strong></span>
+        </a>
+        <div class="header-actions">
+          <a class="phone-pill" href="tel:09206915015"><span aria-hidden="true">☎</span> 0920-691-5015</a>
+          <button class="theme-button" id="theme-toggle" type="button" aria-label="Switch to light theme" title="Toggle color theme">☼</button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero page-width" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <span class="eyebrow pill-eyebrow"><span class="status-dot"></span> A private space to be heard</span>
+          <h1 id="hero-title">You don’t have to<br>carry it <em>alone.</em></h1>
+          <p>Share what’s on your mind, without judgment. Keep it as a private release or ask a mental health professional to reach out.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#share">Start your private entry <span aria-hidden="true">›</span></a>
+            <a class="button button-outline" href="tel:09206915015"><span aria-hidden="true">☎</span> Call the center</a>
+          </div>
+          <ul class="trust-list" aria-label="Privacy information">
+            <li><span aria-hidden="true">♙</span> Private by design</li>
+            <li><span aria-hidden="true">▦</span> 30-day device history</li>
+            <li><span aria-hidden="true">♡</span> Compassionate support</li>
+          </ul>
+        </div>
+        <aside class="urgent-card" aria-labelledby="urgent-title">
+          <p class="eyebrow">Need urgent help?</p>
+          <h2 id="urgent-title">Your safety comes first.</h2>
+          <p>This form is not monitored as an emergency service. If you may hurt yourself or someone else, call 911 or go to the nearest emergency room now.</p>
+          <div class="urgent-actions">
+            <a class="button button-light" href="tel:911">Call emergency: 911</a>
+            <a class="button button-outline light-outline" href="tel:09206915015">Center: 0920-691-5015</a>
+          </div>
+        </aside>
+      </section>
+
+      <section class="share-section" id="share" aria-labelledby="share-title">
+        <div class="page-width">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Your safe space</p>
+              <h2 id="share-title">What’s weighing on you today?</h2>
+              <p>Write freely. Only authorized center staff can read submissions when you ask for help.</p>
+            </div>
+          </div>
+
+          <form id="entry-form" novalidate>
+            <div class="form-grid">
+              <section class="panel writing-panel" aria-labelledby="vent-title">
+                <h3 id="vent-title">Vent-out space</h3>
+                <p class="panel-intro">Take your time. There’s no perfect way to say it.</p>
+                <label class="sr-only" for="message">Your message</label>
+                <textarea id="message" name="message" placeholder="I’ve been feeling..." maxlength="10000" required></textarea>
+                <div class="field-hint"><span>Your words stay on this device unless you ask for help.</span><span id="character-count">0 / 10,000</span></div>
+                <fieldset class="choice-fieldset">
+                  <legend>What would feel right after sharing?</legend>
+                  <div class="choice-grid">
+                    <label class="choice-card">
+                      <input type="radio" name="next-step" value="help" checked>
+                      <span class="choice-icon heart-icon" aria-hidden="true">♡</span>
+                      <span><strong>I need help</strong><small>I’d like the center to contact me.</small></span>
+                    </label>
+                    <label class="choice-card">
+                      <input type="radio" name="next-step" value="private">
+                      <span class="choice-icon check-icon" aria-hidden="true">✓</span>
+                      <span><strong>I don’t need help</strong><small>I only need to release this feeling.</small></span>
+                    </label>
+                  </div>
+                </fieldset>
+              </section>
+
+              <div class="right-column">
+                <section class="panel callback-panel" id="callback-panel" aria-labelledby="callback-title">
+                  <div class="panel-icon" aria-hidden="true">♧</div>
+                  <h3 id="callback-title">Request a confidential callback</h3>
+                  <p class="panel-intro">These details and your message are visible only to authorized administrators.</p>
+                  <div class="callback-fields">
+                    <label>Name
+                      <input id="patient-name" name="patient-name" type="text" autocomplete="name" maxlength="160" placeholder="Your full name" required>
+                    </label>
+                    <label>Age
+                      <input id="patient-age" name="patient-age" type="number" min="1" max="120" inputmode="numeric" placeholder="Age" required>
+                    </label>
+                    <label class="full-field">Contact number
+                      <input id="patient-contact" name="patient-contact" type="tel" autocomplete="tel" maxlength="24" placeholder="09XX XXX XXXX" required>
+                    </label>
+                  </div>
+                  <div class="schedule-section">
+                    <div class="schedule-heading">
+                      <div><h4>Choose a callback schedule</h4><p>Preferred time · Philippine time · Weekdays, 9:00 AM–5:00 PM. Staff will confirm your callback by phone.</p></div>
+                    </div>
+                    <div class="calendar">
+                      <div class="calendar-header">
+                        <button class="icon-button" id="previous-month" type="button" aria-label="Previous month">‹</button>
+                        <h5 id="month-label" aria-live="polite"></h5>
+                        <button class="icon-button" id="next-month" type="button" aria-label="Next month">›</button>
+                      </div>
+                      <div class="calendar-grid weekday-labels" aria-hidden="true">
+                        <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                      </div>
+                      <div class="calendar-grid" id="calendar-days" role="group" aria-label="Choose a callback date"></div>
+                    </div>
+                    <input id="requested-date" name="requested-date" type="hidden" required>
+                    <div class="times-heading"><h4>Available times</h4><span id="selected-date-label">Choose a weekday</span></div>
+                    <div class="time-grid" id="time-slots" role="group" aria-label="Available callback times"></div>
+                    <input id="requested-time" name="requested-time" type="hidden" required>
+                  </div>
+                  <label class="consent-row">
+                    <input id="consent" name="consent" type="checkbox" required>
+                    <span>I give Holy Face Center permission to securely collect and use my name, age, contact number, message, and chosen schedule to respond to this help request.</span>
+                  </label>
+                </section>
+
+                <section class="panel private-note-panel" id="private-note-panel" aria-labelledby="private-title" hidden>
+                  <div class="panel-icon" aria-hidden="true">♙</div>
+                  <h3 id="private-title">No personal details needed.</h3>
+                  <p>Your entry is saved only in this browser on this device for up to 30 days. It is not sent to the center. You can remove it at any time.</p>
+                </section>
+
+                <div id="form-message" class="form-message" role="status" aria-live="polite" hidden></div>
+                <button class="button button-submit" id="submit-button" type="submit">Send my help request <span aria-hidden="true">›</span></button>
+                <p class="retention-note">By submitting, you acknowledge the 30-day device-history notice. This service does not replace emergency care.</p>
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="history-section" aria-labelledby="history-title">
+        <div class="page-width">
+          <div class="history-heading">
+            <div><p class="eyebrow">Private on this device</p><h2 id="history-title">Your recent entries</h2></div>
+            <p>Private entries disappear from this list after 30 days. Clearing browser data will remove this device copy sooner.</p>
+          </div>
+          <div id="entry-history" class="entry-history"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="page-width footer-inner">
+        <div class="footer-brand">
+          <span class="brand-mark" aria-hidden="true"><span>✦</span><span>♡</span></span>
+          <div><h2>Holy Face Center for Mental Health</h2><p>Nazareth Complex, Zone 6, Tabiguian, Tabaco City · Brothers of Charity Philippine Jurisdiction, Inc.</p></div>
+        </div>
+        <div class="footer-contact"><a href="tel:09206915015">0920-691-5015</a><a href="mailto:holyfacecenter@gmail.com">holyfacecenter@gmail.com</a><a href="tel:09206915015">Need support? Call the center</a></div>
+      </div>
+    </footer>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
