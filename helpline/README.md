@@ -21,6 +21,7 @@ not replace or depend on the Next.js/Payload app in the repository root.
 1. Open **Supabase Dashboard → SQL Editor**.
 2. Paste and run [`supabase/schema.sql`](supabase/schema.sql).
 3. Open **Authentication → Providers → Anonymous Sign-Ins** and enable it.
+4. For an existing installation, also run `supabase/add_submission_rpc.sql` once.
 
 ## 2. Configure an administrator
 
@@ -42,7 +43,7 @@ open **Supabase Dashboard → Integrations → Cron** and create:
 Copy the example secrets file:
 
 ```bash
-cd streamlit_supabase
+cd helpline
 cp .streamlit/secrets.toml.example .streamlit/secrets.toml
 ```
 
@@ -71,7 +72,7 @@ streamlit run app.py
 
 1. Push this directory to GitHub.
 2. Create a Streamlit Community Cloud app.
-3. Set the main file path to `streamlit_supabase/app.py`.
+3. Set the main file path to `helpline/app.py`.
 4. Add `SUPABASE_URL` and `SUPABASE_ANON_KEY` under **App settings → Secrets**.
 5. Deploy.
 

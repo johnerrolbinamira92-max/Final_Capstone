@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -29,7 +31,9 @@ from styles import apply_styles
 
 APP_DIR = Path(__file__).resolve().parent
 LOGO = APP_DIR / "assets" / "holy-face-logo.png"
+LOGO_DATA = base64.b64encode(LOGO.read_bytes()).decode("ascii")
 PHONE = "0920-691-5015"
+logger = logging.getLogger("holy_face_helpline")
 
 st.set_page_config(
     page_title="Holy Face Center Helpline",
@@ -55,24 +59,23 @@ def show_flash() -> None:
 
 
 def header() -> None:
-    left, right = st.columns([3, 2], vertical_alignment="center")
-    with left:
-        logo, title = st.columns([1, 8], vertical_alignment="center")
-        with logo:
-            st.image(str(LOGO), width=68)
-        with title:
-            st.markdown("**BROTHERS OF CHARITY**")
-            st.caption("Holy Face Center for Mental Health")
-    with right:
-        theme, call = st.columns([1, 2], vertical_alignment="center")
-        with theme:
-            st.toggle("Dark", key="dark_theme")
-        with call:
-            st.link_button(
-                f"Call {PHONE}",
-                f"tel:{PHONE.replace('-', '')}",
-                use_container_width=True,
-            )
+    st.markdown(
+        f"""
+        <header class="hf-site-header">
+          <div class="hf-header-inner">
+            <div class="hf-brand">
+              <img src="data:image/png;base64,{LOGO_DATA}" alt="Holy Face Center logo">
+              <div>
+                <strong>BROTHERS OF CHARITY</strong>
+                <span>Holy Face Center for Mental Health</span>
+              </div>
+            </div>
+            <a class="hf-call" href="tel:{PHONE.replace('-', '')}">Call {PHONE}</a>
+          </div>
+        </header>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def hero() -> None:
@@ -99,7 +102,7 @@ def hero() -> None:
     )
 
 
-def submit_visitor_entry(client: Any, owner_id: str, kind: str) -> None:
+def submit_visitor_entry(client: Any, kind: str) -> None:
     if st.session_state.pop("clear_vent_message", False):
         st.session_state.vent_message = ""
 
@@ -219,7 +222,6 @@ def submit_visitor_entry(client: Any, owner_id: str, kind: str) -> None:
             return
 
     payload: dict[str, Any] = {
-        "owner_id": owner_id,
         "kind": kind,
         "message": message.strip(),
         "name": name.strip() if kind == "support" else None,
@@ -232,11 +234,14 @@ def submit_visitor_entry(client: Any, owner_id: str, kind: str) -> None:
     try:
         saved = create_entry(client, payload)
     except Exception as error:
+        logger.exception("Helpline entry submission failed")
         detail = str(error).lower()
         if "duplicate" in detail or "unique" in detail:
             st.error("That schedule was just reserved. Please choose another time.")
         else:
-            st.error("We could not securely save your entry. Please try again.")
+            st.error(
+                "We could not securely save your entry. Please try again or call the center."
+            )
         return
 
     st.session_state.clear_vent_message = True
@@ -291,7 +296,7 @@ def visitor_history(client: Any) -> None:
 def visitor_app() -> None:
     try:
         client = session_client("visitor_supabase_client")
-        owner_id = ensure_anonymous_user(client)
+        ensure_anonymous_user(client)
     except Exception as error:
         st.error(str(error))
         st.stop()
@@ -307,7 +312,7 @@ def visitor_app() -> None:
             horizontal=True,
         )
         kind = "support" if kind_label == "I need help" else "self-release"
-        submit_visitor_entry(client, owner_id, kind)
+        submit_visitor_entry(client, kind)
     with history_tab:
         visitor_history(client)
     with privacy_tab:
@@ -329,6 +334,9 @@ def visitor_app() -> None:
 
 apply_styles(bool(st.session_state.get("dark_theme", False)))
 header()
+control_space, theme_control = st.columns([5, 1], vertical_alignment="center")
+with theme_control:
+    st.toggle("Dark theme", key="dark_theme")
 hero()
 visitor_app()
 

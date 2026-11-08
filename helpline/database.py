@@ -71,7 +71,19 @@ def booked_slots(client: Client, selected_date: date) -> set[datetime]:
 
 
 def create_entry(client: Client, payload: dict[str, Any]) -> dict[str, Any]:
-    result = client.table("vent_entries").insert(payload).execute()
+    """Submit through the allowlisted server function instead of direct table insert."""
+    result = client.rpc(
+        "submit_vent_entry",
+        {
+            "p_kind": payload["kind"],
+            "p_message": payload["message"],
+            "p_name": payload.get("name"),
+            "p_age": payload.get("age"),
+            "p_contact_number": payload.get("contact_number"),
+            "p_scheduled_for": payload.get("scheduled_for"),
+            "p_consent_to_contact": payload.get("consent_to_contact", False),
+        },
+    ).execute()
     if not result.data:
         raise RuntimeError("Supabase did not return the saved entry.")
     return dict(result.data[0])

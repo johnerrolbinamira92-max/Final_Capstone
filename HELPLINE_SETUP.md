@@ -14,6 +14,10 @@ Editor. Enable anonymous sign-ins under Authentication providers. The schema
 contains Row Level Security, administrator authorization, scheduling validation,
 and the 30-day retention function.
 
+For a database that was configured before the secure submission RPC was added,
+run `helpline/supabase/add_submission_rpc.sql` once. This gives the public app a
+narrow submission function and removes direct table-insert permission.
+
 ## Public helpline configuration
 
 Set these in `helpline/.streamlit/secrets.toml` locally or in the public
