@@ -7,15 +7,11 @@ from typing import Any
 import streamlit as st
 
 from database import (
-    admin_entries,
-    admin_login,
     booked_slots,
     create_entry,
     delete_entry,
     ensure_anonymous_user,
-    reset_client,
     session_client,
-    update_entry,
     visitor_entries,
 )
 from logic import (
@@ -34,7 +30,6 @@ from styles import apply_styles
 APP_DIR = Path(__file__).resolve().parent
 LOGO = APP_DIR / "assets" / "holy-face-logo.png"
 PHONE = "0920-691-5015"
-STATUSES = ("new", "contact-attempted", "scheduled", "closed", "stored")
 
 st.set_page_config(
     page_title="Holy Face Center Helpline",
@@ -60,7 +55,7 @@ def show_flash() -> None:
 
 
 def header() -> None:
-    left, right = st.columns([4, 1], vertical_alignment="center")
+    left, right = st.columns([3, 2], vertical_alignment="center")
     with left:
         logo, title = st.columns([1, 8], vertical_alignment="center")
         with logo:
@@ -69,7 +64,15 @@ def header() -> None:
             st.markdown("**BROTHERS OF CHARITY**")
             st.caption("Holy Face Center for Mental Health")
     with right:
-        st.link_button(f"Call {PHONE}", f"tel:{PHONE.replace('-', '')}", use_container_width=True)
+        theme, call = st.columns([1, 2], vertical_alignment="center")
+        with theme:
+            st.toggle("Dark", key="dark_theme")
+        with call:
+            st.link_button(
+                f"Call {PHONE}",
+                f"tel:{PHONE.replace('-', '')}",
+                use_container_width=True,
+            )
 
 
 def hero() -> None:
@@ -324,125 +327,11 @@ def visitor_app() -> None:
         )
 
 
-def login_panel() -> None:
-    st.subheader("Administrator access")
-    st.caption("Authorized Holy Face Center staff only.")
-    with st.form("admin-login"):
-        email = st.text_input("Email")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Sign in", use_container_width=True)
-    if not submitted:
-        return
-    try:
-        client = reset_client("admin_supabase_client")
-        admin = admin_login(client, email.strip(), password)
-        st.session_state.admin = admin
-        rerun_with_notice("success", f"Welcome, {admin['display_name']}.")
-    except PermissionError as error:
-        st.error(str(error))
-    except Exception:
-        st.error("Incorrect credentials or the authentication service is unavailable.")
 
-
-def admin_dashboard() -> None:
-    admin = st.session_state.get("admin")
-    if not admin:
-        login_panel()
-        return
-
-    client = session_client("admin_supabase_client")
-    title, logout = st.columns([5, 1], vertical_alignment="center")
-    with title:
-        st.subheader("Helpline administration")
-        st.caption(f"Signed in as {admin['display_name']}")
-    with logout:
-        if st.button("Sign out", use_container_width=True):
-            try:
-                client.auth.sign_out()
-            finally:
-                st.session_state.pop("admin", None)
-                st.session_state.pop("admin_supabase_client", None)
-            st.rerun()
-
-    show_flash()
-    status_filter = st.selectbox("Filter by status", ("all",) + STATUSES)
-    try:
-        entries = admin_entries(client, status_filter)
-    except Exception:
-        st.error("Private submissions could not be loaded.")
-        return
-
-    support_count = sum(item["kind"] == "support" for item in entries)
-    new_count = sum(item["status"] == "new" for item in entries)
-    metric_one, metric_two, metric_three = st.columns(3)
-    metric_one.metric("Visible entries", len(entries))
-    metric_two.metric("Help requests", support_count)
-    metric_three.metric("New requests", new_count)
-
-    if not entries:
-        st.info("No submissions match this filter.")
-        return
-
-    for entry in entries:
-        created = datetime.fromisoformat(entry["created_at"].replace("Z", "+00:00"))
-        title_text = (
-            f"{entry['reference_code']} · "
-            f"{'Help requested' if entry['kind'] == 'support' else 'Self-release'} · "
-            f"{entry['status']}"
-        )
-        with st.expander(title_text):
-            st.caption(f"Submitted {created.astimezone(MANILA):%b %d, %Y at %I:%M %p}")
-            st.markdown("#### Private narrative")
-            st.write(entry["message"])
-
-            if entry["kind"] == "support":
-                contact_one, contact_two, contact_three = st.columns(3)
-                contact_one.markdown(f"**Name**  \n{entry.get('name') or '—'}")
-                contact_two.markdown(f"**Age**  \n{entry.get('age') or '—'}")
-                contact_three.markdown(
-                    f"**Contact**  \n[{entry.get('contact_number')}](tel:{entry.get('contact_number')})"
-                )
-                if entry.get("scheduled_for"):
-                    schedule = datetime.fromisoformat(
-                        entry["scheduled_for"].replace("Z", "+00:00")
-                    )
-                    st.markdown(
-                        f"**Requested callback:** "
-                        f"{schedule.astimezone(MANILA):%A, %b %d, %Y at %I:%M %p}"
-                    )
-                st.caption("Consent to contact: Yes")
-
-            with st.form(f"update-{entry['id']}"):
-                current_index = STATUSES.index(entry["status"])
-                status = st.selectbox("Status", STATUSES, index=current_index)
-                notes = st.text_area(
-                    "Private staff notes",
-                    value=entry.get("staff_notes") or "",
-                )
-                save = st.form_submit_button("Save staff update")
-            if save:
-                try:
-                    update_entry(client, entry["id"], status, notes)
-                    rerun_with_notice("success", f"{entry['reference_code']} was updated.")
-                except Exception:
-                    st.error("The staff update could not be saved.")
-
-
-dark_theme = st.sidebar.toggle("Dark theme", value=False)
-apply_styles(dark_theme)
-area = st.sidebar.radio("Area", ("Visitor helpline", "Administrator"))
-st.sidebar.markdown("---")
-st.sidebar.caption("Holy Face Center for Mental Health")
-st.sidebar.markdown(f"[Call {PHONE}](tel:{PHONE.replace('-', '')})")
-st.sidebar.markdown("[holyfacecenter@gmail.com](mailto:holyfacecenter@gmail.com)")
-
+apply_styles(bool(st.session_state.get("dark_theme", False)))
 header()
 hero()
-
-if area == "Administrator":
-    admin_dashboard()
-else:
-    visitor_app()
+visitor_app()
 
 st.markdown("---")
 st.caption(

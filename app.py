@@ -1,6 +1,4 @@
 import streamlit as st
-import hmac
-import os
 from views.dashboard import show_dashboard_page
 from views.encode import show_encode_page
 from views.search import show_search_page
@@ -8,6 +6,7 @@ from views.manage import show_manage_page
 from views.audit import show_audit_page
 from views.appointments import show_appointments_page
 from views.helpline import show_helpline_page
+from database import authenticate_admin
 
 # --- GLOBAL APPLICATION WINDOW INTERFACE LAYOUT CONFIGURATION ---
 st.set_page_config(
@@ -16,10 +15,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "1234")
-
 
 def show_login_page():
     _, login_col, _ = st.columns([1, 2, 1])
@@ -41,7 +36,7 @@ def show_login_page():
                 </style>
                 """
             )
-            username = st.text_input("Username", autocomplete="username")
+            email = st.text_input("Email", autocomplete="username")
             password = st.text_input(
                 "Password",
                 type="password",
@@ -49,12 +44,16 @@ def show_login_page():
             )
 
             if st.button("Log in", type="primary"):
-                valid_username = hmac.compare_digest(username, ADMIN_USERNAME)
-                valid_password = hmac.compare_digest(password, ADMIN_PASSWORD)
-                if valid_username and valid_password:
+                try:
+                    admin = authenticate_admin(email, password)
+                except PermissionError as error:
+                    st.error(str(error))
+                except Exception as error:
+                    st.error(f"Unable to authenticate with Supabase: {error}")
+                else:
                     st.session_state["admin_authenticated"] = True
+                    st.session_state["admin_profile"] = admin
                     st.rerun()
-                st.error("Invalid username or password.")
 
 
 if not st.session_state.get("admin_authenticated", False):
@@ -63,8 +62,12 @@ if not st.session_state.get("admin_authenticated", False):
     st.stop()
 
 with st.sidebar:
+    profile = st.session_state.get("admin_profile", {})
+    if profile.get("display_name"):
+        st.caption(f"Signed in as {profile['display_name']}")
     if st.button("Log out"):
         st.session_state["admin_authenticated"] = False
+        st.session_state.pop("admin_profile", None)
         st.rerun()
 
 # --- INSTANTIATE LOGICAL RUNTIME ROUTING ENDPOINTS ---

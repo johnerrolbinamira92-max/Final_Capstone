@@ -58,16 +58,6 @@ def ensure_anonymous_user(client: Client) -> str:
     return response.user.id
 
 
-def reset_client(
-    session_key: str = "visitor_supabase_client",
-    *,
-    clear_visitor: bool = False,
-) -> Client:
-    st.session_state.pop(session_key, None)
-    if clear_visitor:
-        st.session_state.pop("visitor_user_id", None)
-    return session_client(session_key)
-
 
 def booked_slots(client: Client, selected_date: date) -> set[datetime]:
     result = client.rpc(
@@ -99,42 +89,3 @@ def visitor_entries(client: Client) -> list[dict[str, Any]]:
 
 def delete_entry(client: Client, entry_id: str) -> None:
     client.table("vent_entries").delete().eq("id", entry_id).execute()
-
-
-def admin_login(client: Client, email: str, password: str) -> dict[str, Any]:
-    response = client.auth.sign_in_with_password({"email": email, "password": password})
-    if not response.user:
-        raise RuntimeError("Unable to sign in.")
-
-    admin = (
-        client.table("admin_users")
-        .select("user_id,display_name")
-        .eq("user_id", response.user.id)
-        .maybe_single()
-        .execute()
-    )
-    if not admin.data:
-        client.auth.sign_out()
-        raise PermissionError("This account is not authorized for the helpline dashboard.")
-    return dict(admin.data)
-
-
-def admin_entries(client: Client, status: str | None = None) -> list[dict[str, Any]]:
-    query = client.table("vent_entries").select("*").order("created_at", desc=True)
-    if status and status != "all":
-        query = query.eq("status", status)
-    return list(query.execute().data or [])
-
-
-def update_entry(
-    client: Client,
-    entry_id: str,
-    status: str,
-    staff_notes: str,
-) -> None:
-    (
-        client.table("vent_entries")
-        .update({"status": status, "staff_notes": staff_notes.strip() or None})
-        .eq("id", entry_id)
-        .execute()
-    )

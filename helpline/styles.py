@@ -48,7 +48,9 @@ def apply_styles(dark: bool) -> None:
         }}
         .stApp {{ background: var(--hf-bg); color: var(--hf-ink); }}
         [data-testid="stHeader"] {{ background: color-mix(in srgb, var(--hf-bg) 92%, transparent); }}
-        [data-testid="stSidebar"] {{ background: var(--hf-soft); }}
+        [data-testid="stSidebar"], [data-testid="collapsedControl"] {{ display: none !important; }}
+        .block-container {{ max-width: 1280px; padding-top: 1.25rem; padding-bottom: 3rem; }}
+        [data-testid="stToolbar"] {{ opacity: .35; }}
         h1, h2, h3 {{ font-family: Georgia, "Times New Roman", serif !important; color: var(--hf-ink) !important; }}
         p, label, [data-testid="stCaptionContainer"] {{ color: var(--hf-muted); }}
         .hf-kicker {{
@@ -67,6 +69,12 @@ def apply_styles(dark: bool) -> None:
           background: var(--hf-deep); color: white;
         }}
         .hf-crisis strong, .hf-crisis p {{ color: white; }}
+        div[data-testid="stTabs"] button {{ font-weight: 750; }}
+        div[data-testid="stTabs"] [data-baseweb="tab-list"] {{ gap: .6rem; }}
+        div[data-testid="stTabs"] [data-baseweb="tab"] {{
+          border-radius: 999px; padding-left: 1.1rem; padding-right: 1.1rem;
+          background: var(--hf-soft);
+        }}
         .hf-card {{
           border: 1px solid var(--hf-line); border-radius: 1.35rem;
           background: var(--hf-card); padding: 1.25rem; margin-bottom: 1rem;

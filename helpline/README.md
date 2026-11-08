@@ -10,7 +10,7 @@ not replace or depend on the Next.js/Payload app in the repository root.
 - Consent-gated contact collection
 - Live 30-day weekday callback calendar with collision protection
 - Visitor-owned history using anonymous Supabase Auth
-- Administrator email/password login and private PII dashboard
+- Visitor-only public interface; administration remains in the private root app
 - Status tracking and staff notes
 - Light and dark presentation
 - 30-day database retention with an optional Supabase Cron cleanup
@@ -24,18 +24,9 @@ not replace or depend on the Next.js/Payload app in the repository root.
 
 ## 2. Configure an administrator
 
-1. Open **Authentication → Users → Add user**.
-2. Create the staff user with an email and a strong temporary password.
-3. Copy that user’s UUID.
-4. In the SQL Editor, run:
-
-   ```sql
-   insert into public.admin_users (user_id, display_name)
-   values ('PASTE_AUTH_USER_UUID', 'Helpline Administrator');
-   ```
-
-Only users registered in `admin_users` can read contact details or use the
-administrator dashboard.
+Create the staff user under **Authentication → Users**, then insert its UUID
+into `public.admin_users`. Staff sign in through the repository root `app.py`;
+the public `helpline/app.py` intentionally contains no administrator area.
 
 ## 3. Configure 30-day deletion
 

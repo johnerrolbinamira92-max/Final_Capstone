@@ -5,7 +5,7 @@ Supabase project:
 
 - `app.py`: the existing private records/admin system, now with a **Helpline
   Requests** page.
-- `helpline/app.py`: the public-facing mental-health helpline.
+- `helpline/app.py`: the public-facing, visitor-only mental-health helpline.
 
 ## Database
 
@@ -35,10 +35,12 @@ Never give the public app a service-role key.
 
 ## Private admin configuration
 
-The root admin app keeps its existing environment variable contract:
+The root admin app uses Supabase Auth for staff login and a server-side key for
+private operational reads:
 
 ```text
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_ANON_KEY=YOUR_PUBLIC_OR_PUBLISHABLE_KEY
 SUPABASE_KEY=YOUR_SERVER_SIDE_SERVICE_ROLE_KEY
 ```
 
@@ -54,9 +56,10 @@ streamlit run app.py
 
 ## Administrator identity
 
-For the helpline app's built-in administrator area, create an Auth user in
-Supabase and add its UUID to `public.admin_users`. The existing root admin system
-uses its current login and server-side Supabase client.
+Create each staff account in Supabase Auth and add its UUID to
+`public.admin_users`. The root admin system verifies both the email/password and
+that administrator relationship before opening any private page. The public
+helpline contains no administrator login or staff navigation.
 
 ## Retention
 
