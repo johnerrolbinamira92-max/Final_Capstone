@@ -133,7 +133,6 @@ def submit_visitor_entry(client: Any, owner_id: str, kind: str) -> None:
             "Preferred callback date",
             min_value=minimum_date,
             max_value=maximum_date,
-            format="MMM DD, YYYY",
         )
 
         if selected_date.weekday() >= 5:
