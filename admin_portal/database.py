@@ -1,14 +1,23 @@
 import os
 import sqlite3
+from pathlib import Path
 from urllib.parse import urlparse
 import streamlit as st
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
-# Load secure environmental variables
-load_dotenv()
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+ADMIN_PORTAL_DIR = Path(__file__).resolve().parent
+ENV_FILE = REPOSITORY_ROOT / ".env"
 
-DB_FILE = os.getenv("DB_FILE", "hfrc_local_archive.db")
+load_dotenv(dotenv_path=ENV_FILE)
+
+configured_db_file = os.getenv("DB_FILE")
+DB_FILE = Path(configured_db_file).expanduser() if configured_db_file else (
+    ADMIN_PORTAL_DIR / "hfrc_local_archive.db"
+)
+if not DB_FILE.is_absolute():
+    DB_FILE = ADMIN_PORTAL_DIR / DB_FILE
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
@@ -157,7 +166,8 @@ def authenticate_admin(email: str, password: str) -> dict:
     """Authenticate a private-app administrator through Supabase Auth and RLS."""
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
         raise RuntimeError(
-            "Missing SUPABASE_URL or SUPABASE_ANON_KEY in the private app environment."
+            "Missing SUPABASE_URL or SUPABASE_ANON_KEY. Copy the repository-root "
+            ".env.example to .env and set your Supabase project URL and public key."
         )
 
     auth_client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)

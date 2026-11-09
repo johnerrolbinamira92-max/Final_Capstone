@@ -4,7 +4,6 @@ from views.appointments import show_appointments_page
 from views.audit import show_audit_page
 from views.dashboard import show_dashboard_page
 from views.encode import show_encode_page
-from views.helpline import show_helpline_page
 from views.manage import show_manage_page
 from views.search import show_search_page
 
@@ -325,12 +324,6 @@ appointments_page = st.Page(
     icon=":material/calendar_month:",
 )
 
-helpline_page = st.Page(
-    show_helpline_page,
-    title="Helpline Requests",
-    icon=":material/volunteer_activism:",
-)
-
 audit_page = st.Page(
     show_audit_page,
     title="Audit Ledger",
@@ -345,7 +338,6 @@ pg = st.navigation(
             search_page,
             manage_page,
             appointments_page,
-            helpline_page,
         ],
         "Administrative Audit": [audit_page],
     }

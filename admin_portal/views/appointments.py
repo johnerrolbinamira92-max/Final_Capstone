@@ -9,7 +9,8 @@ from database import get_local_connection, get_supabase_client
 
 
 ACTIVE_STATUSES = ("Pending", "Scheduled")
-APPOINTMENT_STATUSES = ("Pending", "Scheduled", "Completed", "Cancelled")
+APPOINTMENT_STATUSES = ("Pending", "Scheduled", "Completed", "No-show", "Cancelled")
+HELP_REQUEST_STATUSES = ("Pending", "Scheduled", "Completed", "Cancelled")
 WEEKDAY_LABELS = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 APPOINTMENT_COLUMNS = [
     "appointment_id",
@@ -19,6 +20,7 @@ APPOINTMENT_COLUMNS = [
     "requested_date",
     "requested_time_slot",
     "approval_status",
+    "reason",
 ]
 PAGE_SIZE = 1000
 
@@ -37,6 +39,12 @@ def _format_time(value):
             return datetime.strptime(str(value), time_format).strftime("%I:%M %p").lstrip("0")
         except ValueError:
             continue
+    return str(value)
+
+
+def _format_optional(value):
+    if value is None or pd.isna(value) or not str(value).strip():
+        return "Not provided"
     return str(value)
 
 
@@ -179,19 +187,122 @@ def _render_selected_day(appointments, selected_date):
 
     display = day_appointments.copy()
     display["Time"] = display["requested_time_slot"].map(_format_time)
+    display["reason"] = display["reason"].fillna("")
     display = display.rename(
         columns={
             "patient_name": "Patient",
             "contact_number": "Contact",
             "approval_status": "Status",
+            "reason": "Reason",
         }
     )
     st.dataframe(
-        display[["Time", "Patient", "Contact", "Status"]],
+        display[["Time", "Patient", "Contact", "Reason", "Status"]],
         hide_index=True,
         width="stretch",
         alt=f"Appointments scheduled for {selected_date.isoformat()}",
     )
+
+
+def _render_appointment_history(appointments, client, today):
+    st.markdown("#### Appointment history")
+    st.caption(
+        "Completed means the patient attended; No-show means they did not attend. "
+        "Past appointments without an outcome remain visible until updated."
+    )
+    if appointments.empty:
+        st.info("There is no appointment history yet.")
+        return
+
+    past_dates = appointments["requested_date"].astype(str) < today.isoformat()
+    final_statuses = appointments["approval_status"].isin(
+        ("Completed", "No-show", "Cancelled")
+    )
+    history = appointments[past_dates | final_statuses].copy()
+    if history.empty:
+        st.info("There is no appointment history yet.")
+        return
+
+    history["Date"] = history["requested_date"].map(
+        lambda value: date.fromisoformat(str(value)).strftime("%b %d, %Y")
+        if value
+        else "Date not set"
+    )
+    history["Time"] = history["requested_time_slot"].map(_format_time)
+    history["Attendance / status"] = history["approval_status"].replace(
+        {"Completed": "Attended", "No-show": "Did not attend"}
+    )
+    history["Reason"] = history["reason"].fillna("")
+    history = history.sort_values(
+        ["requested_date", "requested_time_slot", "patient_name"],
+        ascending=[False, False, True],
+        kind="stable",
+        na_position="last",
+    )
+    st.dataframe(
+        history[
+            ["Date", "Time", "patient_name", "contact_number", "Reason", "Attendance / status"]
+        ].rename(
+            columns={
+                "patient_name": "Patient",
+                "contact_number": "Contact",
+            }
+        ),
+        hide_index=True,
+        width="stretch",
+        alt="Past appointments and attendance outcomes",
+    )
+
+    for appointment in history.to_dict(orient="records"):
+        appointment_id = appointment["appointment_id"]
+        status = appointment.get("approval_status") or "Pending"
+        with st.expander(
+            f"{appointment['patient_name']} · {appointment['requested_date']} "
+            f"· {status}"
+        ):
+            st.write(f"**Contact:** {appointment.get('contact_number') or 'Not provided'}")
+            st.write(f"**Reason:** {_format_optional(appointment.get('reason'))}")
+            statuses = list(APPOINTMENT_STATUSES)
+            if status not in statuses:
+                statuses.insert(0, status)
+            selected_status = st.selectbox(
+                "Attendance / appointment status",
+                statuses,
+                index=statuses.index(status),
+                key=f"appointment_history_status_{appointment_id}",
+            )
+            if st.button(
+                "Save attendance",
+                key=f"appointment_history_save_{appointment_id}",
+                disabled=selected_status == status,
+            ):
+                try:
+                    updated = (
+                        client.table("appointments")
+                        .update({"approval_status": selected_status})
+                        .eq("appointment_id", appointment_id)
+                        .select("appointment_id")
+                        .execute()
+                    )
+                    if not updated.data:
+                        raise RuntimeError("No matching appointment was updated.")
+                except Exception as error:
+                    st.error(f"Unable to save the attendance outcome: {error}")
+                else:
+                    try:
+                        _log_appointment_action(
+                            "APPOINTMENT ATTENDANCE",
+                            f"Updated appointment {appointment_id} to {selected_status}",
+                        )
+                    except Exception as error:
+                        st.warning(
+                            "The appointment was updated, but its local audit entry "
+                            f"could not be written: {error}"
+                        )
+                    st.session_state["appointment_flash"] = (
+                        f"Appointment outcome updated to {selected_status}."
+                    )
+                    st.rerun()
 
 
 def _log_appointment_action(action_type, details):
@@ -225,6 +336,12 @@ def _render_schedule_form(client):
         contact_number = st.text_input(
             "Contact number",
             key="appointment_form_contact",
+        ).strip()
+        reason = st.text_area(
+            "Reason for visit (optional)",
+            key="appointment_form_reason",
+            max_chars=500,
+            help="Keep this brief. Do not include sensitive clinical details.",
         ).strip()
         visit_col, time_col = st.columns(2)
         with visit_col:
@@ -266,6 +383,7 @@ def _render_schedule_form(client):
                     "requested_date": visit_date.isoformat(),
                     "requested_time_slot": appointment_time,
                     "approval_status": "Scheduled",
+                    "reason": reason or None,
                 }
             )
             .select("appointment_id")
@@ -355,6 +473,9 @@ def _render_schedule_list(appointments, client):
                 st.write(f"**Patient:** {appointment['patient_name']}")
                 st.write(f"**Patient app ID:** {appointment['patient_id'] or 'Not linked'}")
                 st.write(f"**Status:** {status}")
+                reason = _format_optional(appointment.get("reason"))
+                if reason != "Not provided":
+                    st.write(f"**Reason:** {reason}")
             with col_contact:
                 st.write(f"**Contact:** {appointment['contact_number'] or 'Not provided'}")
 
@@ -463,7 +584,7 @@ def _render_help_requests(client):
             st.markdown("**Message from the patient**")
             st.text(request["message"])
 
-            statuses = list(APPOINTMENT_STATUSES)
+            statuses = list(HELP_REQUEST_STATUSES)
             if status not in statuses:
                 statuses.insert(0, status)
             selected_status = st.selectbox(
@@ -528,7 +649,8 @@ def show_appointments_page():
     except Exception as error:
         st.error(
             "Unable to load appointments from Supabase. Check the project API URL, "
-            "run the appointments SQL migration, and verify SELECT permissions."
+            "run supabase/appointments.sql and "
+            "supabase/appointments_admin_fields.sql, and verify SELECT permissions."
         )
         with st.expander("Technical details"):
             st.code(str(error))
@@ -547,6 +669,7 @@ def show_appointments_page():
         st.session_state["appointment_form_patient_id"] = ""
         st.session_state["appointment_form_patient_name"] = ""
         st.session_state["appointment_form_contact"] = ""
+        st.session_state["appointment_form_reason"] = ""
         st.session_state["appointment_form_time"] = time(9, 0)
 
     if "appointment_form_patient_id" not in st.session_state:
@@ -555,6 +678,8 @@ def show_appointments_page():
         st.session_state["appointment_form_patient_name"] = ""
     if "appointment_form_contact" not in st.session_state:
         st.session_state["appointment_form_contact"] = ""
+    if "appointment_form_reason" not in st.session_state:
+        st.session_state["appointment_form_reason"] = ""
 
     if "appointment_flash" in st.session_state:
         st.success(st.session_state.pop("appointment_flash"))
@@ -582,20 +707,20 @@ def show_appointments_page():
     metrics[1].metric("Pending requests", pending_count, border=True)
     metrics[2].metric("Active visits this month", len(active_month), border=True)
 
-    calendar_tab, list_tab, help_tab = st.tabs(
-        ["Calendar", "Schedule list", "Confidential help requests"]
+    schedule_tab, list_tab, help_tab = st.tabs(
+        ["Schedule", "All appointments", "Confidential help requests"]
     )
-    with calendar_tab:
+    with schedule_tab:
         selected_date = st.session_state["appointment_selected_date"]
-        calendar_col, detail_col = st.columns([3, 2])
-        with calendar_col:
-            with st.container(border=True):
-                _render_calendar(appointments, selected_date)
-        with detail_col:
-            with st.container(border=True):
-                _render_selected_day(appointments, selected_date)
+        with st.container(border=True):
+            st.markdown("#### Appointment calendar")
+            _render_calendar(appointments, selected_date)
+        with st.container(border=True):
+            _render_selected_day(appointments, selected_date)
         with st.container(border=True):
             _render_schedule_form(client)
+        with st.container(border=True):
+            _render_appointment_history(appointments, client, today)
 
     with list_tab:
         with st.container(border=True):

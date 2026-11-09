@@ -3,10 +3,11 @@ create table if not exists public.appointments (
     patient_id text,
     patient_name text not null,
     contact_number text,
+    reason text,
     requested_date date not null,
     requested_time_slot time,
     approval_status text not null default 'Pending'
-        check (approval_status in ('Pending', 'Scheduled', 'Completed', 'Cancelled')),
+        check (approval_status in ('Pending', 'Scheduled', 'Completed', 'No-show', 'Cancelled')),
     created_at timestamptz not null default now()
 );
 

@@ -1,6 +1,21 @@
-# Holy Face Center patient portal
+# Holy Face Center patient portal and helpline
 
-This is a standalone, responsive patient portal. It is separate from the Streamlit admin app.
+This responsive site is the public patient portal and helpline. It is separate
+from the private Streamlit admin app.
+
+## Portal code structure
+
+- `index.html` contains the page structure and loads the browser modules.
+- `styles.css` contains the shared responsive and theme styling.
+- `js/app.js` initializes the portal and connects the feature modules.
+- `js/features/callback-schedule.js` manages the callback calendar and time slots.
+- `js/features/callback-request.js` validates and submits callback requests.
+- `js/features/private-entries.js` manages entries stored only in this browser.
+- `js/features/theme.js` handles the color-theme toggle.
+- `js/ui/feedback.js` displays shared form feedback.
+
+The portal uses native JavaScript modules; continue serving it over HTTP as
+described below rather than opening `index.html` directly.
 
 ## Set up the callback form
 
@@ -30,5 +45,8 @@ Open `http://localhost:8000`. Serving the folder over HTTP is needed for browser
 - The selected callback time is a preference, not a confirmed booking. Staff confirm the time by phone.
 - Callback requests are stored in Supabase until staff handle them. Apply the center’s approved retention and privacy policy to those requests before deploying the portal publicly.
 - Avoid leaving private entries on a shared device; remove them from the page or clear that browser’s site data when finished.
+
+The former standalone Streamlit helpline has been retired; this portal is the
+single public entry point.
 
 Before public launch, configure the Supabase project and hosting origins, test with a non-production request, and have the center verify consent, access, retention, and emergency-contact wording.
