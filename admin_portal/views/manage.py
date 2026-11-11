@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import streamlit as st
 from database import get_local_connection
 from views.record_tables import (
@@ -7,106 +10,617 @@ from views.record_tables import (
     dataframe_to_storage,
 )
 
-def show_manage_page():
-    st.title("Manage Patient Records")
-    st.write("Find an archived patient folder to review, update, or delete it.")
+BICOL_ADDRESS_FILE = (
+    Path(__file__).resolve().parents[1] / "data" / "bicol_address_hierarchy.json"
+)
 
-    # 1. Select Patient Section
-    st.markdown("### Select a patient")
-    search_term = st.text_input("Search by patient name")
-    
-    if not search_term:
-        st.info("Please query a name to initialize modifying processes.")
-        return
 
-    conn = get_local_connection()
+@st.cache_data
+def _load_bicol_address_hierarchy():
+    with BICOL_ADDRESS_FILE.open(encoding="utf-8") as address_file:
+        provinces = json.load(address_file)["provinces"]
+    return {province["name"]: province for province in provinces}
+
+
+def _clear_record_barangay():
+    st.session_state.pop("record_filter_barangay", None)
+
+
+def _clear_record_city_and_barangay():
+    st.session_state.pop("record_filter_city", None)
+    st.session_state.pop("record_filter_barangay", None)
+
+
+def _location_key(value):
+    normalized = " ".join(str(value or "").strip().casefold().split())
+    if normalized.startswith("city of "):
+        normalized = normalized[len("city of ") :]
+    for suffix in (" city", " province"):
+        if normalized.endswith(suffix):
+            normalized = normalized[: -len(suffix)]
+    return normalized
+
+
+PATIENT_DETAIL_SECTIONS = (
+    (
+        "Registration and interview",
+        (
+            "patient_id",
+            "date_registered",
+            "referral_noted_by",
+            "means_of_referral",
+            "interview_date",
+            "interview_place",
+            "interview_persons_present",
+            "primary_source_of_information",
+        ),
+    ),
+    (
+        "Patient profile",
+        (
+            "first_name",
+            "middle_name",
+            "last_name",
+            "extension_name",
+            "date_of_birth",
+            "calculated_age",
+            "sex",
+            "civil_status",
+            "religion",
+            "educational_attainment",
+            "status",
+            "work_experience",
+        ),
+    ),
+    (
+        "Residential address",
+        (
+            "street_address",
+            "purok",
+            "barangay",
+            "city_municipality",
+            "province",
+        ),
+    ),
+    (
+        "Guardian and nearest relative",
+        (
+            "guardian_first_name",
+            "guardian_middle_name",
+            "guardian_last_name",
+            "guardian_street_address",
+            "g_barangay",
+            "g_city",
+            "g_province",
+            "guardian_contact_person",
+            "g_contact_number",
+            "guardian_barangay",
+            "guardian_city_municipality",
+            "guardian_province",
+            "guardian_contact_number",
+        ),
+    ),
+    (
+        "Household and socioeconomic information",
+        (
+            "family_composition",
+            "total_annual_income",
+            "poverty_threshold_per_year",
+            "poverty_rating",
+            "classification_after_interview",
+            "classification_after_home_visit",
+        ),
+    ),
+    (
+        "Complaints and history",
+        (
+            "chief_complaint_patient",
+            "chief_complaint_relatives",
+            "complaint_duration",
+            "complaint_recent",
+            "complaint_onset",
+            "complaint_previous_hospitalization",
+        ),
+    ),
+    (
+        "Clinical notes and treatment",
+        (
+            "interviewers_initial_impression",
+            "history_of_illness",
+            "mental_status_examination",
+            "nurses_observation",
+            "diagnosis",
+            "treatment",
+            "parenteral_medication_records",
+        ),
+    ),
+)
+
+
+def _detail_label(field_name):
+    return field_name.replace("_", " ").strip().title()
+
+
+def _render_patient_details(patient):
+    patient_field_order = list(patient.keys())
+    patient_fields = set(patient_field_order)
+    displayed_fields = set()
+
+    for section_title, field_names in PATIENT_DETAIL_SECTIONS:
+        fields = [field for field in field_names if field in patient_fields]
+        if not fields:
+            continue
+        displayed_fields.update(fields)
+        with st.container(border=True):
+            st.markdown(f"#### {section_title}")
+            value_columns = st.columns(2)
+            for index, field in enumerate(fields):
+                value = patient[field]
+                display_value = (
+                    "Not recorded"
+                    if value is None or value == ""
+                    else str(value)
+                )
+                with value_columns[index % 2]:
+                    st.markdown(f"**{_detail_label(field)}**")
+                    st.text(display_value)
+
+    remaining_fields = [
+        field for field in patient_field_order if field not in displayed_fields
+    ]
+    if remaining_fields:
+        with st.container(border=True):
+            st.markdown("#### Other record fields")
+            value_columns = st.columns(2)
+            for index, field in enumerate(remaining_fields):
+                value = patient[field]
+                display_value = (
+                    "Not recorded"
+                    if value is None or value == ""
+                    else str(value)
+                )
+                with value_columns[index % 2]:
+                    st.markdown(f"**{_detail_label(field)}**")
+                    st.text(display_value)
+
+
+def _patient_full_name(record):
+    return " ".join(
+        str(record.get(field) or "").strip()
+        for field in ("first_name", "middle_name", "last_name", "extension_name")
+        if record.get(field) and str(record[field]).strip()
+    )
+
+
+def _render_patient_results(records, filters_applied):
+    st.markdown(
+        f"### {len(records):,} "
+        f"{'matching' if filters_applied else 'archived'} patient record(s)"
+    )
+    for record in records:
+        patient_id = record["patient_id"]
+        full_name = _patient_full_name(record) or "Unnamed patient"
+        with st.container(border=True, key=f"patient-result-{patient_id}"):
+            if st.button(
+                full_name,
+                icon=":material/description:",
+                key=f"select_patient_{patient_id}",
+                width="stretch",
+            ):
+                st.session_state["manage_selected_patient_id"] = patient_id
+                st.session_state.pop("manage_edit_patient_id", None)
+                st.session_state.pop("manage_delete_patient_id", None)
+                st.rerun()
+            summary_columns = st.columns(4)
+            summary_columns[0].markdown(
+                f"**Age**  \n{record['calculated_age'] if record['calculated_age'] is not None else 'Not specified'}"
+            )
+            summary_columns[1].markdown(
+                f"**Gender**  \n{record['sex'] or 'Not specified'}"
+            )
+            summary_columns[2].markdown(
+                f"**Status**  \n{record['status'] or 'Alive'}"
+            )
+            summary_columns[3].markdown(f"**Patient ID**  \n{patient_id}")
+            location = ", ".join(
+                str(value).strip()
+                for value in (
+                    record["barangay"],
+                    record["city_municipality"],
+                    record["province"],
+                )
+                if value and str(value).strip()
+            )
+            st.caption(location or "Location not specified")
+
+
+def _render_selected_patient_detail(selected_id):
     try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT patient_id, first_name, last_name, middle_name, extension_name,
-                   city_municipality, province
-            FROM patients
-            WHERE first_name LIKE ? OR last_name LIKE ? OR middle_name LIKE ?
-            ORDER BY last_name, first_name, middle_name, patient_id
-        """, (f"%{search_term}%", f"%{search_term}%", f"%{search_term}%"))
-        matches = cursor.fetchall()
+        conn = get_local_connection()
+    except Exception as error:
+        st.error(f"Unable to open the local patient archive: {error}")
+        return
+    try:
+        selected_patient = conn.execute(
+            "SELECT * FROM patients WHERE patient_id = ?", (selected_id,)
+        ).fetchone()
+    except Exception as error:
+        st.error(f"Unable to read the selected patient record: {error}")
+        return
     finally:
         conn.close()
 
-    if not matches:
-        st.warning("No records matched your query.")
+    if selected_patient is None:
+        st.error("The selected patient record is no longer available.")
+        st.session_state.pop("manage_selected_patient_id", None)
         return
 
-    # Keep labels descriptive and unique without exposing internal database IDs.
-    patient_labels = []
-    for row in matches:
-        middle = f" {row['middle_name']}" if row["middle_name"] else ""
-        extension = f" {row['extension_name']}" if row["extension_name"] else ""
-        location_parts = [
-            part for part in (row["city_municipality"], row["province"]) if part
-        ]
-        location = f" — {', '.join(location_parts)}" if location_parts else ""
-        patient_labels.append(
-            f"{row['last_name']}, {row['first_name']}{middle}{extension}{location}"
+    patient = dict(selected_patient)
+    selected_name = _patient_full_name(patient) or "Unnamed patient"
+    with st.container(border=True, key="selected-patient-details"):
+        back_column, title_column, edit_column, delete_column = st.columns(
+            [1, 4, 1, 1], vertical_alignment="center"
         )
+        with back_column:
+            if st.button(
+                "Back",
+                icon=":material/arrow_back:",
+                key="back_to_patient_results",
+                width="stretch",
+            ):
+                st.session_state.pop("manage_selected_patient_id", None)
+                st.session_state.pop("manage_edit_patient_id", None)
+                st.session_state.pop("manage_delete_patient_id", None)
+                st.rerun()
+        with title_column:
+            st.markdown(f"### {selected_name}")
+            st.caption(f"Complete patient record · ID {selected_id}")
+        with edit_column:
+            if st.button(
+                "Edit",
+                icon=":material/edit:",
+                key=f"edit_patient_{selected_id}",
+                width="stretch",
+            ):
+                st.session_state["manage_edit_patient_id"] = selected_id
+                st.session_state.pop("manage_delete_patient_id", None)
+                st.rerun()
+        with delete_column:
+            if st.button(
+                "Delete",
+                icon=":material/delete:",
+                key=f"delete_patient_{selected_id}",
+                width="stretch",
+            ):
+                st.session_state["manage_delete_patient_id"] = selected_id
+                st.session_state.pop("manage_edit_patient_id", None)
+                st.rerun()
+        _render_patient_details(patient)
 
-    label_counts = {}
-    for label in patient_labels:
-        label_counts[label] = label_counts.get(label, 0) + 1
-    seen_labels = {}
-    unique_labels = []
-    for label in patient_labels:
-        seen_labels[label] = seen_labels.get(label, 0) + 1
-        unique_labels.append(
-            f"{label} ({seen_labels[label]})" if label_counts[label] > 1 else label
+
+def show_manage_page():
+    with st.container(key="admin-search-page"):
+        st.markdown(
+            '<div class="search-eyebrow">Patient records</div>',
+            unsafe_allow_html=True,
         )
+        st.markdown("# Search records")
+        st.write(
+            "Search the local archive, review patient summaries, and securely "
+            "manage complete records."
+        )
+        st.session_state.setdefault("patient_search_query", "")
+        search_term = st.text_input(
+            "Search by patient name, ID, or location",
+            key="patient_search_query",
+            placeholder="Search patient name, ID, or location...",
+            icon=":material/search:",
+        ).strip()
 
-    selected_index = st.selectbox(
-        "Choose the profile folder to manage:",
-        range(len(matches)),
-        format_func=lambda index: unique_labels[index],
+    try:
+        conn = get_local_connection()
+    except Exception as error:
+        st.error(f"Unable to open the local patient archive: {error}")
+        return
+    try:
+        all_records = conn.execute(
+            """
+            SELECT patient_id, first_name, middle_name, last_name, extension_name,
+                   calculated_age, sex, status, street_address, barangay,
+                   city_municipality, province
+            FROM patients
+            ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE, patient_id
+            """
+        ).fetchall()
+    except Exception as error:
+        st.error(f"Unable to read local patient records: {error}")
+        return
+    finally:
+        conn.close()
+
+    record_dicts = [dict(record) for record in all_records]
+    try:
+        address_hierarchy = _load_bicol_address_hierarchy()
+    except Exception as error:
+        st.error(f"Unable to load the Bicol geographic filters: {error}")
+        return
+    genders = sorted(
+        {record["sex"].strip() for record in record_dicts if record["sex"] and record["sex"].strip()},
+        key=str.casefold,
     )
-    target_id = matches[selected_index]["patient_id"]
+
+    province_names = list(address_hierarchy)
+    selected_province = st.session_state.get("record_filter_province")
+    if selected_province not in province_names:
+        st.session_state.pop("record_filter_province", None)
+        _clear_record_city_and_barangay()
+        selected_province = None
+
+    province_record = address_hierarchy.get(selected_province)
+    municipality_options = (
+        [municipality["name"] for municipality in province_record["municipalities"]]
+        if province_record
+        else []
+    )
+    selected_city = st.session_state.get("record_filter_city")
+    if selected_city not in municipality_options:
+        st.session_state.pop("record_filter_city", None)
+        _clear_record_barangay()
+        selected_city = None
+
+    municipality_record = next(
+        (
+            municipality
+            for municipality in province_record["municipalities"]
+            if municipality["name"] == selected_city
+        ),
+        None,
+    ) if province_record and selected_city else None
+    barangay_options = (
+        [barangay["name"] for barangay in municipality_record["barangays"]]
+        if municipality_record
+        else []
+    )
+    if st.session_state.get("record_filter_barangay") not in barangay_options:
+        st.session_state.pop("record_filter_barangay", None)
+
+    with st.container(border=True, key="record-search-filters"):
+        st.markdown("### Filter records")
+        province_column, city_column, barangay_column, gender_column = st.columns(4)
+        with province_column:
+            selected_province = st.selectbox(
+                "Province",
+                province_names,
+                index=None,
+                placeholder="Choose a Bicol province",
+                key="record_filter_province",
+                on_change=_clear_record_city_and_barangay,
+            )
+        with city_column:
+            selected_city = st.selectbox(
+                "Municipality / City",
+                municipality_options,
+                index=None,
+                placeholder=(
+                    "Choose a province first"
+                    if selected_province is None
+                    else "Choose a municipality or city"
+                ),
+                disabled=selected_province is None,
+                key="record_filter_city",
+                on_change=_clear_record_barangay,
+            )
+        with barangay_column:
+            selected_barangay = st.selectbox(
+                "Barangay",
+                barangay_options,
+                index=None,
+                placeholder=(
+                    "Choose a municipality or city first"
+                    if selected_city is None
+                    else "Choose a barangay"
+                ),
+                disabled=selected_city is None,
+                key="record_filter_barangay",
+            )
+        with gender_column:
+            selected_gender = st.selectbox(
+                "Gender",
+                ["All genders", *genders],
+                key="record_filter_gender",
+            )
+
+        minimum_age_column, maximum_age_column = st.columns(2)
+        with minimum_age_column:
+            minimum_age = st.number_input(
+                "Minimum age",
+                min_value=0,
+                max_value=120,
+                value=0,
+                key="record_filter_minimum_age",
+            )
+        with maximum_age_column:
+            maximum_age = st.number_input(
+                "Maximum age",
+                min_value=0,
+                max_value=120,
+                value=120,
+                key="record_filter_maximum_age",
+            )
+
+    if minimum_age > maximum_age:
+        st.error("Minimum age cannot be greater than maximum age.")
+        return
+
+    filtered_records = []
+    for record in record_dicts:
+        if search_term:
+            searchable_values = (
+                record["patient_id"],
+                record["first_name"],
+                record["middle_name"],
+                record["last_name"],
+                record["extension_name"],
+                record["street_address"],
+                record["barangay"],
+                record["city_municipality"],
+                record["province"],
+            )
+            search_text = " ".join(
+                str(value or "") for value in searchable_values
+            ).casefold()
+            if search_term.casefold() not in search_text:
+                continue
+        if selected_province is not None and (
+            _location_key(record["province"]) != _location_key(selected_province)
+        ):
+            continue
+        if selected_city is not None and (
+            _location_key(record["city_municipality"])
+            != _location_key(selected_city)
+        ):
+            continue
+        if selected_barangay is not None and (
+            _location_key(record["barangay"]) != _location_key(selected_barangay)
+        ):
+            continue
+        if selected_gender != "All genders" and (
+            (record["sex"] or "").casefold() != selected_gender.casefold()
+        ):
+            continue
+        if minimum_age > 0 or maximum_age < 120:
+            try:
+                age = int(record["calculated_age"])
+            except (TypeError, ValueError):
+                continue
+            if not minimum_age <= age <= maximum_age:
+                continue
+        filtered_records.append(record)
+
+    filters_applied = bool(
+        search_term
+        or selected_province is not None
+        or selected_city is not None
+        or selected_barangay is not None
+        or selected_gender != "All genders"
+        or minimum_age > 0
+        or maximum_age < 120
+    )
+    st.markdown("---")
+    selected_id = st.session_state.get("manage_selected_patient_id")
+    if selected_id is not None:
+        _render_selected_patient_detail(selected_id)
+    else:
+        if not record_dicts:
+            st.info("There are no patient records in the local archive yet.")
+        elif not filtered_records:
+            st.info("No patient records match the search and selected filters.")
+        else:
+            _render_patient_results(filtered_records, filters_applied)
+
+    delete_id = st.session_state.get("manage_delete_patient_id")
+    if delete_id is not None:
+        pending_record = next(
+            (record for record in record_dicts if record["patient_id"] == delete_id),
+            None,
+        )
+        if pending_record is None:
+            st.error("The selected patient record is no longer available.")
+            st.session_state.pop("manage_delete_patient_id", None)
+        else:
+            delete_name = " ".join(
+                part
+                for part in (
+                    pending_record["first_name"],
+                    pending_record["last_name"],
+                )
+                if part
+            )
+            with st.container(border=True, key="patient-delete-confirmation"):
+                st.warning(
+                    f"Delete the complete local patient record for **{delete_name}** "
+                    f"(ID {delete_id})? This cannot be undone."
+                )
+                cancel_column, confirm_column = st.columns(2)
+                with cancel_column:
+                    if st.button(
+                        "Cancel",
+                        key="cancel_patient_delete",
+                        width="stretch",
+                    ):
+                        st.session_state.pop("manage_delete_patient_id", None)
+                        st.rerun()
+                with confirm_column:
+                    if st.button(
+                        "Yes, permanently delete",
+                        type="primary",
+                        key="confirm_patient_delete",
+                        width="stretch",
+                    ):
+                        conn = get_local_connection()
+                        try:
+                            with conn:
+                                result = conn.execute(
+                                    "DELETE FROM patients WHERE patient_id = ?",
+                                    (delete_id,),
+                                )
+                                if result.rowcount != 1:
+                                    raise RuntimeError(
+                                        "The patient record was not deleted; it may "
+                                        "have already been removed."
+                                    )
+                                conn.execute(
+                                    "INSERT INTO admin_logs (action_type, details) "
+                                    "VALUES (?, ?)",
+                                    (
+                                        "DELETE",
+                                        f"Deleted patient record {delete_id} "
+                                        f"({delete_name})",
+                                    ),
+                                )
+                        except Exception as error:
+                            st.error(f"Unable to delete the patient record: {error}")
+                        else:
+                            st.session_state.pop("manage_delete_patient_id", None)
+                            st.session_state.pop("manage_edit_patient_id", None)
+                            st.session_state.pop("manage_selected_patient_id", None)
+                            st.success("The patient record was permanently deleted.")
+                            st.rerun()
+                        finally:
+                            conn.close()
+
+    target_id = st.session_state.get("manage_edit_patient_id")
+    if target_id is None:
+        return
 
     # Pull complete row data for target item
-    conn = get_local_connection()
+    try:
+        conn = get_local_connection()
+    except Exception as error:
+        st.error(f"Unable to open the local patient archive: {error}")
+        return
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM patients WHERE patient_id = ?", (target_id,))
         p = cursor.fetchone()
+    except Exception as error:
+        st.error(f"Unable to read the selected patient record: {error}")
+        return
     finally:
         conn.close()
 
     if p is None:
         st.error("The selected patient record is no longer available.")
+        st.session_state.pop("manage_edit_patient_id", None)
         return
 
     st.divider()
+    if st.button("Close editor", key="close_patient_editor"):
+        st.session_state.pop("manage_edit_patient_id", None)
+        st.rerun()
 
-    # Create layout view splits
-    update_tab, action_tab = st.tabs(["✏️ Edit Complete 10-Page Information", "⚠️ Destructive Actions"])
-
-    with action_tab:
-        st.warning("**Danger Zone:** Deleting this file permanently removes the complete patient record.")
-        
-        if st.button("🗑️ Permanently Delete Record Folder", type="primary"):
-            conn = get_local_connection()
-            try:
-                with conn:
-                    conn.execute("DELETE FROM patients WHERE patient_id = ?", (target_id,))
-                    conn.execute(
-                        "INSERT INTO admin_logs (action_type, details) VALUES (?, ?)",
-                        ("DELETE", f"Deleted patient record for {p['first_name']} {p['last_name']}")
-                    )
-                st.success("The patient record was deleted successfully.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Execution Failure: {e}")
-            finally:
-                conn.close()
-
-    with update_tab:
-        st.subheader("Edit Patient Folder Archives")
+    with st.expander("Edit complete patient record", expanded=True):
+        st.subheader(f"Edit patient record · {p['first_name']} {p['last_name']}")
         st.write("Expand the dropdown panels below to edit specific pages of the folder architecture cleanly.")
 
         # --- DROP DOWN 1: LOGISTICS ---
@@ -119,7 +633,10 @@ def show_manage_page():
             primary_src = st.text_input("Primary Source of Information", value=p["primary_source_of_information"] or "")
 
         # --- DROP DOWN 2: PROFILE ---
-        with st.expander("👤 Page 2: Core Patient Identifying Profile"):
+        with st.expander(
+            "👤 Page 2: Core Patient Identifying Profile",
+            expanded=True,
+        ):
             c_n1, c_n2, c_n3 = st.columns(3)
             with c_n1: f_name = st.text_input("First Name", value=p["first_name"])
             with c_n2: m_name = st.text_input("Middle Name", value=p["middle_name"] or "")
@@ -221,6 +738,9 @@ def show_manage_page():
         st.divider()
 
         if st.button("💾 Apply Data Modifications Securely", type="primary"):
+            if not f_name.strip() or not l_name.strip():
+                st.error("First name and last name are required to save this record.")
+                return
             conn = get_local_connection()
             try:
                 with conn:
@@ -251,6 +771,7 @@ def show_manage_page():
                         ("UPDATE", f"Modified archived folder properties for Patient ID: {target_id} ({f_name} {l_name})")
                     )
                 st.success("📋 Complete 10-page folder properties have been cleanly updated.")
+                st.session_state.pop("manage_edit_patient_id", None)
                 st.rerun()
             except Exception as e:
                 st.error(f"Failed to complete transaction adjustments: {e}")

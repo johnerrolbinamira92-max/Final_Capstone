@@ -1,5 +1,6 @@
 import calendar
 from datetime import date, datetime, time
+from html import escape
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -90,7 +91,14 @@ def _render_calendar(appointments, selected_date):
         st.session_state[month_state_key] = selected_date.replace(day=1)
 
     month_start = st.session_state[month_state_key]
-    previous_col, title_col, next_col = st.columns([1, 5, 1])
+    today_col, previous_col, title_col, next_col = st.columns([1.3, 1, 4, 1])
+    with today_col:
+        if st.button("Today", key="appointment_today"):
+            today = datetime.now(ZoneInfo("Asia/Manila")).date()
+            st.session_state[month_state_key] = today.replace(day=1)
+            st.session_state["appointment_selected_date"] = today
+            st.session_state["appointment_form_date"] = today
+            st.rerun()
     with previous_col:
         if st.button(
             " ",
@@ -132,11 +140,9 @@ def _render_calendar(appointments, selected_date):
         for day_index, (column, day_number) in enumerate(zip(day_columns, week)):
             with column:
                 if not day_number:
-                    st.button(
-                        " ",
-                        key=f"appointment_empty_{month_start:%Y_%m}_{week_index}_{day_index}",
-                        disabled=True,
-                        width="stretch",
+                    st.markdown(
+                        '<div class="appointment-calendar-empty-day"></div>',
+                        unsafe_allow_html=True,
                     )
                     continue
 
@@ -144,7 +150,7 @@ def _render_calendar(appointments, selected_date):
                 day_key = day_date.isoformat()
                 appointment_count = int(active_counts.get(day_key, 0))
                 label = (
-                    f"{day_number}\n● {appointment_count}"
+                    f"{day_number}\n● {appointment_count} visit(s)"
                     if appointment_count
                     else str(day_number)
                 )
@@ -180,28 +186,29 @@ def _render_selected_day(appointments, selected_date):
     display_date = (
         f"{selected_date.strftime('%A, %B')} {selected_date.day}, {selected_date.year}"
     )
-    st.markdown(f"#### Visits for {display_date}")
+    st.markdown("#### Selected day")
+    st.markdown(f"### {display_date}")
     if day_appointments.empty:
-        st.caption("No appointments are recorded for this date yet.")
-        return
-
-    display = day_appointments.copy()
-    display["Time"] = display["requested_time_slot"].map(_format_time)
-    display["reason"] = display["reason"].fillna("")
-    display = display.rename(
-        columns={
-            "patient_name": "Patient",
-            "contact_number": "Contact",
-            "approval_status": "Status",
-            "reason": "Reason",
-        }
-    )
-    st.dataframe(
-        display[["Time", "Patient", "Contact", "Reason", "Status"]],
-        hide_index=True,
-        width="stretch",
-        alt=f"Appointments scheduled for {selected_date.isoformat()}",
-    )
+        st.info("No appointments are recorded for this date yet.")
+    else:
+        active_day_appointments = day_appointments[
+            day_appointments["approval_status"].isin(ACTIVE_STATUSES)
+        ]
+        st.caption(
+            f"{len(active_day_appointments)} active appointment(s) on this date."
+        )
+        for index, appointment in enumerate(day_appointments.to_dict(orient="records")):
+            with st.container(key=f"appointment-selected-row-{index}"):
+                st.markdown(
+                    f'<div class="appointment-selected-time">'
+                    f'{escape(_format_time(appointment.get("requested_time_slot")))}</div>'
+                    f'<div class="appointment-selected-name">'
+                    f'{escape(str(appointment.get("patient_name") or "Patient"))}</div>'
+                    f'<div class="appointment-selected-status">'
+                    f'{escape(str(appointment.get("approval_status") or "Pending"))}'
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
 
 
 def _render_appointment_history(appointments, client, today):
@@ -318,44 +325,44 @@ def _log_appointment_action(action_type, details):
 
 
 def _render_schedule_form(client):
-    st.markdown("#### Schedule a visit")
+    st.markdown("### Set an appointment")
     st.caption(
         "Patient-app requests appear here with Pending status. "
         "Appointments entered by an admin are saved as Scheduled."
     )
     with st.form("schedule_appointment_form"):
-        patient_id = st.text_input(
-            "Patient app ID (optional)",
-            key="appointment_form_patient_id",
-            help="Use the patient ID from the connected patient app when available.",
-        ).strip()
-        patient_name = st.text_input(
-            "Patient name",
-            key="appointment_form_patient_name",
-        ).strip()
-        contact_number = st.text_input(
-            "Contact number",
-            key="appointment_form_contact",
-        ).strip()
-        reason = st.text_area(
-            "Reason for visit (optional)",
-            key="appointment_form_reason",
-            max_chars=500,
-            help="Keep this brief. Do not include sensitive clinical details.",
-        ).strip()
-        visit_col, time_col = st.columns(2)
-        with visit_col:
+        patient_column, schedule_column = st.columns(2)
+        with patient_column:
+            patient_name = st.text_input(
+                "Patient name",
+                key="appointment_form_patient_name",
+            ).strip()
+            patient_id = st.text_input(
+                "Patient app ID (optional)",
+                key="appointment_form_patient_id",
+                help="Use the patient ID from the connected patient app when available.",
+            ).strip()
+            contact_number = st.text_input(
+                "Contact number",
+                key="appointment_form_contact",
+            ).strip()
+        with schedule_column:
             visit_date = st.date_input(
                 "Visit date",
                 key="appointment_form_date",
                 format="MM/DD/YYYY",
             )
-        with time_col:
             visit_time = st.time_input(
                 "Visit time (Philippine time)",
                 key="appointment_form_time",
                 format="12h",
             )
+        reason = st.text_area(
+            "Notes / reason for visit (optional)",
+            key="appointment_form_reason",
+            max_chars=500,
+            help="Keep this brief. Do not include sensitive clinical details.",
+        ).strip()
         submitted = st.form_submit_button(
             "Schedule appointment",
             type="primary",
@@ -634,101 +641,152 @@ def _render_help_requests(client):
 
 
 def show_appointments_page():
-    st.title("Appointment Schedule")
-    st.write(
-        "Plan patient visits and review upcoming appointments. "
-        "Appointment dates and times use Philippine local time."
-    )
-
-    client = get_supabase_client()
-    if client is None:
-        return
-
-    try:
-        appointments = _load_appointments(client)
-    except Exception as error:
-        st.error(
-            "Unable to load appointments from Supabase. Check the project API URL, "
-            "run supabase/appointments.sql and "
-            "supabase/appointments_admin_fields.sql, and verify SELECT permissions."
+    with st.container(key="admin-calendar-page"):
+        st.markdown(
+            '<div class="calendar-eyebrow">Appointment management</div>',
+            unsafe_allow_html=True,
         )
-        with st.expander("Technical details"):
-            st.code(str(error))
-        return
-
-    today = datetime.now(ZoneInfo("Asia/Manila")).date()
-    if "appointment_selected_date" not in st.session_state:
-        st.session_state["appointment_selected_date"] = today
-    if "appointment_form_date" not in st.session_state:
-        st.session_state["appointment_form_date"] = st.session_state[
-            "appointment_selected_date"
-        ]
-    if "appointment_form_time" not in st.session_state:
-        st.session_state["appointment_form_time"] = time(9, 0)
-    if st.session_state.pop("appointment_reset_form", False):
-        st.session_state["appointment_form_patient_id"] = ""
-        st.session_state["appointment_form_patient_name"] = ""
-        st.session_state["appointment_form_contact"] = ""
-        st.session_state["appointment_form_reason"] = ""
-        st.session_state["appointment_form_time"] = time(9, 0)
-
-    if "appointment_form_patient_id" not in st.session_state:
-        st.session_state["appointment_form_patient_id"] = ""
-    if "appointment_form_patient_name" not in st.session_state:
-        st.session_state["appointment_form_patient_name"] = ""
-    if "appointment_form_contact" not in st.session_state:
-        st.session_state["appointment_form_contact"] = ""
-    if "appointment_form_reason" not in st.session_state:
-        st.session_state["appointment_form_reason"] = ""
-
-    if "appointment_flash" in st.session_state:
-        st.success(st.session_state.pop("appointment_flash"))
-
-    this_month = appointments[
-        appointments["requested_date"].astype(str).str.startswith(
-            today.strftime("%Y-%m"), na=False
+        title_column, action_column = st.columns(
+            [3, 1], vertical_alignment="center"
         )
-    ] if not appointments.empty else appointments
-    active_today = appointments[
-        (appointments["requested_date"].astype(str) == today.isoformat())
-        & appointments["approval_status"].isin(ACTIVE_STATUSES)
-    ] if not appointments.empty else appointments
-    active_month = this_month[
-        this_month["approval_status"].isin(ACTIVE_STATUSES)
-    ] if not this_month.empty else this_month
-    pending_count = (
-        int((appointments["approval_status"] == "Pending").sum())
-        if not appointments.empty
-        else 0
-    )
+        with title_column:
+            st.markdown("# Calendar")
+            st.write(
+                "Plan and manage patient appointments. Dates and times use "
+                "Philippine local time."
+            )
+        with action_column:
+            if st.button(
+                "Set an appointment",
+                type="primary",
+                icon=":material/add:",
+                width="stretch",
+                key="appointment_jump_to_form",
+            ):
+                st.query_params["focus"] = "schedule"
+                st.rerun()
 
-    metrics = st.columns(3)
-    metrics[0].metric("Visits today", len(active_today), border=True)
-    metrics[1].metric("Pending requests", pending_count, border=True)
-    metrics[2].metric("Active visits this month", len(active_month), border=True)
+        client = get_supabase_client()
+        if client is None:
+            return
 
-    schedule_tab, list_tab, help_tab = st.tabs(
-        ["Schedule", "All appointments", "Confidential help requests"]
-    )
-    with schedule_tab:
-        selected_date = st.session_state["appointment_selected_date"]
-        with st.container(border=True):
-            st.markdown("#### Appointment calendar")
-            _render_calendar(appointments, selected_date)
-        with st.container(border=True):
-            _render_selected_day(appointments, selected_date)
-        with st.container(border=True):
-            _render_schedule_form(client)
-        with st.container(border=True):
-            _render_appointment_history(appointments, client, today)
+        try:
+            appointments = _load_appointments(client)
+        except Exception as error:
+            st.error(
+                "Unable to load appointments from Supabase. Check the project API URL, "
+                "run supabase/appointments.sql and "
+                "supabase/appointments_admin_fields.sql, and verify SELECT permissions."
+            )
+            with st.expander("Technical details"):
+                st.code(str(error))
+            return
 
-    with list_tab:
-        with st.container(border=True):
-            _render_schedule_list(appointments, client)
+        today = datetime.now(ZoneInfo("Asia/Manila")).date()
+        if "appointment_selected_date" not in st.session_state:
+            st.session_state["appointment_selected_date"] = today
+        if "appointment_form_date" not in st.session_state:
+            st.session_state["appointment_form_date"] = st.session_state[
+                "appointment_selected_date"
+            ]
+        if "appointment_form_time" not in st.session_state:
+            st.session_state["appointment_form_time"] = time(9, 0)
+        if st.session_state.pop("appointment_reset_form", False):
+            st.session_state["appointment_form_patient_id"] = ""
+            st.session_state["appointment_form_patient_name"] = ""
+            st.session_state["appointment_form_contact"] = ""
+            st.session_state["appointment_form_reason"] = ""
+            st.session_state["appointment_form_time"] = time(9, 0)
 
-    with help_tab:
-        with st.container(border=True):
-            _render_help_requests(client)
+        if "appointment_form_patient_id" not in st.session_state:
+            st.session_state["appointment_form_patient_id"] = ""
+        if "appointment_form_patient_name" not in st.session_state:
+            st.session_state["appointment_form_patient_name"] = ""
+        if "appointment_form_contact" not in st.session_state:
+            st.session_state["appointment_form_contact"] = ""
+        if "appointment_form_reason" not in st.session_state:
+            st.session_state["appointment_form_reason"] = ""
+
+        if "appointment_flash" in st.session_state:
+            st.success(st.session_state.pop("appointment_flash"))
+
+        this_month = appointments[
+            appointments["requested_date"].astype(str).str.startswith(
+                today.strftime("%Y-%m"), na=False
+            )
+        ] if not appointments.empty else appointments
+        active_today = appointments[
+            (appointments["requested_date"].astype(str) == today.isoformat())
+            & appointments["approval_status"].isin(ACTIVE_STATUSES)
+        ] if not appointments.empty else appointments
+        active_month = this_month[
+            this_month["approval_status"].isin(ACTIVE_STATUSES)
+        ] if not this_month.empty else this_month
+        pending_count = (
+            int((appointments["approval_status"] == "Pending").sum())
+            if not appointments.empty
+            else 0
+        )
+
+        metrics = st.columns(3)
+        metrics[0].metric("Visits today", len(active_today), border=True)
+        metrics[1].metric("Pending requests", pending_count, border=True)
+        metrics[2].metric("Active visits this month", len(active_month), border=True)
+
+        schedule_tab, list_tab, help_tab = st.tabs(
+            ["Calendar", "All appointments", "Confidential help requests"]
+        )
+        with schedule_tab:
+            selected_date = st.session_state["appointment_selected_date"]
+            with st.container(key="appointment-calendar-layout"):
+                calendar_column, selected_day_column = st.columns(
+                    [1.8, 0.9], gap="medium"
+                )
+                with calendar_column:
+                    with st.container(
+                        border=True, key="appointment-calendar-panel"
+                    ):
+                        _render_calendar(appointments, selected_date)
+                with selected_day_column:
+                    with st.container(
+                        border=True, key="appointment-selected-day-panel"
+                    ):
+                        _render_selected_day(appointments, selected_date)
+                        if st.button(
+                            "Add appointment",
+                            icon=":material/add:",
+                            width="stretch",
+                            key="appointment_selected_day_add",
+                        ):
+                            st.query_params["focus"] = "schedule"
+                            st.rerun()
+
+            with st.container(border=True, key="appointment-setting"):
+                _render_schedule_form(client)
+            with st.container(border=True):
+                _render_appointment_history(appointments, client, today)
+
+        with list_tab:
+            with st.container(border=True):
+                _render_schedule_list(appointments, client)
+
+        with help_tab:
+            with st.container(border=True):
+                _render_help_requests(client)
+
+        if st.query_params.get("focus") == "schedule":
+            st.html(
+                """
+                <script>
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                  document.querySelector(".st-key-appointment-setting")
+                    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                }));
+                </script>
+                """,
+                unsafe_allow_javascript=True,
+            )
+            st.query_params.pop("focus", None)
 
 
 if __name__ == "__main__":
