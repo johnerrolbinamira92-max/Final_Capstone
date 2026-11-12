@@ -11,6 +11,7 @@ from database import get_local_connection, get_supabase_client
 from views.appointments import (
     CALENDAR_STATUSES,
     _appointment_summary_counts,
+    _calendar_appointment_status_label,
     _format_time,
     _load_appointments,
     _load_calendar_appointments,
@@ -66,30 +67,8 @@ def _submit_overview_search(search_page):
 def _render_overview_toolbar(
     search_page,
     notifications_page=None,
-    notifications_unread=False,
 ):
     with st.container(key="overview-toolbar"):
-        if notifications_unread:
-            st.markdown(
-                """
-                <style>
-                .st-key-overview-notifications [data-testid="stPageLink"] a {
-                    position: relative;
-                }
-                .st-key-overview-notifications [data-testid="stPageLink"] a::after {
-                    content: "";
-                    position: absolute;
-                    top: .38rem;
-                    right: .38rem;
-                    width: .38rem;
-                    height: .38rem;
-                    border-radius: 50%;
-                    background: #e53935;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
         title_column, search_column, notification_column = st.columns(
             [1.35, 0.85, 0.08], vertical_alignment="center"
         )
@@ -307,12 +286,19 @@ def _render_appointments(appointments, today, appointments_page, error=None):
                         time_column, icon_column, detail_column, arrow_column = (
                             st.columns([1.05, 0.45, 2.4, 0.25], vertical_alignment="center")
                         )
-                        time_column.caption(date_label)
+                        time_column.markdown(
+                            f'<span class="home-appointment-date">'
+                            f"{escape(date_label)}</span>",
+                            unsafe_allow_html=True,
+                        )
                         icon_column.markdown(":material/event:")
+                        status_label = _calendar_appointment_status_label(
+                            appointment
+                        )
                         detail_column.markdown(
                             f"**{escape(str(appointment['patient_name']))}**  \n"
                             f"<span class=\"home-appointment-detail\">{escape(time_label)} · "
-                            f"{escape(str(appointment['approval_status']))}</span>",
+                            f"{escape(status_label)}</span>",
                             unsafe_allow_html=True,
                         )
                         if appointments_page is not None:
@@ -339,7 +325,6 @@ def show_home_dashboard_page(
     appointments_page=None,
     search_page=None,
     notifications_page=None,
-    notifications_unread=False,
 ):
     today = datetime.now(ZoneInfo("Asia/Manila")).date()
     try:
@@ -392,7 +377,6 @@ def show_home_dashboard_page(
         _render_overview_toolbar(
             search_page,
             notifications_page,
-            notifications_unread,
         )
         with st.container(key="home-dashboard-content"):
             intro_column, encode_column = st.columns(
@@ -512,7 +496,10 @@ def show_home_dashboard_page(
             with right_column:
                 try:
                     _render_appointments(
-                        appointments, today, appointments_page, appointment_error
+                        calendar_appointments,
+                        today,
+                        appointments_page,
+                        appointment_error,
                     )
                 except Exception as error:
                     st.error(f"Unable to display upcoming appointments: {error}")

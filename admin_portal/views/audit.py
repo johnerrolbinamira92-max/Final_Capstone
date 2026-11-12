@@ -10,6 +10,8 @@ ACTION_LABELS = {
     "PATIENT RECORD EDITED": "Patient record edited",
     "PATIENT RECORD DELETED": "Patient record deleted",
     "APPOINTMENT SCHEDULED": "Appointment scheduled",
+    "REQUEST CONFIRMED": "Request confirmed",
+    "ADMIN APPOINTMENT SET": "Appointment set by admin",
     "APPOINTMENT RESCHEDULED": "Appointment rescheduled",
     "APPOINTMENT CANCELLED": "Appointment cancelled",
     "APPOINTMENT OUTCOME": "Appointment outcome recorded",

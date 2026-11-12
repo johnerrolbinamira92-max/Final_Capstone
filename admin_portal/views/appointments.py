@@ -78,6 +78,17 @@ def _format_optional(value):
     return str(value)
 
 
+def _calendar_appointment_status_label(appointment):
+    status = appointment.get("approval_status") or "Pending"
+    if status == "Scheduled":
+        return (
+            "Confirmed"
+            if appointment.get("event_source") == "help_request"
+            else "Scheduled by admin"
+        )
+    return status
+
+
 def _appointment_datetime(appointment, *, now=None):
     now = now or datetime.now(ZoneInfo("Asia/Manila"))
     try:
@@ -259,7 +270,11 @@ def _load_appointment_summary_counts(client, today):
 
 
 @st.fragment(run_every="30s")
-def _render_appointment_metrics(client, initial_appointments, today):
+def _render_appointment_metrics(
+    client,
+    initial_appointments,
+    today,
+):
     if not st.session_state.get("appointment_metrics_initialized"):
         counts = _appointment_summary_counts(initial_appointments, today)
         st.session_state["appointment_metrics_initialized"] = True
@@ -428,7 +443,7 @@ def _render_selected_day(appointments, selected_date):
                     f"{_format_time(appointment.get('requested_time_slot'))}"
                 )
                 st.badge(
-                    str(appointment.get("approval_status") or "Pending"),
+                    _calendar_appointment_status_label(appointment),
                     color="blue",
                 )
                 st.text(
@@ -457,7 +472,7 @@ def _render_selected_day(appointments, selected_date):
                         st.text(f"Reason: {reason}")
 
 
-def _render_appointment_history(appointments, client, today):
+def _render_appointment_history(appointments, today):
     st.markdown("#### Appointment history")
     st.caption(
         "Completed means the patient attended; No-show means they did not attend. "
@@ -512,76 +527,6 @@ def _render_appointment_history(appointments, client, today):
         width="stretch",
         alt="Past appointments and attendance outcomes",
     )
-
-    for appointment in history.to_dict(orient="records"):
-        appointment_id = appointment["appointment_id"]
-        status = appointment.get("approval_status") or "Pending"
-        with st.expander(
-            f"{appointment['patient_name']} · {appointment['requested_date']} "
-            f"· {status}"
-        ):
-            st.write(f"**Contact:** {appointment.get('contact_number') or 'Not provided'}")
-            st.write(f"**Reason:** {_format_optional(appointment.get('reason'))}")
-            statuses = list(APPOINTMENT_STATUSES)
-            if status not in statuses:
-                statuses.insert(0, status)
-            selected_status = st.selectbox(
-                "Attendance / appointment status",
-                statuses,
-                index=statuses.index(status),
-                key=f"appointment_history_status_{appointment_id}",
-            )
-            if st.button(
-                "Save attendance",
-                key=f"appointment_history_save_{appointment_id}",
-                disabled=selected_status == status,
-            ):
-                try:
-                    is_help_request = (
-                        appointment.get("event_source") == "help_request"
-                    )
-                    table_name = (
-                        "patient_help_requests"
-                        if is_help_request
-                        else "appointments"
-                    )
-                    id_column = (
-                        "request_id" if is_help_request else "appointment_id"
-                    )
-                    record_id = (
-                        str(appointment_id).removeprefix("help_request:")
-                        if is_help_request
-                        else appointment_id
-                    )
-                    updated = (
-                        client.table(table_name)
-                        .update({"approval_status": selected_status})
-                        .eq(id_column, record_id)
-                        .select(id_column)
-                        .execute()
-                    )
-                    if not updated.data:
-                        raise RuntimeError("No matching appointment was updated.")
-                except Exception as error:
-                    st.error(f"Unable to save the attendance outcome: {error}")
-                else:
-                    try:
-                        _log_appointment_action(
-                            "APPOINTMENT OUTCOME",
-                            f"{appointment.get('patient_name') or 'Patient'}: "
-                            f"{selected_status} on "
-                            f"{appointment.get('requested_date') or 'date not set'} "
-                            f"at {_format_time(appointment.get('requested_time_slot'))}.",
-                        )
-                    except Exception as error:
-                        st.warning(
-                            "The appointment was updated, but its local audit entry "
-                            f"could not be written: {error}"
-                        )
-                    st.session_state["appointment_flash"] = (
-                        f"Appointment outcome updated to {selected_status}."
-                    )
-                    st.rerun()
 
 
 def _update_appointment_outcome(client, appointment, status):
@@ -796,8 +741,8 @@ def _render_schedule_form(client):
 
     try:
         _log_appointment_action(
-            "APPOINTMENT SCHEDULED",
-            f"Scheduled {patient_name} for {visit_date.isoformat()} at "
+            "ADMIN APPOINTMENT SET",
+            f"Set an appointment for {patient_name} on {visit_date.isoformat()} at "
             f"{_format_time(appointment_time)}.",
         )
     except Exception as error:
@@ -905,19 +850,33 @@ def _render_schedule_list(appointments, client):
                     with st.expander("Technical details"):
                         st.code(str(error))
                 else:
-                    action_type = {
-                        "Scheduled": "APPOINTMENT SCHEDULED",
-                        "Cancelled": "APPOINTMENT CANCELLED",
-                        "Completed": "APPOINTMENT OUTCOME",
-                        "No-show": "APPOINTMENT OUTCOME",
-                    }.get(selected_status, "APPOINTMENT STATUS")
-                    try:
-                        _log_appointment_action(
-                            action_type,
+                    action_type = (
+                        "REQUEST CONFIRMED"
+                        if status == "Pending" and selected_status == "Scheduled"
+                        else {
+                            "Scheduled": "APPOINTMENT SCHEDULED",
+                            "Cancelled": "APPOINTMENT CANCELLED",
+                            "Completed": "APPOINTMENT OUTCOME",
+                            "No-show": "APPOINTMENT OUTCOME",
+                        }.get(selected_status, "APPOINTMENT STATUS")
+                    )
+                    action_details = (
+                        f"Confirmed the appointment request for "
+                        f"{appointment.get('patient_name') or 'Patient'} on "
+                        f"{appointment.get('requested_date') or 'date not set'} "
+                        f"at {_format_time(appointment.get('requested_time_slot'))}."
+                        if action_type == "REQUEST CONFIRMED"
+                        else (
                             f"{appointment.get('patient_name') or 'Patient'}: "
                             f"status changed from {status} to {selected_status} "
                             f"for {appointment.get('requested_date') or 'date not set'} "
-                            f"at {_format_time(appointment.get('requested_time_slot'))}.",
+                            f"at {_format_time(appointment.get('requested_time_slot'))}."
+                        )
+                    )
+                    try:
+                        _log_appointment_action(
+                            action_type,
+                            action_details,
                         )
                     except Exception as error:
                         st.warning(
@@ -1017,19 +976,32 @@ def _render_help_requests(client):
                     with st.expander("Technical details"):
                         st.code(str(error))
                 else:
-                    action_type = {
-                        "Scheduled": "APPOINTMENT SCHEDULED",
-                        "Cancelled": "APPOINTMENT CANCELLED",
-                        "Completed": "APPOINTMENT OUTCOME",
-                        "No-show": "APPOINTMENT OUTCOME",
-                    }.get(selected_status, "HELP REQUEST STATUS")
-                    try:
-                        _log_appointment_action(
-                            action_type,
+                    action_type = (
+                        "REQUEST CONFIRMED"
+                        if status == "Pending" and selected_status == "Scheduled"
+                        else {
+                            "Scheduled": "APPOINTMENT SCHEDULED",
+                            "Cancelled": "APPOINTMENT CANCELLED",
+                            "Completed": "APPOINTMENT OUTCOME",
+                            "No-show": "APPOINTMENT OUTCOME",
+                        }.get(selected_status, "HELP REQUEST STATUS")
+                    )
+                    action_details = (
+                        f"Confirmed the patient request for "
+                        f"{request.get('patient_name') or 'Patient'} on "
+                        f"{requested_date} at {requested_time}."
+                        if action_type == "REQUEST CONFIRMED"
+                        else (
                             f"{request.get('patient_name') or 'Patient'}: "
                             f"help request status changed from {status} to "
                             f"{selected_status} for {requested_date} at "
-                            f"{requested_time}.",
+                            f"{requested_time}."
+                        )
+                    )
+                    try:
+                        _log_appointment_action(
+                            action_type,
+                            action_details,
                         )
                     except Exception as error:
                         st.warning(
@@ -1147,17 +1119,25 @@ def show_appointments_page():
 
             with st.container(border=True, key="appointment-setting"):
                 _render_schedule_form(client)
-            with st.container(border=True):
-                _render_appointment_history(calendar_appointments, client, today)
+            with st.container(border=True, key="appointment-history"):
+                _render_appointment_history(calendar_appointments, today)
 
-        if st.query_params.get("focus") == "schedule":
+        focus = st.query_params.get("focus")
+        if focus == "schedule":
+            target_selector = ".st-key-appointment-setting"
+        elif focus == "history":
+            target_selector = ".st-key-appointment-history"
+        else:
+            target_selector = None
+
+        if target_selector:
             st.html(
-                """
+                f"""
                 <script>
-                requestAnimationFrame(() => requestAnimationFrame(() => {
-                  document.querySelector(".st-key-appointment-setting")
-                    ?.scrollIntoView({ behavior: "smooth", block: "center" });
-                }));
+                requestAnimationFrame(() => requestAnimationFrame(() => {{
+                  document.querySelector("{target_selector}")
+                    ?.scrollIntoView({{ behavior: "smooth", block: "center" }});
+                }}));
                 </script>
                 """,
                 unsafe_allow_javascript=True,

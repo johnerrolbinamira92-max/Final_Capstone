@@ -101,13 +101,14 @@ scheduled help requests appear on the calendar. The calendar metrics include
 both tables and refresh automatically every 30 seconds; only requests marked
 **Completed** count as visits. **Refresh data** reloads the metrics immediately
 after a patient submits a request. Hovering over a calendar date shows visit
-names; selecting a date shows each patient name with expandable details.
+names; selecting a date shows each patient name with expandable details. The
+**Visits today** metric opens appointment history, and **Pending requests**
+opens Notifications.
 
-The **Schedules** tab shows appointment requests, and **Vent-out notes** uses
-the message field from patient help requests; the database has no separate
-vent-out-note table. Unread indicators are shown on the overview bell and
-sidebar for new requests. Opening **Notifications** marks the current requests
-as read, and read state persists in the local database per admin account.
+Notifications shows all recent requests in one selectable list, with each
+request's status beside the name. Selecting a request opens its details; unread
+indicators appear in the list, overview bell, and sidebar, and read state
+persists in the local database per admin account.
 
 **Activity History** records completed changes to patient records and
 appointments: records added, edited, or deleted; appointments scheduled,

@@ -141,6 +141,57 @@ def _detail_label(field_name):
     return field_name.replace("_", " ").strip().title()
 
 
+def _render_patient_detail_value(value):
+    display_value = (
+        "Not recorded" if value is None or value == "" else str(value)
+    )
+    if display_value == "Not recorded":
+        st.markdown(
+            '<span class="patient-not-recorded">Not recorded</span>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.text(display_value)
+
+
+def _render_return_to_top_button(patient_id):
+    st.markdown("")
+    _, button_column = st.columns([4, 1])
+    with button_column:
+        if st.button(
+            "Return to top",
+            icon=":material/arrow_upward:",
+            key=f"patient-return-to-top-{patient_id}",
+            width="stretch",
+        ):
+            st.html(
+                """
+                <script>
+                  const scrollPatientDetailsToTop = () => {
+                    const scrollTargets = [
+                      document.scrollingElement,
+                      document.querySelector('[data-testid="stAppViewContainer"]'),
+                      document.querySelector('[data-testid="stMain"]'),
+                      document.querySelector('section.main'),
+                    ];
+                    scrollTargets.forEach((target) => {
+                      if (target) target.scrollTop = 0;
+                    });
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  };
+
+                  requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                      scrollPatientDetailsToTop();
+                      setTimeout(scrollPatientDetailsToTop, 120);
+                    });
+                  });
+                </script>
+                """,
+                unsafe_allow_javascript=True,
+            )
+
+
 def _render_patient_details(patient):
     patient_field_order = list(patient.keys())
     patient_fields = set(patient_field_order)
@@ -156,14 +207,22 @@ def _render_patient_details(patient):
             value_columns = st.columns(2)
             for index, field in enumerate(fields):
                 value = patient[field]
-                display_value = (
-                    "Not recorded"
-                    if value is None or value == ""
-                    else str(value)
-                )
                 with value_columns[index % 2]:
                     st.markdown(f"**{_detail_label(field)}**")
-                    st.text(display_value)
+                    if field == "family_composition":
+                        st.dataframe(
+                            dataframe_from_storage(value, FAMILY_COLUMNS),
+                            hide_index=True,
+                            width="stretch",
+                        )
+                    elif field == "parenteral_medication_records":
+                        st.dataframe(
+                            dataframe_from_storage(value, MEDICATION_COLUMNS),
+                            hide_index=True,
+                            width="stretch",
+                        )
+                    else:
+                        _render_patient_detail_value(value)
 
     remaining_fields = [
         field for field in patient_field_order if field not in displayed_fields
@@ -174,14 +233,11 @@ def _render_patient_details(patient):
             value_columns = st.columns(2)
             for index, field in enumerate(remaining_fields):
                 value = patient[field]
-                display_value = (
-                    "Not recorded"
-                    if value is None or value == ""
-                    else str(value)
-                )
                 with value_columns[index % 2]:
                     st.markdown(f"**{_detail_label(field)}**")
-                    st.text(display_value)
+                    _render_patient_detail_value(value)
+
+    _render_return_to_top_button(patient["patient_id"])
 
 
 def _patient_full_name(record):
@@ -200,38 +256,41 @@ def _render_patient_results(records, filters_applied):
     for record in records:
         patient_id = record["patient_id"]
         full_name = _patient_full_name(record) or "Unnamed patient"
-        with st.container(border=True, key=f"patient-result-{patient_id}"):
-            if st.button(
-                full_name,
-                icon=":material/description:",
-                key=f"select_patient_{patient_id}",
-                width="stretch",
-            ):
-                st.session_state["manage_selected_patient_id"] = patient_id
-                st.session_state.pop("manage_edit_patient_id", None)
-                st.session_state.pop("manage_delete_patient_id", None)
-                st.rerun()
-            summary_columns = st.columns(4)
-            summary_columns[0].markdown(
-                f"**Age**  \n{record['calculated_age'] if record['calculated_age'] is not None else 'Not specified'}"
-            )
-            summary_columns[1].markdown(
-                f"**Gender**  \n{record['sex'] or 'Not specified'}"
-            )
-            summary_columns[2].markdown(
-                f"**Status**  \n{record['status'] or 'Alive'}"
-            )
-            summary_columns[3].markdown(f"**Patient ID**  \n{patient_id}")
-            location = ", ".join(
-                str(value).strip()
-                for value in (
-                    record["barangay"],
-                    record["city_municipality"],
-                    record["province"],
-                )
-                if value and str(value).strip()
-            )
-            st.caption(location or "Location not specified")
+        with st.expander(full_name, key=f"patient-result-{patient_id}"):
+            information_column, edit_column, delete_column = st.columns(3)
+            with information_column:
+                if st.button(
+                    "See information",
+                    icon=":material/visibility:",
+                    key=f"see_patient_{patient_id}",
+                    width="stretch",
+                ):
+                    st.session_state["manage_selected_patient_id"] = patient_id
+                    st.session_state.pop("manage_edit_patient_id", None)
+                    st.session_state.pop("manage_delete_patient_id", None)
+                    st.rerun()
+            with edit_column:
+                if st.button(
+                    "Edit",
+                    icon=":material/edit:",
+                    key=f"edit_patient_{patient_id}",
+                    width="stretch",
+                ):
+                    st.session_state["manage_selected_patient_id"] = patient_id
+                    st.session_state["manage_edit_patient_id"] = patient_id
+                    st.session_state.pop("manage_delete_patient_id", None)
+                    st.rerun()
+            with delete_column:
+                if st.button(
+                    "Delete",
+                    icon=":material/delete:",
+                    key=f"delete_patient_{patient_id}",
+                    width="stretch",
+                ):
+                    st.session_state["manage_selected_patient_id"] = patient_id
+                    st.session_state["manage_delete_patient_id"] = patient_id
+                    st.session_state.pop("manage_edit_patient_id", None)
+                    st.rerun()
 
 
 def _render_selected_patient_detail(selected_id):
@@ -253,52 +312,473 @@ def _render_selected_patient_detail(selected_id):
     if selected_patient is None:
         st.error("The selected patient record is no longer available.")
         st.session_state.pop("manage_selected_patient_id", None)
+        st.session_state.pop("manage_edit_patient_id", None)
+        st.session_state.pop("manage_delete_patient_id", None)
+        st.rerun()
         return
 
     patient = dict(selected_patient)
     selected_name = _patient_full_name(patient) or "Unnamed patient"
-    with st.container(border=True, key="selected-patient-details"):
-        back_column, title_column, edit_column, delete_column = st.columns(
-            [1, 4, 1, 1], vertical_alignment="center"
+    editing = st.session_state.get("manage_edit_patient_id") == selected_id
+    with st.container(key="selected-patient-details"):
+        with st.container(border=True):
+            back_column, title_column, action_column, delete_column = st.columns(
+                [0.8, 3.4, 1.2, 1.1], vertical_alignment="center"
+            )
+            with back_column:
+                if st.button(
+                    "Back",
+                    icon=":material/arrow_back:",
+                    key="back_to_patient_results",
+                    width="stretch",
+                ):
+                    st.session_state.pop("manage_selected_patient_id", None)
+                    st.session_state.pop("manage_edit_patient_id", None)
+                    st.session_state.pop("manage_delete_patient_id", None)
+                    st.rerun()
+            with title_column:
+                st.markdown(f"### {selected_name}")
+                st.caption(f"Patient record · ID {selected_id}")
+            with action_column:
+                action_label = "View information" if editing else "Edit"
+                action_icon = ":material/visibility:" if editing else ":material/edit:"
+                if st.button(
+                    action_label,
+                    icon=action_icon,
+                    key=f"toggle_patient_edit_{selected_id}",
+                    width="stretch",
+                ):
+                    if editing:
+                        st.session_state.pop("manage_edit_patient_id", None)
+                    else:
+                        st.session_state["manage_edit_patient_id"] = selected_id
+                    st.session_state.pop("manage_delete_patient_id", None)
+                    st.rerun()
+            with delete_column:
+                if st.button(
+                    "Delete",
+                    icon=":material/delete:",
+                    key=f"delete_selected_patient_{selected_id}",
+                    width="stretch",
+                ):
+                    st.session_state["manage_delete_patient_id"] = selected_id
+                    st.session_state.pop("manage_edit_patient_id", None)
+                    st.rerun()
+
+        delete_id = st.session_state.get("manage_delete_patient_id")
+        if delete_id == selected_id:
+            _render_patient_delete_confirmation(selected_id, patient)
+        elif editing:
+            _render_patient_editor(selected_id, patient)
+        else:
+            _render_patient_details(patient)
+
+
+def _render_patient_delete_confirmation(patient_id, patient):
+    delete_name = _patient_full_name(patient) or "Unnamed patient"
+    with st.container(border=True, key="patient-delete-confirmation"):
+        st.warning(
+            f"Delete the complete local patient record for **{delete_name}** "
+            f"(ID {patient_id})? This cannot be undone."
         )
-        with back_column:
+        cancel_column, confirm_column = st.columns(2)
+        with cancel_column:
             if st.button(
-                "Back",
-                icon=":material/arrow_back:",
-                key="back_to_patient_results",
+                "Cancel",
+                key=f"cancel_patient_delete_{patient_id}",
                 width="stretch",
             ):
-                st.session_state.pop("manage_selected_patient_id", None)
-                st.session_state.pop("manage_edit_patient_id", None)
                 st.session_state.pop("manage_delete_patient_id", None)
                 st.rerun()
-        with title_column:
-            st.markdown(f"### {selected_name}")
-            st.caption(f"Complete patient record · ID {selected_id}")
-        with edit_column:
+        with confirm_column:
             if st.button(
-                "Edit",
-                icon=":material/edit:",
-                key=f"edit_patient_{selected_id}",
+                "Yes, permanently delete",
+                type="primary",
+                key=f"confirm_patient_delete_{patient_id}",
                 width="stretch",
             ):
-                st.session_state["manage_edit_patient_id"] = selected_id
-                st.session_state.pop("manage_delete_patient_id", None)
-                st.rerun()
-        with delete_column:
-            if st.button(
-                "Delete",
-                icon=":material/delete:",
-                key=f"delete_patient_{selected_id}",
+                try:
+                    conn = get_local_connection()
+                except Exception as error:
+                    st.error(f"Unable to open the local patient archive: {error}")
+                    return
+                try:
+                    with conn:
+                        result = conn.execute(
+                            "DELETE FROM patients WHERE patient_id = ?",
+                            (patient_id,),
+                        )
+                        if result.rowcount != 1:
+                            raise RuntimeError(
+                                "The patient record was not deleted; it may "
+                                "have already been removed."
+                            )
+                        conn.execute(
+                            "INSERT INTO admin_logs (action_type, details) "
+                            "VALUES (?, ?)",
+                            (
+                                "PATIENT RECORD DELETED",
+                                f"Deleted patient record for {delete_name} "
+                                f"(record {patient_id}).",
+                            ),
+                        )
+                except Exception as error:
+                    st.error(f"Unable to delete the patient record: {error}")
+                else:
+                    st.session_state.pop("manage_delete_patient_id", None)
+                    st.session_state.pop("manage_edit_patient_id", None)
+                    st.session_state.pop("manage_selected_patient_id", None)
+                    st.session_state["manage_success_message"] = (
+                        "The patient record was permanently deleted."
+                    )
+                    st.rerun()
+                finally:
+                    conn.close()
+
+
+def _render_patient_editor(target_id, p):
+    with st.container(border=True, key=f"patient-editor-{target_id}"):
+        st.subheader(f"Edit patient record · {p['first_name']} {p['last_name']}")
+        st.write(
+            "Expand the panels below to edit the corresponding patient record sections."
+        )
+
+        with st.expander("Referral Context & Interview Logistics"):
+            ref_by = st.text_input(
+                "Information Noted By", value=p["referral_noted_by"] or ""
+            )
+            means_ref = st.text_input(
+                "Means of Referral", value=p["means_of_referral"] or ""
+            )
+            int_date = st.text_input(
+                "Date of Interview (YYYY-MM-DD)", value=p["interview_date"] or ""
+            )
+            int_place = st.text_input(
+                "Place of Interview", value=p["interview_place"] or ""
+            )
+            int_present = st.text_area(
+                "Persons Present During Interview",
+                value=p["interview_persons_present"] or "",
+            )
+            primary_src = st.text_input(
+                "Primary Source of Information",
+                value=p["primary_source_of_information"] or "",
+            )
+
+        with st.expander(
+            "Core Patient Identifying Profile",
+            expanded=True,
+        ):
+            c_n1, c_n2, c_n3 = st.columns(3)
+            with c_n1:
+                f_name = st.text_input("First Name", value=p["first_name"])
+            with c_n2:
+                m_name = st.text_input(
+                    "Middle Name", value=p["middle_name"] or ""
+                )
+            with c_n3:
+                l_name = st.text_input("Last Name", value=p["last_name"])
+            ext_name = st.text_input(
+                "Suffix / Extension Name", value=p["extension_name"] or ""
+            )
+
+            c_d1, c_d2 = st.columns(2)
+            with c_d1:
+                calc_age = st.number_input(
+                    "Calculated Age",
+                    min_value=0,
+                    step=1,
+                    value=int(p["calculated_age"] or 0),
+                )
+            with c_d2:
+                sex_options = ["", "Male", "Female"]
+                sex = st.selectbox(
+                    "Sex",
+                    sex_options,
+                    index=sex_options.index(p["sex"])
+                    if p["sex"] in sex_options
+                    else 0,
+                )
+
+            dob_str = st.text_input(
+                "Date of Birth (YYYY-MM-DD)", value=p["date_of_birth"] or ""
+            )
+            civ_status = st.text_input(
+                "Civil Status", value=p["civil_status"] or ""
+            )
+            religion = st.text_input("Religion", value=p["religion"] or "")
+            edu = st.text_input(
+                "Educational Attainment",
+                value=p["educational_attainment"] or "",
+            )
+            status_options = ["Alive", "Deceased"]
+            adm_status = st.selectbox(
+                "Current Administrative Status",
+                status_options,
+                index=status_options.index(p["status"])
+                if p["status"] in status_options
+                else 0,
+            )
+            work_exp = st.text_area(
+                "Work Experience", value=p["work_experience"] or ""
+            )
+
+        with st.expander("Residential Address Demographics"):
+            street = st.text_input(
+                "Street / House Number", value=p["street_address"] or ""
+            )
+            purok = st.text_input("Purok", value=p["purok"] or "")
+            brgy = st.text_input("Barangay", value=p["barangay"] or "")
+            city = st.text_input(
+                "City / Municipality", value=p["city_municipality"] or ""
+            )
+            prov = st.text_input("Province", value=p["province"] or "")
+
+        with st.expander("Nearest Relatives / Guardian Profiles"):
+            g_first = st.text_input(
+                "Guardian First Name", value=p["guardian_first_name"] or ""
+            )
+            g_mid = st.text_input(
+                "Guardian Middle Name", value=p["guardian_middle_name"] or ""
+            )
+            g_last = st.text_input(
+                "Guardian Last Name", value=p["guardian_last_name"] or ""
+            )
+            g_street = st.text_input(
+                "Guardian Street Address",
+                value=p["guardian_street_address"] or "",
+            )
+            g_brgy = st.text_input(
+                "Guardian Barangay", value=p["g_barangay"] or ""
+            )
+            g_city = st.text_input(
+                "Guardian City/Municipality", value=p["g_city"] or ""
+            )
+            g_prov = st.text_input(
+                "Guardian Province", value=p["g_province"] or ""
+            )
+            g_contact = st.text_input(
+                "Guardian Contact Person Name",
+                value=p["guardian_contact_person"] or "",
+            )
+            g_contact_number = st.text_input(
+                "Guardian Contact Number",
+                value=p["g_contact_number"] or "",
+            )
+
+        with st.expander("Household & Socio-Economic Classifications"):
+            family_table = dataframe_from_storage(
+                p["family_composition"],
+                FAMILY_COLUMNS,
+            )
+            edited_family_table = st.data_editor(
+                family_table,
+                num_rows="dynamic",
                 width="stretch",
-            ):
-                st.session_state["manage_delete_patient_id"] = selected_id
+                key=f"family_table_{target_id}",
+            )
+            ann_inc = st.number_input(
+                "Total Annual Income (PHP)",
+                min_value=0.0,
+                step=500.0,
+                value=float(p["total_annual_income"] or 0.0),
+            )
+            pov_thresh = st.number_input(
+                "Poverty Threshold Per Year (PHP)",
+                min_value=0.0,
+                step=500.0,
+                value=float(p["poverty_threshold_per_year"] or 0.0),
+            )
+            pov_rate = st.text_input(
+                "Poverty Rating", value=p["poverty_rating"] or ""
+            )
+            class_int = st.text_input(
+                "Classification After Interview",
+                value=p["classification_after_interview"] or "",
+            )
+            class_visit = st.text_input(
+                "Classification After Home Visit",
+                value=p["classification_after_home_visit"] or "",
+            )
+
+        with st.expander("Chief Complaint Metrics & Onset"):
+            cc_pat = st.text_area(
+                "Chief Complaint (Patient)",
+                value=p["chief_complaint_patient"] or "",
+            )
+            cc_rel = st.text_area(
+                "Chief Complaint (Relatives)",
+                value=p["chief_complaint_relatives"] or "",
+            )
+            c_dur = st.text_input(
+                "Complaint Duration", value=p["complaint_duration"] or ""
+            )
+            c_rec = st.text_input(
+                "Recent Manifestations", value=p["complaint_recent"] or ""
+            )
+            c_onset = st.text_input(
+                "Complaint Onset", value=p["complaint_onset"] or ""
+            )
+            c_hosp = st.text_input(
+                "Previous Hospitalization Records",
+                value=p["complaint_previous_hospitalization"] or "",
+            )
+
+        with st.expander(
+            "Clinical Impressions, Examinations & Treatment Matrix"
+        ):
+            initial_imp = st.text_area(
+                "Interviewers Initial Impression",
+                value=p["interviewers_initial_impression"] or "",
+            )
+            hist_illness = st.text_area(
+                "History of Present Illness",
+                value=p["history_of_illness"] or "",
+            )
+            mse_notes = st.text_area(
+                "Mental Status Examination (MSE)",
+                value=p["mental_status_examination"] or "",
+            )
+            nurse_obs = st.text_area(
+                "Nurses Observation",
+                value=p["nurses_observation"] or "",
+            )
+            diag_notes = st.text_area(
+                "Diagnosis Statement", value=p["diagnosis"] or ""
+            )
+            treat_plan = st.text_area(
+                "Treatment Plan Summary", value=p["treatment"] or ""
+            )
+            medication_table = dataframe_from_storage(
+                p["parenteral_medication_records"],
+                MEDICATION_COLUMNS,
+            )
+            edited_medication_table = st.data_editor(
+                medication_table,
+                num_rows="dynamic",
+                width="stretch",
+                key=f"medication_table_{target_id}",
+            )
+
+        st.divider()
+        if st.button(
+            "💾 Apply Data Modifications Securely",
+            type="primary",
+            key=f"save_patient_changes_{target_id}",
+        ):
+            if not f_name.strip() or not l_name.strip():
+                st.error("First name and last name are required to save this record.")
+                return
+            try:
+                conn = get_local_connection()
+            except Exception as error:
+                st.error(f"Unable to open the local patient archive: {error}")
+                return
+            try:
+                with conn:
+                    conn.execute(
+                        """
+                        UPDATE patients SET
+                            referral_noted_by = ?, means_of_referral = ?, interview_date = ?, interview_place = ?, interview_persons_present = ?, primary_source_of_information = ?,
+                            first_name = ?, middle_name = ?, last_name = ?, extension_name = ?, calculated_age = ?, sex = ?, date_of_birth = ?, civil_status = ?, religion = ?, educational_attainment = ?, status = ?, work_experience = ?,
+                            street_address = ?, purok = ?, barangay = ?, city_municipality = ?, province = ?,
+                            guardian_last_name = ?, guardian_first_name = ?, guardian_middle_name = ?, guardian_street_address = ?, g_barangay = ?, g_city = ?, g_province = ?, guardian_contact_person = ?, g_contact_number = ?,
+                            family_composition = ?, total_annual_income = ?, poverty_threshold_per_year = ?, poverty_rating = ?, classification_after_interview = ?, classification_after_home_visit = ?,
+                            chief_complaint_patient = ?, chief_complaint_relatives = ?, complaint_duration = ?, complaint_recent = ?, complaint_onset = ?, complaint_previous_hospitalization = ?,
+                            interviewers_initial_impression = ?, history_of_illness = ?, mental_status_examination = ?, nurses_observation = ?, diagnosis = ?, treatment = ?, parenteral_medication_records = ?
+                        WHERE patient_id = ?
+                        """,
+                        (
+                            ref_by,
+                            means_ref,
+                            int_date,
+                            int_place,
+                            int_present,
+                            primary_src,
+                            f_name,
+                            m_name,
+                            l_name,
+                            ext_name,
+                            int(calc_age),
+                            sex,
+                            dob_str,
+                            civ_status,
+                            religion,
+                            edu,
+                            adm_status,
+                            work_exp,
+                            street,
+                            purok,
+                            brgy,
+                            city,
+                            prov,
+                            g_last,
+                            g_first,
+                            g_mid,
+                            g_street,
+                            g_brgy,
+                            g_city,
+                            g_prov,
+                            g_contact,
+                            g_contact_number,
+                            dataframe_to_storage(edited_family_table),
+                            float(ann_inc),
+                            float(pov_thresh),
+                            pov_rate,
+                            class_int,
+                            class_visit,
+                            cc_pat,
+                            cc_rel,
+                            c_dur,
+                            c_rec,
+                            c_onset,
+                            c_hosp,
+                            initial_imp,
+                            hist_illness,
+                            mse_notes,
+                            nurse_obs,
+                            diag_notes,
+                            treat_plan,
+                            dataframe_to_storage(edited_medication_table),
+                            target_id,
+                        ),
+                    )
+                    conn.execute(
+                        "INSERT INTO admin_logs (action_type, details) VALUES (?, ?)",
+                        (
+                            "PATIENT RECORD EDITED",
+                            f"Edited patient record for {f_name} {l_name} "
+                            f"(record {target_id}).",
+                        ),
+                    )
                 st.session_state.pop("manage_edit_patient_id", None)
+                st.session_state["manage_success_message"] = (
+                    "Patient record updated successfully."
+                )
                 st.rerun()
-        _render_patient_details(patient)
+            except Exception as error:
+                st.error(f"Failed to complete transaction adjustments: {error}")
+            finally:
+                conn.close()
 
 
 def show_manage_page():
+    selected_id = st.session_state.get("manage_selected_patient_id")
+    success_message = st.session_state.pop("manage_success_message", None)
+    if selected_id is not None:
+        with st.container(key="admin-search-page"):
+            st.markdown(
+                '<div class="search-eyebrow">Archived patient record</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown("# Patient information")
+            if success_message:
+                st.success(success_message)
+            _render_selected_patient_detail(selected_id)
+        return
+
+    st.session_state.pop("manage_edit_patient_id", None)
+    st.session_state.pop("manage_delete_patient_id", None)
     with st.container(key="admin-search-page"):
         st.markdown(
             '<div class="search-eyebrow">Patient records</div>',
@@ -309,6 +789,8 @@ def show_manage_page():
             "Search the local archive, review patient summaries, and securely "
             "manage complete records."
         )
+        if success_message:
+            st.success(success_message)
         st.session_state.setdefault("patient_search_query", "")
         search_term = st.text_input(
             "Search by patient name, ID, or location",
@@ -507,280 +989,12 @@ def show_manage_page():
         or maximum_age < 120
     )
     st.markdown("---")
-    selected_id = st.session_state.get("manage_selected_patient_id")
-    if selected_id is not None:
-        _render_selected_patient_detail(selected_id)
+    if not record_dicts:
+        st.info("There are no patient records in the local archive yet.")
+    elif not filtered_records:
+        st.info("No patient records match the search and selected filters.")
     else:
-        if not record_dicts:
-            st.info("There are no patient records in the local archive yet.")
-        elif not filtered_records:
-            st.info("No patient records match the search and selected filters.")
-        else:
-            _render_patient_results(filtered_records, filters_applied)
-
-    delete_id = st.session_state.get("manage_delete_patient_id")
-    if delete_id is not None:
-        pending_record = next(
-            (record for record in record_dicts if record["patient_id"] == delete_id),
-            None,
-        )
-        if pending_record is None:
-            st.error("The selected patient record is no longer available.")
-            st.session_state.pop("manage_delete_patient_id", None)
-        else:
-            delete_name = " ".join(
-                part
-                for part in (
-                    pending_record["first_name"],
-                    pending_record["last_name"],
-                )
-                if part
-            )
-            with st.container(border=True, key="patient-delete-confirmation"):
-                st.warning(
-                    f"Delete the complete local patient record for **{delete_name}** "
-                    f"(ID {delete_id})? This cannot be undone."
-                )
-                cancel_column, confirm_column = st.columns(2)
-                with cancel_column:
-                    if st.button(
-                        "Cancel",
-                        key="cancel_patient_delete",
-                        width="stretch",
-                    ):
-                        st.session_state.pop("manage_delete_patient_id", None)
-                        st.rerun()
-                with confirm_column:
-                    if st.button(
-                        "Yes, permanently delete",
-                        type="primary",
-                        key="confirm_patient_delete",
-                        width="stretch",
-                    ):
-                        conn = get_local_connection()
-                        try:
-                            with conn:
-                                result = conn.execute(
-                                    "DELETE FROM patients WHERE patient_id = ?",
-                                    (delete_id,),
-                                )
-                                if result.rowcount != 1:
-                                    raise RuntimeError(
-                                        "The patient record was not deleted; it may "
-                                        "have already been removed."
-                                    )
-                                conn.execute(
-                                    "INSERT INTO admin_logs (action_type, details) "
-                                    "VALUES (?, ?)",
-                                    (
-                                        "PATIENT RECORD DELETED",
-                                        f"Deleted patient record for {delete_name} "
-                                        f"(record {delete_id}).",
-                                    ),
-                                )
-                        except Exception as error:
-                            st.error(f"Unable to delete the patient record: {error}")
-                        else:
-                            st.session_state.pop("manage_delete_patient_id", None)
-                            st.session_state.pop("manage_edit_patient_id", None)
-                            st.session_state.pop("manage_selected_patient_id", None)
-                            st.success("The patient record was permanently deleted.")
-                            st.rerun()
-                        finally:
-                            conn.close()
-
-    target_id = st.session_state.get("manage_edit_patient_id")
-    if target_id is None:
-        return
-
-    # Pull complete row data for target item
-    try:
-        conn = get_local_connection()
-    except Exception as error:
-        st.error(f"Unable to open the local patient archive: {error}")
-        return
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM patients WHERE patient_id = ?", (target_id,))
-        p = cursor.fetchone()
-    except Exception as error:
-        st.error(f"Unable to read the selected patient record: {error}")
-        return
-    finally:
-        conn.close()
-
-    if p is None:
-        st.error("The selected patient record is no longer available.")
-        st.session_state.pop("manage_edit_patient_id", None)
-        return
-
-    st.divider()
-    if st.button("Close editor", key="close_patient_editor"):
-        st.session_state.pop("manage_edit_patient_id", None)
-        st.rerun()
-
-    with st.expander("Edit complete patient record", expanded=True):
-        st.subheader(f"Edit patient record · {p['first_name']} {p['last_name']}")
-        st.write("Expand the dropdown panels below to edit specific pages of the folder architecture cleanly.")
-
-        # --- DROP DOWN 1: LOGISTICS ---
-        with st.expander("🏢 Page 1: Referral Context & Interview Logistics"):
-            ref_by = st.text_input("Information Noted By", value=p["referral_noted_by"] or "")
-            means_ref = st.text_input("Means of Referral", value=p["means_of_referral"] or "")
-            int_date = st.text_input("Date of Interview (YYYY-MM-DD)", value=p["interview_date"] or "")
-            int_place = st.text_input("Place of Interview", value=p["interview_place"] or "")
-            int_present = st.text_area("Persons Present During Interview", value=p["interview_persons_present"] or "")
-            primary_src = st.text_input("Primary Source of Information", value=p["primary_source_of_information"] or "")
-
-        # --- DROP DOWN 2: PROFILE ---
-        with st.expander(
-            "👤 Page 2: Core Patient Identifying Profile",
-            expanded=True,
-        ):
-            c_n1, c_n2, c_n3 = st.columns(3)
-            with c_n1: f_name = st.text_input("First Name", value=p["first_name"])
-            with c_n2: m_name = st.text_input("Middle Name", value=p["middle_name"] or "")
-            with c_n3: l_name = st.text_input("Last Name", value=p["last_name"])
-            ext_name = st.text_input("Suffix / Extension Name", value=p["extension_name"] or "")
-            
-            c_d1, c_d2 = st.columns(2)
-            with c_d1: calc_age = st.number_input("Calculated Age", min_value=0, step=1, value=int(p["calculated_age"] or 0))
-            with c_d2:
-                sex_options = ["", "Male", "Female"]
-                sex = st.selectbox(
-                    "Sex",
-                    sex_options,
-                    index=sex_options.index(p["sex"]) if p["sex"] in sex_options else 0,
-                )
-            
-            dob_str = st.text_input("Date of Birth (YYYY-MM-DD)", value=p["date_of_birth"] or "")
-            civ_status = st.text_input("Civil Status", value=p["civil_status"] or "")
-            religion = st.text_input("Religion", value=p["religion"] or "")
-            edu = st.text_input("Educational Attainment", value=p["educational_attainment"] or "")
-            status_options = ["Alive", "Deceased"]
-            adm_status = st.selectbox(
-                "Current Administrative Status",
-                status_options,
-                index=status_options.index(p["status"])
-                if p["status"] in status_options else 0,
-            )
-            work_exp = st.text_area("Work Experience", value=p["work_experience"] or "")
-
-        # --- DROP DOWN 3: RESIDENTIAL RESIDENCE ---
-        with st.expander("📍 Page 3: Residential Address Demographics"):
-            street = st.text_input("Street / House Number", value=p["street_address"] or "")
-            purok = st.text_input("Purok", value=p["purok"] or "")
-            brgy = st.text_input("Barangay", value=p["barangay"] or "")
-            city = st.text_input("City / Municipality", value=p["city_municipality"] or "")
-            prov = st.text_input("Province", value=p["province"] or "")
-
-        # --- DROP DOWN 4: GUARDIANS ---
-        with st.expander("👨‍👩‍👧 Page 4: Nearest Relatives / Guardian Profiles"):
-            g_first = st.text_input("Guardian First Name", value=p["guardian_first_name"] or "")
-            g_mid = st.text_input("Guardian Middle Name", value=p["guardian_middle_name"] or "")
-            g_last = st.text_input("Guardian Last Name", value=p["guardian_last_name"] or "")
-            g_street = st.text_input("Guardian Street Address", value=p["guardian_street_address"] or "")
-            g_brgy = st.text_input("Guardian Barangay", value=p["g_barangay"] or "")
-            g_city = st.text_input("Guardian City/Municipality", value=p["g_city"] or "")
-            g_prov = st.text_input("Guardian Province", value=p["g_province"] or "")
-            g_contact = st.text_input("Guardian Contact Person Name", value=p["guardian_contact_person"] or "")
-            g_contact_number = st.text_input(
-                "Guardian Contact Number",
-                value=p["g_contact_number"] or "",
-            )
-
-        # --- DROP DOWN 5: SOCIO ECONOMIC ---
-        with st.expander("📊 Page 5: Household & Socio-Economic Classifications"):
-            family_table = dataframe_from_storage(
-                p["family_composition"],
-                FAMILY_COLUMNS,
-            )
-            edited_family_table = st.data_editor(
-                family_table,
-                num_rows="dynamic",
-                width="stretch",
-                key=f"family_table_{target_id}",
-            )
-            ann_inc = st.number_input("Total Annual Income (PHP)", min_value=0.0, step=500.0, value=float(p["total_annual_income"] or 0.0))
-            pov_thresh = st.number_input("Poverty Threshold Per Year (PHP)", min_value=0.0, step=500.0, value=float(p["poverty_threshold_per_year"] or 0.0))
-            pov_rate = st.text_input("Poverty Rating", value=p["poverty_rating"] or "")
-            class_int = st.text_input("Classification After Interview", value=p["classification_after_interview"] or "")
-            class_visit = st.text_input("Classification After Home Visit", value=p["classification_after_home_visit"] or "")
-
-        # --- DROP DOWN 6: COMPLAINTS ---
-        with st.expander("🧠 Page 6 & 7: Chief Complaint Metrics & Onset"):
-            cc_pat = st.text_area("Chief Complaint (Patient)", value=p["chief_complaint_patient"] or "")
-            cc_rel = st.text_area("Chief Complaint (Relatives)", value=p["chief_complaint_relatives"] or "")
-            c_dur = st.text_input("Complaint Duration", value=p["complaint_duration"] or "")
-            c_rec = st.text_input("Recent Manifestations", value=p["complaint_recent"] or "")
-            c_onset = st.text_input("Complaint Onset", value=p["complaint_onset"] or "")
-            c_hosp = st.text_input("Previous Hospitalization Records", value=p["complaint_previous_hospitalization"] or "")
-
-        # --- DROP DOWN 7: CLINICAL PROGRESSION ---
-        with st.expander("📋 Page 8, 9 & 10: Clinical Impressions, Examinations & Treatment Matrix"):
-            initial_imp = st.text_area("Interviewers Initial Impression", value=p["interviewers_initial_impression"] or "")
-            hist_illness = st.text_area("History of Present Illness", value=p["history_of_illness"] or "")
-            mse_notes = st.text_area("Mental Status Examination (MSE)", value=p["mental_status_examination"] or "")
-            nurse_obs = st.text_area("Nurses Observation", value=p["nurses_observation"] or "")
-            diag_notes = st.text_area("Diagnosis Statement", value=p["diagnosis"] or "")
-            treat_plan = st.text_area("Treatment Plan Summary", value=p["treatment"] or "")
-            medication_table = dataframe_from_storage(
-                p["parenteral_medication_records"],
-                MEDICATION_COLUMNS,
-            )
-            edited_medication_table = st.data_editor(
-                medication_table,
-                num_rows="dynamic",
-                width="stretch",
-                key=f"medication_table_{target_id}",
-            )
-
-        st.divider()
-
-        if st.button("💾 Apply Data Modifications Securely", type="primary"):
-            if not f_name.strip() or not l_name.strip():
-                st.error("First name and last name are required to save this record.")
-                return
-            conn = get_local_connection()
-            try:
-                with conn:
-                    conn.execute("""
-                        UPDATE patients SET 
-                            referral_noted_by = ?, means_of_referral = ?, interview_date = ?, interview_place = ?, interview_persons_present = ?, primary_source_of_information = ?,
-                            first_name = ?, middle_name = ?, last_name = ?, extension_name = ?, calculated_age = ?, sex = ?, date_of_birth = ?, civil_status = ?, religion = ?, educational_attainment = ?, status = ?, work_experience = ?,
-                            street_address = ?, purok = ?, barangay = ?, city_municipality = ?, province = ?,
-                            guardian_last_name = ?, guardian_first_name = ?, guardian_middle_name = ?, guardian_street_address = ?, g_barangay = ?, g_city = ?, g_province = ?, guardian_contact_person = ?, g_contact_number = ?,
-                            family_composition = ?, total_annual_income = ?, poverty_threshold_per_year = ?, poverty_rating = ?, classification_after_interview = ?, classification_after_home_visit = ?,
-                            chief_complaint_patient = ?, chief_complaint_relatives = ?, complaint_duration = ?, complaint_recent = ?, complaint_onset = ?, complaint_previous_hospitalization = ?,
-                            interviewers_initial_impression = ?, history_of_illness = ?, mental_status_examination = ?, nurses_observation = ?, diagnosis = ?, treatment = ?, parenteral_medication_records = ?
-                        WHERE patient_id = ?
-                    """, (
-                        ref_by, means_ref, int_date, int_place, int_present, primary_src,
-                        f_name, m_name, l_name, ext_name, int(calc_age), sex, dob_str, civ_status, religion, edu, adm_status, work_exp,
-                        street, purok, brgy, city, prov,
-                        g_last, g_first, g_mid, g_street, g_brgy, g_city, g_prov, g_contact, g_contact_number,
-                        dataframe_to_storage(edited_family_table), float(ann_inc), float(pov_thresh), pov_rate, class_int, class_visit,
-                        cc_pat, cc_rel, c_dur, c_rec, c_onset, c_hosp,
-                        initial_imp, hist_illness, mse_notes, nurse_obs, diag_notes, treat_plan,
-                        dataframe_to_storage(edited_medication_table),
-                        target_id
-                    ))
-                    # Log the successful modification into the audit trail ledger securely
-                    conn.execute(
-                        "INSERT INTO admin_logs (action_type, details) VALUES (?, ?)",
-                        (
-                            "PATIENT RECORD EDITED",
-                            f"Edited patient record for {f_name} {l_name} "
-                            f"(record {target_id}).",
-                        ),
-                    )
-                st.success("📋 Complete 10-page folder properties have been cleanly updated.")
-                st.session_state.pop("manage_edit_patient_id", None)
-                st.rerun()
-            except Exception as e:
-                st.error(f"Failed to complete transaction adjustments: {e}")
-            finally:
-                conn.close()
+        _render_patient_results(filtered_records, filters_applied)
 
 if __name__ == "__main__":
     show_manage_page()

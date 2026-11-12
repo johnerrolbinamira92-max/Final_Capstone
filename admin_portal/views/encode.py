@@ -279,11 +279,25 @@ def show_encode_page():
         st.html(
             """
             <script>
-              window.scrollTo(0, 0);
-              const appView = document.querySelector('[data-testid="stAppViewContainer"]');
-              const main = document.querySelector('section.main');
-              if (appView) appView.scrollTop = 0;
-              if (main) main.scrollTop = 0;
+              const scrollEncodePageToTop = () => {
+                const scrollTargets = [
+                  document.scrollingElement,
+                  document.querySelector('[data-testid="stAppViewContainer"]'),
+                  document.querySelector('[data-testid="stMain"]'),
+                  document.querySelector('section.main'),
+                ];
+                scrollTargets.forEach((target) => {
+                  if (target) target.scrollTop = 0;
+                });
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              };
+
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  scrollEncodePageToTop();
+                  setTimeout(scrollEncodePageToTop, 120);
+                });
+              });
             </script>
             """,
             unsafe_allow_javascript=True,

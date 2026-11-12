@@ -18,6 +18,7 @@ from views.home_dashboard import show_home_dashboard_page
 from views.notifications import (
     _load_notification_read_ids,
     _load_notifications,
+    _mark_notifications_read,
     render_notification_alerts,
     show_notifications_page,
 )
@@ -1041,6 +1042,12 @@ st.markdown(
             color: var(--hfrc-muted) !important;
         }
 
+        .st-key-admin-home-page .home-appointment-date {
+            color: #68d5c7 !important;
+            font-size: .78rem;
+            font-weight: 700;
+        }
+
         .st-key-admin-home-page .home-province-row {
             border-bottom-color: var(--hfrc-line);
         }
@@ -1202,6 +1209,8 @@ st.markdown(
         }
 
         .st-key-admin-calendar-page [data-testid="stMetric"] {
+            min-height: 6rem;
+            box-sizing: border-box;
             border-color: var(--hfrc-line);
             border-radius: 1rem;
             background: var(--hfrc-surface);
@@ -1283,28 +1292,29 @@ st.markdown(
             background: var(--hfrc-surface);
         }
 
-        [class*="st-key-patient-result-"] [data-testid="stVerticalBlockBorderWrapper"] {
+        [class*="st-key-patient-result-"] [data-testid="stExpander"],
+        [class*="st-key-patient-result-"][data-testid="stExpander"] {
+            margin-top: .4rem !important;
             border-color: var(--hfrc-line);
-            border-radius: 1rem;
+            border-radius: .75rem;
             background: var(--hfrc-surface);
         }
 
-        [class*="st-key-patient-result-"] h3 {
-            margin: 0;
-            color: var(--hfrc-text);
-            font-size: 1.15rem;
-        }
-
-        [class*="st-key-patient-result-"] [data-testid="stMarkdownContainer"] strong {
-            color: var(--hfrc-muted);
-            font-size: .75rem;
-            font-weight: 600;
+        [class*="st-key-patient-result-"] [data-testid="stExpander"] summary,
+        [class*="st-key-patient-result-"][data-testid="stExpander"] summary {
+            min-height: 2.7rem;
+            padding-block: .45rem;
         }
 
         .st-key-patient-delete-confirmation [data-testid="stVerticalBlockBorderWrapper"] {
             border-color: #b94a48;
             border-radius: 1rem;
             background: var(--hfrc-surface);
+        }
+
+        .st-key-selected-patient-details .patient-not-recorded {
+            color: var(--hfrc-muted) !important;
+            font-size: .78rem;
         }
 
         [data-testid="stMainBlockContainer"]:has(.st-key-admin-search-page) [data-testid="stExpander"] {
@@ -1501,12 +1511,14 @@ appointments_page = st.Page(
     show_appointments_page,
     title="Calendar",
     icon=":material/calendar_month:",
+    url_path="appointments",
 )
 
 notifications_page = st.Page(
     lambda: show_notifications_page(appointments_page=appointments_page),
     title="Notifications",
     icon=":material/notifications:",
+    url_path="notifications",
 )
 
 audit_page = st.Page(
@@ -1517,6 +1529,8 @@ audit_page = st.Page(
 
 
 notification_unread_count = 0
+notification_ids = set()
+notification_read_ids = set()
 notification_load_errors = []
 notification_read_state_error = None
 if SUPABASE_URL and SUPABASE_KEY:
@@ -1544,7 +1558,6 @@ def show_overview_page():
         appointments_page=appointments_page,
         search_page=search_page,
         notifications_page=notifications_page,
-        notifications_unread=notification_unread_count > 0,
     )
 
 
@@ -1568,6 +1581,23 @@ pg = st.navigation(
     position="hidden",
 )
 
+notification_mark_read_error = None
+is_notifications_page = pg == notifications_page
+if is_notifications_page:
+    if not st.session_state.get("notifications_page_active", False):
+        unread_notification_ids = notification_ids - notification_read_ids
+        if unread_notification_ids:
+            try:
+                _mark_notifications_read(unread_notification_ids)
+            except Exception as error:
+                notification_mark_read_error = error
+            else:
+                notification_read_ids.update(unread_notification_ids)
+                notification_unread_count = 0
+    st.session_state["notifications_page_active"] = True
+else:
+    st.session_state["notifications_page_active"] = False
+
 with st.sidebar:
     sidebar_brand_mark = _brand_mark_markup("hfrc-sidebar-brand-mark")
     st.markdown(
@@ -1580,24 +1610,6 @@ with st.sidebar:
         """,
         unsafe_allow_html=True,
     )
-    if notification_unread_count:
-        st.markdown(
-            """
-            <style>
-            .st-key-hfrc-sidebar-navigation
-            [data-testid="stPageLink"]:nth-child(6) a::after {
-                content: "";
-                width: .38rem;
-                height: .38rem;
-                flex: 0 0 .38rem;
-                margin-left: .45rem;
-                border-radius: 50%;
-                background: #e53935;
-            }
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
     with st.container(key="hfrc-sidebar-navigation"):
         for page, label, icon in (
             (home_page, "Home", ":material/home:"),
@@ -1612,7 +1624,11 @@ with st.sidebar:
             ),
             (audit_page, "Activity History", ":material/history:"),
         ):
-            st.page_link(page, label=label, icon=icon, width="stretch")
+            if page is notifications_page:
+                with st.container(key="hfrc-sidebar-notification-link"):
+                    st.page_link(page, label=label, icon=icon, width="stretch")
+            else:
+                st.page_link(page, label=label, icon=icon, width="stretch")
         if SUPABASE_URL and SUPABASE_KEY:
             render_notification_alerts()
         for source, error in notification_load_errors:
@@ -1623,6 +1639,10 @@ with st.sidebar:
             st.error("Unable to load saved notification read status.")
             with st.expander("Notification read status details"):
                 st.code(str(notification_read_state_error))
+        if notification_mark_read_error is not None:
+            st.error("Unable to mark notifications as read.")
+            with st.expander("Notification read status details"):
+                st.code(str(notification_mark_read_error))
 
     st.space("stretch")
     if st.button("Log out"):
