@@ -12,6 +12,7 @@ alter table public.appointments
         approval_status in (
             'Pending',
             'Scheduled',
+            'Rescheduled',
             'Completed',
             'No-show',
             'Cancelled'

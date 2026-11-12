@@ -159,6 +159,15 @@ def initialize_local_database():
     );
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS admin_notification_reads (
+        admin_user_id TEXT NOT NULL,
+        notification_id TEXT NOT NULL,
+        read_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (admin_user_id, notification_id)
+    );
+    """)
+
     conn.commit()
     conn.close()
 

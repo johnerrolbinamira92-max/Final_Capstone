@@ -252,9 +252,9 @@ def _save_patient_record(payload, first_name, last_name):
             cursor.execute(
                 "INSERT INTO admin_logs (action_type, details) VALUES (?, ?)",
                 (
-                    "ENCODE",
-                    f"Archived new 10-page profile folder for patient: "
-                    f"{first_name} {last_name}",
+                    "PATIENT RECORD ADDED",
+                    f"Added patient record for {first_name} {last_name} "
+                    f"(record {patient_id}).",
                 ),
             )
 

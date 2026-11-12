@@ -573,9 +573,9 @@ def show_manage_page():
                                     "INSERT INTO admin_logs (action_type, details) "
                                     "VALUES (?, ?)",
                                     (
-                                        "DELETE",
-                                        f"Deleted patient record {delete_id} "
-                                        f"({delete_name})",
+                                        "PATIENT RECORD DELETED",
+                                        f"Deleted patient record for {delete_name} "
+                                        f"(record {delete_id}).",
                                     ),
                                 )
                         except Exception as error:
@@ -768,7 +768,11 @@ def show_manage_page():
                     # Log the successful modification into the audit trail ledger securely
                     conn.execute(
                         "INSERT INTO admin_logs (action_type, details) VALUES (?, ?)",
-                        ("UPDATE", f"Modified archived folder properties for Patient ID: {target_id} ({f_name} {l_name})")
+                        (
+                            "PATIENT RECORD EDITED",
+                            f"Edited patient record for {f_name} {l_name} "
+                            f"(record {target_id}).",
+                        ),
                     )
                 st.success("📋 Complete 10-page folder properties have been cleanly updated.")
                 st.session_state.pop("manage_edit_patient_id", None)

@@ -43,14 +43,24 @@ code or `.env`. Never share the account password or service-role key.
 
 ## Appointment calendar setup
 
-For a new Supabase project, run [`../supabase/appointments.sql`](../supabase/appointments.sql).
+For a new Supabase project, run [`../supabase/appointments.sql`](../supabase/appointments.sql)
+and [`../supabase/patient_help_requests.sql`](../supabase/patient_help_requests.sql),
+then run [`../supabase/appointment_lifecycle.sql`](../supabase/appointment_lifecycle.sql).
 For an existing project, run [`../supabase/appointments_admin_fields.sql`](../supabase/appointments_admin_fields.sql)
-once to add the optional appointment reason and permit the `No-show` attendance
-status.
+once to add the optional appointment reason and permit the `Rescheduled` and
+`No-show` statuses, run the patient help request script once if it has not
+already been applied, and run [`../supabase/appointment_lifecycle.sql`](../supabase/appointment_lifecycle.sql).
+The lifecycle script adds update timestamps and enables recent status updates,
+including reschedules and no-show outcomes for patient help requests.
 
 In the appointment calendar, **Completed** means the patient attended and
 **No-show** means they did not. Past appointments appear in the history section,
 where their attendance status can be updated.
+Confirmation, reschedule, and cancellation notifications remain visible for 24
+hours. Only confirmed and rescheduled visits appear as calendar events;
+unconfirmed requests stay in the request list. Past visits appear below the
+calendar until marked Done, Cancelled, or Did not come, and completed patient
+help requests are included in appointment history.
 
 ## Offline regional dashboard and statistics
 
@@ -85,14 +95,25 @@ Overview page's quick search opens this page with the query filled in.
 **Appointments** and the **Notifications** feed use the same Supabase project.
 Pending appointments created by the patient portal in the `appointments` table
 will appear in the admin calendar and notification feed. **Notifications**
-also reads pending patient help requests from Supabase.
-The **Schedules** tab shows both appointment types, and **Vent-out notes** uses
-the message field from patient help requests; the database has no separate
-vent-out-note table. Read state is kept for the current app session and is not
-written to Supabase.
+also reads pending patient help requests from Supabase. Admins can accept,
+reschedule, or cancel pending requests from their details. Pending and
+scheduled help requests appear on the calendar. The calendar metrics include
+both tables and refresh automatically every 30 seconds; only requests marked
+**Completed** count as visits. **Refresh data** reloads the metrics immediately
+after a patient submits a request. Hovering over a calendar date shows visit
+names; selecting a date shows each patient name with expandable details.
 
-**Activity History** shows administrative actions recorded in the local archive,
-with dates and times displayed in Philippine Standard Time.
+The **Schedules** tab shows appointment requests, and **Vent-out notes** uses
+the message field from patient help requests; the database has no separate
+vent-out-note table. Unread indicators are shown on the overview bell and
+sidebar for new requests. Opening **Notifications** marks the current requests
+as read, and read state persists in the local database per admin account.
+
+**Activity History** records completed changes to patient records and
+appointments: records added, edited, or deleted; appointments scheduled,
+rescheduled, or cancelled; and appointment statuses or attendance outcomes
+updated. Searches and navigation are not logged. The history is stored in the
+local archive and displayed in Philippine Standard Time.
 
 The Encode form's patient and guardian addresses use searchable, cascading
 province, city / municipality, and barangay selectors. Their Bicol location

@@ -4,13 +4,23 @@ import os
 from pathlib import Path
 
 import streamlit as st
-from database import authenticate_admin
+from database import (
+    SUPABASE_KEY,
+    SUPABASE_URL,
+    authenticate_admin,
+    get_supabase_client,
+)
 from views.appointments import show_appointments_page
 from views.audit import show_audit_page
 from views.dashboard import show_dashboard_page
 from views.encode import show_encode_page
 from views.home_dashboard import show_home_dashboard_page
-from views.notifications import show_notifications_page
+from views.notifications import (
+    _load_notification_read_ids,
+    _load_notifications,
+    render_notification_alerts,
+    show_notifications_page,
+)
 from views.search import show_search_page
 
 default_logo_path = Path(__file__).resolve().parent / "assets" / "boc_logo.png"
@@ -84,6 +94,11 @@ st.markdown(
 
     body:has(.st-key-admin-login-page) [data-testid="stHeader"] {
         display: none;
+    }
+
+    body:has(.st-key-admin-login-page) [data-testid="stSidebar"],
+    body:has(.st-key-admin-login-page) [data-testid="stSidebarCollapsedControl"] {
+        display: none !important;
     }
 
     [data-testid="stAppViewContainer"]:has(.st-key-admin-login-page),
@@ -226,7 +241,7 @@ st.markdown(
     .st-key-admin-login-hero-copy h1 {
         margin: 0 0 1.35rem;
         color: #fff;
-        font-family: "DM Sans", "Segoe UI", sans-serif;
+        font-family: "Roboto", "Segoe UI", sans-serif;
         font-size: clamp(2.8rem, 5vw, 4.25rem);
         font-weight: 600;
         letter-spacing: -.055em;
@@ -235,7 +250,7 @@ st.markdown(
 
     .st-key-admin-login-hero-copy h1 em {
         color: #f2a477;
-        font-family: Georgia, serif;
+        font-family: "Roboto", "Segoe UI", sans-serif;
         font-weight: 500;
     }
 
@@ -291,7 +306,7 @@ st.markdown(
     .st-key-admin-login-panel h2 {
         margin: 0 0 .45rem;
         color: #173632;
-        font-family: "DM Sans", "Segoe UI", sans-serif;
+        font-family: "Roboto", "Segoe UI", sans-serif;
         font-size: 2.1rem;
         font-weight: 600;
         letter-spacing: -.04em;
@@ -400,7 +415,7 @@ st.markdown(
     }
 
     h1, h2, h3, [data-testid="stHeading"] {
-        font-family: "DM Sans", "Segoe UI", sans-serif;
+        font-family: "Roboto", "Segoe UI", sans-serif;
         letter-spacing: -0.025em;
     }
 
@@ -507,7 +522,7 @@ st.markdown(
         border-radius: 999px;
         background: var(--hfrc-teal);
         color: #fff;
-        font-family: "DM Sans", sans-serif;
+        font-family: "Roboto", "Segoe UI", sans-serif;
         font-weight: 700;
         transition: filter 140ms ease, transform 140ms ease;
     }
@@ -527,7 +542,7 @@ st.markdown(
         border-radius: 999px;
         background: transparent;
         color: var(--hfrc-text);
-        font-family: "DM Sans", sans-serif;
+        font-family: "Roboto", "Segoe UI", sans-serif;
         font-weight: 600;
     }
 
@@ -535,6 +550,28 @@ st.markdown(
     button[kind="secondary"]:hover {
         border-color: var(--hfrc-teal-bright);
         color: var(--hfrc-text);
+    }
+
+    .st-key-admin-notifications-page [data-testid="stBaseButton-primary"]:hover,
+    .st-key-admin-notifications-page [data-testid="stBaseButton-secondary"]:hover,
+    .st-key-admin-activity-page [data-testid="stBaseButton-primary"]:hover,
+    .st-key-admin-activity-page [data-testid="stBaseButton-secondary"]:hover {
+        border-color: var(--hfrc-line);
+        background: transparent;
+        color: var(--hfrc-text);
+        filter: none;
+        transform: none;
+        transition: none;
+    }
+
+    .st-key-admin-notifications-page [data-testid="stBaseButton-primary"]:hover,
+    .st-key-admin-activity-page [data-testid="stBaseButton-primary"]:hover {
+        border-color: var(--hfrc-teal);
+        background: var(--hfrc-teal);
+        color: #ffffff;
+        filter: none;
+        transform: none;
+        transition: none;
     }
 
     [data-testid="stTextInput"] input,
@@ -558,7 +595,7 @@ st.markdown(
     }
 
     [data-testid="stTabs"] [role="tab"] {
-        font-family: "DM Sans", sans-serif;
+        font-family: "Roboto", "Segoe UI", sans-serif;
         font-weight: 600;
     }
 
@@ -585,14 +622,14 @@ st.markdown(
         color: var(--hfrc-text);
     }
 
-    [data-testid="stMainBlockContainer"]:has(.st-key-admin-home-page) {
+    [data-testid="stMainBlockContainer"]:has(.st-key-admin-home-page),
+    [data-testid="stMainBlockContainer"]:has(.st-key-admin-statistics-page),
+    [data-testid="stMainBlockContainer"]:has(.st-key-admin-calendar-page),
+    [data-testid="stMainBlockContainer"]:has(.st-key-admin-notifications-page),
+    [data-testid="stMainBlockContainer"]:has(.st-key-admin-activity-page),
+    [data-testid="stMainBlockContainer"]:has(.st-key-admin-search-page) {
         max-width: none;
-        padding: 0 0 3rem !important;
-    }
-
-    [data-testid="stMainBlockContainer"]:has(.st-key-admin-statistics-page) {
-        max-width: none;
-        padding: 0 0 3rem !important;
+        padding: 1rem 0 3rem !important;
     }
 
     .st-key-overview-toolbar {
@@ -633,7 +670,7 @@ st.markdown(
     .st-key-overview-toolbar h2 {
         margin: 0;
         color: var(--hfrc-text);
-        font-family: Georgia, "Times New Roman", serif;
+        font-family: "Roboto", "Segoe UI", sans-serif;
         font-size: 1.25rem;
         font-weight: 700;
     }
@@ -1053,8 +1090,7 @@ st.markdown(
         .st-key-admin-statistics-page {
             max-width: 1440px;
             margin-inline: auto;
-            margin-top: 0;
-            padding: .5rem clamp(1.25rem, 3vw, 2.5rem) 2rem;
+            padding: 1.75rem clamp(1.25rem, 3vw, 2.5rem) 2rem;
             color: var(--hfrc-text);
         }
 
@@ -1074,7 +1110,7 @@ st.markdown(
         .st-key-admin-statistics-page .statistics-title {
             margin: 0 0 .4rem;
             color: var(--hfrc-text);
-            font-family: "DM Sans", "Segoe UI", sans-serif;
+            font-family: "Roboto", "Segoe UI", sans-serif;
             font-size: clamp(2rem, 3vw, 2.6rem);
             font-weight: 600;
             letter-spacing: -.04em;
@@ -1137,10 +1173,11 @@ st.markdown(
 
         .st-key-admin-calendar-page,
         .st-key-admin-notifications-page,
-        .st-key-admin-activity-page {
+        .st-key-admin-activity-page,
+        .st-key-admin-search-page {
             max-width: 1440px;
-            margin: 0 auto;
-            padding: 1.5rem clamp(1.25rem, 3vw, 2.5rem) 2rem;
+            margin-inline: auto;
+            padding: 1.75rem clamp(1.25rem, 3vw, 2.5rem) 2rem;
             color: var(--hfrc-text);
         }
 
@@ -1224,12 +1261,6 @@ st.markdown(
             padding: 0;
         }
 
-        .st-key-admin-search-page {
-            margin: 0;
-            padding: 0;
-            color: var(--hfrc-text);
-        }
-
         .st-key-admin-search-page .search-eyebrow {
             margin-bottom: .45rem;
             color: var(--hfrc-teal-bright);
@@ -1289,6 +1320,8 @@ st.markdown(
         }
 
         [data-testid="stMainBlockContainer"]:has(.st-key-encode-page-header) {
+            max-width: 1440px;
+            padding: 1.75rem clamp(1.25rem, 3vw, 2.5rem) 2rem !important;
             --encode-field-border: #3a514d;
             --encode-field-focus: #43c4b5;
         }
@@ -1309,7 +1342,7 @@ st.markdown(
         .st-key-encode-page-header h1 {
             margin: 0 0 .45rem;
             color: #e5efed;
-            font-family: "DM Sans", "Segoe UI", sans-serif;
+            font-family: "Roboto", "Segoe UI", sans-serif;
             font-size: clamp(2rem, 3vw, 2.6rem);
             font-weight: 600;
             letter-spacing: -.04em;
@@ -1474,15 +1507,34 @@ notifications_page = st.Page(
     lambda: show_notifications_page(appointments_page=appointments_page),
     title="Notifications",
     icon=":material/notifications:",
-    help="Review pending appointments and confidential patient help requests.",
 )
 
 audit_page = st.Page(
     show_audit_page,
     title="Activity History",
     icon=":material/history:",
-    help="Review administrative actions saved in the local patient archive.",
 )
+
+
+notification_unread_count = 0
+notification_load_errors = []
+notification_read_state_error = None
+if SUPABASE_URL and SUPABASE_KEY:
+    notification_client = get_supabase_client()
+    if notification_client is not None:
+        notification_items, notification_load_errors = _load_notifications(
+            notification_client
+        )
+        notification_ids = {item["id"] for item in notification_items}
+        try:
+            notification_read_ids = _load_notification_read_ids()
+        except Exception as error:
+            notification_read_state_error = error
+            notification_unread_count = len(notification_ids)
+        else:
+            notification_unread_count = len(
+                notification_ids - notification_read_ids
+            )
 
 
 def show_overview_page():
@@ -1492,6 +1544,7 @@ def show_overview_page():
         appointments_page=appointments_page,
         search_page=search_page,
         notifications_page=notifications_page,
+        notifications_unread=notification_unread_count > 0,
     )
 
 
@@ -1527,6 +1580,24 @@ with st.sidebar:
         """,
         unsafe_allow_html=True,
     )
+    if notification_unread_count:
+        st.markdown(
+            """
+            <style>
+            .st-key-hfrc-sidebar-navigation
+            [data-testid="stPageLink"]:nth-child(6) a::after {
+                content: "";
+                width: .38rem;
+                height: .38rem;
+                flex: 0 0 .38rem;
+                margin-left: .45rem;
+                border-radius: 50%;
+                background: #e53935;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
     with st.container(key="hfrc-sidebar-navigation"):
         for page, label, icon in (
             (home_page, "Home", ":material/home:"),
@@ -1534,10 +1605,24 @@ with st.sidebar:
             (encode_page, "Add Records", ":material/person_add:"),
             (search_page, "Search Records", ":material/search:"),
             (appointments_page, "Appointments", ":material/calendar_month:"),
-            (notifications_page, "Notification", ":material/notifications:"),
+            (
+                notifications_page,
+                "Notification",
+                ":material/notifications:",
+            ),
             (audit_page, "Activity History", ":material/history:"),
         ):
             st.page_link(page, label=label, icon=icon, width="stretch")
+        if SUPABASE_URL and SUPABASE_KEY:
+            render_notification_alerts()
+        for source, error in notification_load_errors:
+            st.warning(f"Unread notifications could not be checked for {source}.")
+            with st.expander("Notification status details"):
+                st.code(str(error))
+        if notification_read_state_error is not None:
+            st.error("Unable to load saved notification read status.")
+            with st.expander("Notification read status details"):
+                st.code(str(notification_read_state_error))
 
     st.space("stretch")
     if st.button("Log out"):

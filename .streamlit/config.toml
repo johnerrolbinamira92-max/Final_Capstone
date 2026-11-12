@@ -12,8 +12,8 @@ showWidgetBorder = true
 showSidebarBorder = true
 baseRadius = "large"
 buttonRadius = "full"
-font = "DM Sans:https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap"
-headingFont = "'Playfair Display':https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600&display=swap"
+font = "Roboto:https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap"
+headingFont = "Roboto:https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap"
 headingFontSizes = ["2.75rem", "2.125rem", "1.75rem", "1.375rem", "1.125rem", "1rem"]
 headingFontWeights = [500, 500, 500, 600, 600, 600]
 baseFontSize = 15

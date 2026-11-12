@@ -1,6 +1,5 @@
 import calendar
 from datetime import date, datetime, time
-from html import escape
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -9,9 +8,24 @@ import streamlit as st
 from database import get_local_connection, get_supabase_client
 
 
-ACTIVE_STATUSES = ("Pending", "Scheduled")
-APPOINTMENT_STATUSES = ("Pending", "Scheduled", "Completed", "No-show", "Cancelled")
-HELP_REQUEST_STATUSES = ("Pending", "Scheduled", "Completed", "Cancelled")
+ACTIVE_STATUSES = ("Pending", "Scheduled", "Rescheduled")
+CALENDAR_STATUSES = ("Scheduled", "Rescheduled")
+APPOINTMENT_STATUSES = (
+    "Pending",
+    "Scheduled",
+    "Rescheduled",
+    "Completed",
+    "No-show",
+    "Cancelled",
+)
+HELP_REQUEST_STATUSES = (
+    "Pending",
+    "Scheduled",
+    "Rescheduled",
+    "Completed",
+    "No-show",
+    "Cancelled",
+)
 WEEKDAY_LABELS = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 APPOINTMENT_COLUMNS = [
     "appointment_id",
@@ -43,10 +57,58 @@ def _format_time(value):
     return str(value)
 
 
+def _format_received_at(value):
+    if value is None or pd.isna(value) or not str(value).strip():
+        return "Unknown"
+    try:
+        received_at = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return str(value)
+    if received_at.tzinfo is None:
+        received_at = received_at.replace(tzinfo=ZoneInfo("Asia/Manila"))
+    else:
+        received_at = received_at.astimezone(ZoneInfo("Asia/Manila"))
+    time_label = received_at.strftime("%I:%M%p").lstrip("0").lower()
+    return f"{received_at:%m/%d/%Y} - {time_label}"
+
+
 def _format_optional(value):
     if value is None or pd.isna(value) or not str(value).strip():
         return "Not provided"
     return str(value)
+
+
+def _appointment_datetime(appointment, *, now=None):
+    now = now or datetime.now(ZoneInfo("Asia/Manila"))
+    try:
+        scheduled_date = date.fromisoformat(str(appointment.get("requested_date")))
+    except (TypeError, ValueError):
+        return None
+
+    raw_time = appointment.get("requested_time_slot")
+    if raw_time is None or pd.isna(raw_time) or not str(raw_time).strip():
+        if scheduled_date < now.date():
+            return datetime.combine(
+                scheduled_date,
+                time.max,
+                tzinfo=ZoneInfo("Asia/Manila"),
+            )
+        return None
+
+    scheduled_time = None
+    for time_format in ("%H:%M:%S", "%H:%M"):
+        try:
+            scheduled_time = datetime.strptime(str(raw_time), time_format).time()
+            break
+        except ValueError:
+            continue
+    if scheduled_time is None:
+        return None
+    return datetime.combine(
+        scheduled_date,
+        scheduled_time,
+        tzinfo=ZoneInfo("Asia/Manila"),
+    )
 
 
 def _load_appointments(client):
@@ -85,6 +147,141 @@ def _load_appointments(client):
     return appointments.reset_index(drop=True)
 
 
+def _load_calendar_appointments(client, appointments=None):
+    if appointments is None:
+        appointments = _load_appointments(client)
+    appointments = appointments.copy()
+    appointments["event_source"] = "appointment"
+    appointments["patient_age"] = None
+    appointments["message"] = None
+
+    request_records = []
+    offset = 0
+    while True:
+        response = (
+            client.table("patient_help_requests")
+            .select(
+                "request_id, patient_name, patient_age, contact_number, message, "
+                "requested_date, requested_time_slot, approval_status, created_at"
+            )
+            .in_("approval_status", list(HELP_REQUEST_STATUSES))
+            .order("requested_date")
+            .order("requested_time_slot")
+            .range(offset, offset + PAGE_SIZE - 1)
+            .execute()
+        )
+        page = response.data or []
+        request_records.extend(page)
+        if len(page) < PAGE_SIZE:
+            break
+        offset += PAGE_SIZE
+    request_rows = [
+        {
+            "appointment_id": f"help_request:{request['request_id']}",
+            "patient_id": None,
+            "patient_name": request.get("patient_name"),
+            "contact_number": request.get("contact_number"),
+            "requested_date": request.get("requested_date"),
+            "requested_time_slot": request.get("requested_time_slot"),
+            "approval_status": request.get("approval_status"),
+            "reason": request.get("message"),
+            "event_source": "help_request",
+            "patient_age": request.get("patient_age"),
+            "message": request.get("message"),
+            "created_at": request.get("created_at"),
+        }
+        for request in request_records
+    ]
+    if not request_rows:
+        return appointments
+
+    return pd.concat(
+        [appointments, pd.DataFrame(request_rows)],
+        ignore_index=True,
+    )
+
+
+def _appointment_summary_counts(appointments, today):
+    if appointments.empty:
+        return {
+            "today": 0,
+            "scheduled_today": 0,
+            "pending": 0,
+            "month": 0,
+        }
+
+    requested_dates = pd.to_datetime(
+        appointments["requested_date"], errors="coerce"
+    )
+    active = appointments["approval_status"].isin(CALENDAR_STATUSES)
+    completed = appointments["approval_status"].eq("Completed")
+    today_count = int((completed & requested_dates.dt.date.eq(today)).sum())
+    scheduled_today_count = int(
+        (active & requested_dates.dt.date.eq(today)).sum()
+    )
+    in_month = (
+        requested_dates.dt.year.eq(today.year)
+        & requested_dates.dt.month.eq(today.month)
+    )
+    month_count = int((completed & in_month).sum())
+    pending_count = int(appointments["approval_status"].eq("Pending").sum())
+    return {
+        "today": today_count,
+        "scheduled_today": scheduled_today_count,
+        "pending": pending_count,
+        "month": month_count,
+    }
+
+
+def _load_appointment_summary_counts(client, today):
+    records = []
+    for table_name in ("appointments", "patient_help_requests"):
+        offset = 0
+        while True:
+            response = (
+                client.table(table_name)
+                .select("requested_date, approval_status")
+                .in_("approval_status", [*ACTIVE_STATUSES, "Completed"])
+                .range(offset, offset + PAGE_SIZE - 1)
+                .execute()
+            )
+            page = response.data or []
+            records.extend(page)
+            if len(page) < PAGE_SIZE:
+                break
+            offset += PAGE_SIZE
+
+    active_visits = pd.DataFrame(
+        records,
+        columns=["requested_date", "approval_status"],
+    )
+    return _appointment_summary_counts(active_visits, today)
+
+
+@st.fragment(run_every="30s")
+def _render_appointment_metrics(client, initial_appointments, today):
+    if not st.session_state.get("appointment_metrics_initialized"):
+        counts = _appointment_summary_counts(initial_appointments, today)
+        st.session_state["appointment_metrics_initialized"] = True
+    else:
+        try:
+            counts = _load_appointment_summary_counts(client, today)
+        except Exception as error:
+            st.error("Unable to refresh appointment counts from Supabase.")
+            with st.expander("Technical details"):
+                st.code(str(error))
+            return
+
+    metrics = st.columns(3)
+    metrics[0].metric("Visits today", counts["today"], border=True)
+    metrics[1].metric("Pending requests", counts["pending"], border=True)
+    metrics[2].metric(
+        "Active visits this month",
+        counts["month"],
+        border=True,
+    )
+
+
 def _render_calendar(appointments, selected_date):
     month_state_key = "appointment_calendar_month"
     if month_state_key not in st.session_state:
@@ -120,12 +317,17 @@ def _render_calendar(appointments, selected_date):
             st.session_state[month_state_key] = _month_offset(month_start, 1)
             st.rerun()
 
-    active_counts = {}
+    active_by_date = {}
     if not appointments.empty:
-        active_appointments = appointments[
-            appointments["approval_status"].isin(ACTIVE_STATUSES)
+        confirmed_appointments = appointments[
+            appointments["approval_status"].isin(CALENDAR_STATUSES)
         ]
-        active_counts = active_appointments["requested_date"].value_counts().to_dict()
+        confirmed_by_date = {
+            requested_date: day_appointments
+            for requested_date, day_appointments in confirmed_appointments.groupby(
+                "requested_date", dropna=True
+            )
+        }
 
     weekday_columns = st.columns(7)
     for column, label in zip(weekday_columns, WEEKDAY_LABELS):
@@ -148,29 +350,43 @@ def _render_calendar(appointments, selected_date):
 
                 day_date = date(month_start.year, month_start.month, day_number)
                 day_key = day_date.isoformat()
-                appointment_count = int(active_counts.get(day_key, 0))
+                day_appointments = confirmed_by_date.get(day_key)
+                appointment_count = (
+                    len(day_appointments) if day_appointments is not None else 0
+                )
                 label = (
                     f"{day_number}\n● {appointment_count} visit(s)"
                     if appointment_count
                     else str(day_number)
                 )
+                tooltip = (
+                    f"{appointment_count} confirmed or rescheduled appointment(s)"
+                )
+                if appointment_count:
+                    patient_names = day_appointments["patient_name"].fillna(
+                        "Patient"
+                    )
+                    tooltip += ":\n" + "\n".join(
+                        f"- {name}" for name in patient_names
+                    )
+                else:
+                    tooltip = (
+                        f"Select {day_date.strftime('%B')} {day_number}, "
+                        f"{day_date.year}"
+                    )
                 if st.button(
                     label,
                     key=f"appointment_day_{day_key}",
                     type="primary" if day_date == selected_date else "secondary",
                     width="stretch",
-                    help=(
-                        f"{appointment_count} pending or scheduled appointment(s)"
-                        if appointment_count
-                        else f"Select {day_date.strftime('%B')} {day_number}, {day_date.year}"
-                    ),
+                    help=tooltip,
                 ):
                     st.session_state["appointment_selected_date"] = day_date
                     st.session_state["appointment_form_date"] = day_date
                     st.rerun()
 
     st.caption(
-        "● indicates one or more pending or scheduled visits. "
+        "● indicates one or more confirmed or rescheduled visits. "
         "Select a date to schedule a visit."
     )
 
@@ -191,24 +407,54 @@ def _render_selected_day(appointments, selected_date):
     if day_appointments.empty:
         st.info("No appointments are recorded for this date yet.")
     else:
-        active_day_appointments = day_appointments[
-            day_appointments["approval_status"].isin(ACTIVE_STATUSES)
+        confirmed_day_appointments = day_appointments[
+            day_appointments["approval_status"].isin(CALENDAR_STATUSES)
         ]
+        day_appointments = confirmed_day_appointments
         st.caption(
-            f"{len(active_day_appointments)} active appointment(s) on this date."
+            f"{len(confirmed_day_appointments)} confirmed or rescheduled "
+            "appointment(s) on this date."
         )
+        if day_appointments.empty:
+            st.info("No confirmed appointments are recorded for this date.")
+            return
         for index, appointment in enumerate(day_appointments.to_dict(orient="records")):
-            with st.container(key=f"appointment-selected-row-{index}"):
-                st.markdown(
-                    f'<div class="appointment-selected-time">'
-                    f'{escape(_format_time(appointment.get("requested_time_slot")))}</div>'
-                    f'<div class="appointment-selected-name">'
-                    f'{escape(str(appointment.get("patient_name") or "Patient"))}</div>'
-                    f'<div class="appointment-selected-status">'
-                    f'{escape(str(appointment.get("approval_status") or "Pending"))}'
-                    f"</div>",
-                    unsafe_allow_html=True,
+            patient_name = str(appointment.get("patient_name") or "Patient")
+            with st.expander(
+                patient_name,
+                key=f"appointment-selected-details-{index}",
+            ):
+                st.caption(
+                    f"{_format_time(appointment.get('requested_time_slot'))}"
                 )
+                st.badge(
+                    str(appointment.get("approval_status") or "Pending"),
+                    color="blue",
+                )
+                st.text(
+                    f"Contact: {_format_optional(appointment.get('contact_number'))}"
+                )
+                if appointment.get("event_source") == "help_request":
+                    st.text("Request type: Patient Help Request")
+                    age = appointment.get("patient_age")
+                    if age is not None and not pd.isna(age):
+                        st.text(f"Age: {age}")
+                    message = appointment.get("message")
+                    if message and not pd.isna(message):
+                        st.text(f"Message: {message}")
+                    received_at = appointment.get("created_at")
+                    if received_at is not None and not pd.isna(received_at):
+                        st.text(
+                            f"Received: {_format_received_at(received_at)}"
+                        )
+                else:
+                    st.text(
+                        f"Patient app ID: "
+                        f"{_format_optional(appointment.get('patient_id'))}"
+                    )
+                    reason = _format_optional(appointment.get("reason"))
+                    if reason != "Not provided":
+                        st.text(f"Reason: {reason}")
 
 
 def _render_appointment_history(appointments, client, today):
@@ -248,7 +494,14 @@ def _render_appointment_history(appointments, client, today):
     )
     st.dataframe(
         history[
-            ["Date", "Time", "patient_name", "contact_number", "Reason", "Attendance / status"]
+            [
+                "Date",
+                "Time",
+                "patient_name",
+                "contact_number",
+                "Reason",
+                "Attendance / status",
+            ]
         ].rename(
             columns={
                 "patient_name": "Patient",
@@ -284,11 +537,27 @@ def _render_appointment_history(appointments, client, today):
                 disabled=selected_status == status,
             ):
                 try:
+                    is_help_request = (
+                        appointment.get("event_source") == "help_request"
+                    )
+                    table_name = (
+                        "patient_help_requests"
+                        if is_help_request
+                        else "appointments"
+                    )
+                    id_column = (
+                        "request_id" if is_help_request else "appointment_id"
+                    )
+                    record_id = (
+                        str(appointment_id).removeprefix("help_request:")
+                        if is_help_request
+                        else appointment_id
+                    )
                     updated = (
-                        client.table("appointments")
+                        client.table(table_name)
                         .update({"approval_status": selected_status})
-                        .eq("appointment_id", appointment_id)
-                        .select("appointment_id")
+                        .eq(id_column, record_id)
+                        .select(id_column)
                         .execute()
                     )
                     if not updated.data:
@@ -298,8 +567,11 @@ def _render_appointment_history(appointments, client, today):
                 else:
                     try:
                         _log_appointment_action(
-                            "APPOINTMENT ATTENDANCE",
-                            f"Updated appointment {appointment_id} to {selected_status}",
+                            "APPOINTMENT OUTCOME",
+                            f"{appointment.get('patient_name') or 'Patient'}: "
+                            f"{selected_status} on "
+                            f"{appointment.get('requested_date') or 'date not set'} "
+                            f"at {_format_time(appointment.get('requested_time_slot'))}.",
                         )
                     except Exception as error:
                         st.warning(
@@ -310,6 +582,117 @@ def _render_appointment_history(appointments, client, today):
                         f"Appointment outcome updated to {selected_status}."
                     )
                     st.rerun()
+
+
+def _update_appointment_outcome(client, appointment, status):
+    help_request = appointment.get("event_source") == "help_request"
+    table_name = "patient_help_requests" if help_request else "appointments"
+    id_column = "request_id" if help_request else "appointment_id"
+    record_id = (
+        str(appointment["appointment_id"]).removeprefix("help_request:")
+        if help_request
+        else appointment["appointment_id"]
+    )
+    try:
+        response = (
+            client.table(table_name)
+            .update({"approval_status": status})
+            .eq(id_column, record_id)
+            .select(id_column)
+            .execute()
+        )
+        if not response.data:
+            raise RuntimeError("No matching appointment was updated.")
+    except Exception as error:
+        st.error("Unable to save this appointment outcome in Supabase.")
+        with st.expander("Technical details"):
+            st.code(str(error))
+        return False
+
+    try:
+        _log_appointment_action(
+            "APPOINTMENT OUTCOME",
+            f"{appointment.get('patient_name') or 'Patient'}: {status} on "
+            f"{appointment.get('requested_date') or 'date not set'} at "
+            f"{_format_time(appointment.get('requested_time_slot'))}.",
+        )
+    except Exception as error:
+        st.warning(
+            "The appointment outcome was saved, but its local activity entry "
+            f"could not be written: {error}"
+        )
+    st.session_state["appointment_flash"] = (
+        f"Appointment outcome recorded as "
+        f"{'Did not come' if status == 'No-show' else status}."
+    )
+    st.rerun()
+    return True
+
+
+def _render_awaiting_outcomes(appointments, client, *, now=None):
+    now = now or datetime.now(ZoneInfo("Asia/Manila"))
+    st.markdown("### Visits awaiting outcome")
+    st.caption(
+        "Appointments remain here after their scheduled time until you mark "
+        "them done, cancelled, or as a no-show."
+    )
+    if appointments.empty:
+        st.info("There are no visits awaiting an outcome.")
+        return
+
+    waiting = []
+    for appointment in appointments.to_dict(orient="records"):
+        if appointment.get("approval_status") not in CALENDAR_STATUSES:
+            continue
+        scheduled_at = _appointment_datetime(appointment, now=now)
+        if scheduled_at is not None and scheduled_at <= now:
+            waiting.append((scheduled_at, appointment))
+
+    waiting.sort(
+        key=lambda item: (
+            item[0],
+            str(item[1].get("patient_name") or "").casefold(),
+        ),
+        reverse=True,
+    )
+    if not waiting:
+        st.info("There are no past scheduled visits awaiting an outcome.")
+        return
+
+    for scheduled_at, appointment in waiting:
+        patient_name = appointment.get("patient_name") or "Patient"
+        identity = appointment.get("appointment_id")
+        if pd.isna(identity):
+            identity = patient_name
+        row_key = str(identity).replace(":", "-")
+        with st.container(border=True, key=f"appointment-outcome-{row_key}"):
+            st.markdown(f"**{patient_name}**")
+            st.caption(
+                f"{scheduled_at:%b %d, %Y} · "
+                f"{_format_time(appointment.get('requested_time_slot'))}"
+            )
+            done_column, cancel_column, no_show_column = st.columns(3)
+            if done_column.button(
+                "Done",
+                key=f"appointment-outcome-done-{row_key}",
+                icon=":material/check_circle:",
+                width="stretch",
+            ):
+                _update_appointment_outcome(client, appointment, "Completed")
+            if cancel_column.button(
+                "Cancel",
+                key=f"appointment-outcome-cancel-{row_key}",
+                icon=":material/event_busy:",
+                width="stretch",
+            ):
+                _update_appointment_outcome(client, appointment, "Cancelled")
+            if no_show_column.button(
+                "Did not come",
+                key=f"appointment-outcome-no-show-{row_key}",
+                icon=":material/person_off:",
+                width="stretch",
+            ):
+                _update_appointment_outcome(client, appointment, "No-show")
 
 
 def _log_appointment_action(action_type, details):
@@ -413,9 +796,9 @@ def _render_schedule_form(client):
 
     try:
         _log_appointment_action(
-            "SCHEDULE",
-            f"Created online appointment {appointment_id} for "
-            f"{visit_date.isoformat()} at {_format_time(appointment_time)}",
+            "APPOINTMENT SCHEDULED",
+            f"Scheduled {patient_name} for {visit_date.isoformat()} at "
+            f"{_format_time(appointment_time)}.",
         )
     except Exception as error:
         st.warning(
@@ -522,10 +905,19 @@ def _render_schedule_list(appointments, client):
                     with st.expander("Technical details"):
                         st.code(str(error))
                 else:
+                    action_type = {
+                        "Scheduled": "APPOINTMENT SCHEDULED",
+                        "Cancelled": "APPOINTMENT CANCELLED",
+                        "Completed": "APPOINTMENT OUTCOME",
+                        "No-show": "APPOINTMENT OUTCOME",
+                    }.get(selected_status, "APPOINTMENT STATUS")
                     try:
                         _log_appointment_action(
-                            "APPOINTMENT STATUS",
-                            f"Updated online appointment {appointment_id} to {selected_status}",
+                            action_type,
+                            f"{appointment.get('patient_name') or 'Patient'}: "
+                            f"status changed from {status} to {selected_status} "
+                            f"for {appointment.get('requested_date') or 'date not set'} "
+                            f"at {_format_time(appointment.get('requested_time_slot'))}.",
                         )
                     except Exception as error:
                         st.warning(
@@ -585,7 +977,9 @@ def _render_help_requests(client):
                 st.text(f"Contact: {request['contact_number']}")
             with schedule_col:
                 st.text(f"Requested callback: {requested_date} · {requested_time}")
-                st.text(f"Received: {request.get('created_at', 'Unknown')}")
+                st.text(
+                    f"Received: {_format_received_at(request.get('created_at'))}"
+                )
                 st.text(f"Status: {status}")
 
             st.markdown("**Message from the patient**")
@@ -623,11 +1017,19 @@ def _render_help_requests(client):
                     with st.expander("Technical details"):
                         st.code(str(error))
                 else:
+                    action_type = {
+                        "Scheduled": "APPOINTMENT SCHEDULED",
+                        "Cancelled": "APPOINTMENT CANCELLED",
+                        "Completed": "APPOINTMENT OUTCOME",
+                        "No-show": "APPOINTMENT OUTCOME",
+                    }.get(selected_status, "HELP REQUEST STATUS")
                     try:
                         _log_appointment_action(
-                            "HELP REQUEST STATUS",
-                            f"Updated confidential help request {request_id} "
-                            f"to {selected_status}",
+                            action_type,
+                            f"{request.get('patient_name') or 'Patient'}: "
+                            f"help request status changed from {status} to "
+                            f"{selected_status} for {requested_date} at "
+                            f"{requested_time}.",
                         )
                     except Exception as error:
                         st.warning(
@@ -657,6 +1059,14 @@ def show_appointments_page():
             )
         with action_column:
             if st.button(
+                "Refresh data",
+                icon=":material/refresh:",
+                width="stretch",
+                key="appointment_refresh_data",
+            ):
+                st.rerun()
+
+            if st.button(
                 "Set an appointment",
                 type="primary",
                 icon=":material/add:",
@@ -672,11 +1082,14 @@ def show_appointments_page():
 
         try:
             appointments = _load_appointments(client)
+            calendar_appointments = _load_calendar_appointments(
+                client, appointments
+            )
         except Exception as error:
             st.error(
-                "Unable to load appointments from Supabase. Check the project API URL, "
-                "run supabase/appointments.sql and "
-                "supabase/appointments_admin_fields.sql, and verify SELECT permissions."
+                "Unable to load the appointment calendar from Supabase. Check the "
+                "project API URL, run the appointment and patient-help-request SQL "
+                "setup scripts, and verify SELECT permissions."
             )
             with st.expander("Technical details"):
                 st.code(str(error))
@@ -710,33 +1123,9 @@ def show_appointments_page():
         if "appointment_flash" in st.session_state:
             st.success(st.session_state.pop("appointment_flash"))
 
-        this_month = appointments[
-            appointments["requested_date"].astype(str).str.startswith(
-                today.strftime("%Y-%m"), na=False
-            )
-        ] if not appointments.empty else appointments
-        active_today = appointments[
-            (appointments["requested_date"].astype(str) == today.isoformat())
-            & appointments["approval_status"].isin(ACTIVE_STATUSES)
-        ] if not appointments.empty else appointments
-        active_month = this_month[
-            this_month["approval_status"].isin(ACTIVE_STATUSES)
-        ] if not this_month.empty else this_month
-        pending_count = (
-            int((appointments["approval_status"] == "Pending").sum())
-            if not appointments.empty
-            else 0
-        )
+        _render_appointment_metrics(client, calendar_appointments, today)
 
-        metrics = st.columns(3)
-        metrics[0].metric("Visits today", len(active_today), border=True)
-        metrics[1].metric("Pending requests", pending_count, border=True)
-        metrics[2].metric("Active visits this month", len(active_month), border=True)
-
-        schedule_tab, list_tab, help_tab = st.tabs(
-            ["Calendar", "All appointments", "Confidential help requests"]
-        )
-        with schedule_tab:
+        with st.container(key="appointment-calendar-content"):
             selected_date = st.session_state["appointment_selected_date"]
             with st.container(key="appointment-calendar-layout"):
                 calendar_column, selected_day_column = st.columns(
@@ -746,33 +1135,20 @@ def show_appointments_page():
                     with st.container(
                         border=True, key="appointment-calendar-panel"
                     ):
-                        _render_calendar(appointments, selected_date)
+                        _render_calendar(calendar_appointments, selected_date)
                 with selected_day_column:
                     with st.container(
                         border=True, key="appointment-selected-day-panel"
                     ):
-                        _render_selected_day(appointments, selected_date)
-                        if st.button(
-                            "Add appointment",
-                            icon=":material/add:",
-                            width="stretch",
-                            key="appointment_selected_day_add",
-                        ):
-                            st.query_params["focus"] = "schedule"
-                            st.rerun()
+                        _render_selected_day(calendar_appointments, selected_date)
+
+            with st.container(border=True, key="appointment-outcome-queue"):
+                _render_awaiting_outcomes(calendar_appointments, client)
 
             with st.container(border=True, key="appointment-setting"):
                 _render_schedule_form(client)
             with st.container(border=True):
-                _render_appointment_history(appointments, client, today)
-
-        with list_tab:
-            with st.container(border=True):
-                _render_schedule_list(appointments, client)
-
-        with help_tab:
-            with st.container(border=True):
-                _render_help_requests(client)
+                _render_appointment_history(calendar_appointments, client, today)
 
         if st.query_params.get("focus") == "schedule":
             st.html(

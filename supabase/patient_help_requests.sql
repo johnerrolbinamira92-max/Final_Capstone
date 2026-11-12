@@ -8,7 +8,7 @@ create table if not exists public.patient_help_requests (
     requested_time_slot time not null,
     consent_given boolean not null check (consent_given),
     approval_status text not null default 'Pending'
-        check (approval_status in ('Pending', 'Scheduled', 'Completed', 'Cancelled')),
+        check (approval_status in ('Pending', 'Scheduled', 'Rescheduled', 'Completed', 'No-show', 'Cancelled')),
     created_at timestamptz not null default now()
 );
 

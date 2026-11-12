@@ -8,7 +8,13 @@ import pandas as pd
 import streamlit as st
 
 from database import get_local_connection, get_supabase_client
-from views.appointments import ACTIVE_STATUSES, _format_time, _load_appointments
+from views.appointments import (
+    CALENDAR_STATUSES,
+    _appointment_summary_counts,
+    _format_time,
+    _load_appointments,
+    _load_calendar_appointments,
+)
 from views.map_utils import (
     load_map_features,
     location_key as _base_location_key,
@@ -57,8 +63,33 @@ def _submit_overview_search(search_page):
         st.switch_page(search_page)
 
 
-def _render_overview_toolbar(search_page, notifications_page=None):
+def _render_overview_toolbar(
+    search_page,
+    notifications_page=None,
+    notifications_unread=False,
+):
     with st.container(key="overview-toolbar"):
+        if notifications_unread:
+            st.markdown(
+                """
+                <style>
+                .st-key-overview-notifications [data-testid="stPageLink"] a {
+                    position: relative;
+                }
+                .st-key-overview-notifications [data-testid="stPageLink"] a::after {
+                    content: "";
+                    position: absolute;
+                    top: .38rem;
+                    right: .38rem;
+                    width: .38rem;
+                    height: .38rem;
+                    border-radius: 50%;
+                    background: #e53935;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
         title_column, search_column, notification_column = st.columns(
             [1.35, 0.85, 0.08], vertical_alignment="center"
         )
@@ -120,7 +151,9 @@ def _load_dashboard_appointments():
     client = get_supabase_client()
     if client is None:
         return None
-    return _load_appointments(client)
+    appointments = _load_appointments(client)
+    calendar_appointments = _load_calendar_appointments(client, appointments)
+    return appointments, calendar_appointments
 
 
 def _format_count(value):
@@ -240,7 +273,7 @@ def _render_appointments(appointments, today, appointments_page, error=None):
             st.info("Appointment details require a connection to Supabase.")
         else:
             active = appointments[
-                appointments["approval_status"].isin(ACTIVE_STATUSES)
+                appointments["approval_status"].isin(CALENDAR_STATUSES)
             ].copy()
             dates = pd.to_datetime(active["requested_date"], errors="coerce")
             active = active[dates.dt.date >= today]
@@ -306,6 +339,7 @@ def show_home_dashboard_page(
     appointments_page=None,
     search_page=None,
     notifications_page=None,
+    notifications_unread=False,
 ):
     today = datetime.now(ZoneInfo("Asia/Manila")).date()
     try:
@@ -331,23 +365,21 @@ def show_home_dashboard_page(
         st.error(f"Unable to load the home dashboard: {error}")
         return
     appointment_error = None
+    appointments = None
+    calendar_appointments = None
     try:
-        appointments = _load_dashboard_appointments()
+        appointment_data = _load_dashboard_appointments()
+        if appointment_data is not None:
+            appointments, calendar_appointments = appointment_data
     except Exception as error:
-        appointments = None
         appointment_error = error
 
     pending_count = 0
     today_count = 0
-    if appointments is not None and not appointments.empty:
-        appointment_dates = pd.to_datetime(
-            appointments["requested_date"], errors="coerce"
-        )
-        active = appointments["approval_status"].isin(ACTIVE_STATUSES)
-        today_count = int(
-            (active & (appointment_dates.dt.date == today)).sum()
-        )
-        pending_count = int((appointments["approval_status"] == "Pending").sum())
+    if calendar_appointments is not None:
+        counts = _appointment_summary_counts(calendar_appointments, today)
+        today_count = counts["scheduled_today"]
+        pending_count = counts["pending"]
     greeting_period = (
         "Good morning"
         if datetime.now(ZoneInfo("Asia/Manila")).hour < 12
@@ -357,7 +389,11 @@ def show_home_dashboard_page(
     )
 
     with st.container(key="admin-home-page"):
-        _render_overview_toolbar(search_page, notifications_page)
+        _render_overview_toolbar(
+            search_page,
+            notifications_page,
+            notifications_unread,
+        )
         with st.container(key="home-dashboard-content"):
             intro_column, encode_column = st.columns(
                 [3, 1], vertical_alignment="top"
