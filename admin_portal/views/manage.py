@@ -1,8 +1,12 @@
+import datetime
 import json
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 from database import get_local_connection
+from views.appointments import APPOINTMENT_STATUSES
+from views.encode import show_encode_dialog
 from views.record_tables import (
     FAMILY_COLUMNS,
     MEDICATION_COLUMNS,
@@ -41,12 +45,24 @@ def _location_key(value):
     return normalized
 
 
+def _is_four_digit_value(value):
+    return (
+        len(value) == 4
+        and value.isascii()
+        and value.isdigit()
+        and int(value) > 0
+    )
+
+
+def _matches_patient_case_number(record, case_number):
+    stored_case_number = str(record.get("patient_case_number") or "")
+    return stored_case_number.casefold() == case_number.casefold()
+
+
 PATIENT_DETAIL_SECTIONS = (
     (
         "Registration and interview",
         (
-            "patient_id",
-            "date_registered",
             "referral_noted_by",
             "means_of_referral",
             "interview_date",
@@ -154,48 +170,14 @@ def _render_patient_detail_value(value):
         st.text(display_value)
 
 
-def _render_return_to_top_button(patient_id):
-    st.markdown("")
-    _, button_column = st.columns([4, 1])
-    with button_column:
-        if st.button(
-            "Return to top",
-            icon=":material/arrow_upward:",
-            key=f"patient-return-to-top-{patient_id}",
-            width="stretch",
-        ):
-            st.html(
-                """
-                <script>
-                  const scrollPatientDetailsToTop = () => {
-                    const scrollTargets = [
-                      document.scrollingElement,
-                      document.querySelector('[data-testid="stAppViewContainer"]'),
-                      document.querySelector('[data-testid="stMain"]'),
-                      document.querySelector('section.main'),
-                    ];
-                    scrollTargets.forEach((target) => {
-                      if (target) target.scrollTop = 0;
-                    });
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  };
-
-                  requestAnimationFrame(() => {
-                    requestAnimationFrame(() => {
-                      scrollPatientDetailsToTop();
-                      setTimeout(scrollPatientDetailsToTop, 120);
-                    });
-                  });
-                </script>
-                """,
-                unsafe_allow_javascript=True,
-            )
-
-
 def _render_patient_details(patient):
     patient_field_order = list(patient.keys())
     patient_fields = set(patient_field_order)
-    displayed_fields = set()
+    displayed_fields = {
+        "patient_id",
+        "patient_case_number",
+        "date_registered",
+    }
 
     for section_title, field_names in PATIENT_DETAIL_SECTIONS:
         fields = [field for field in field_names if field in patient_fields]
@@ -237,9 +219,6 @@ def _render_patient_details(patient):
                     st.markdown(f"**{_detail_label(field)}**")
                     _render_patient_detail_value(value)
 
-    _render_return_to_top_button(patient["patient_id"])
-
-
 def _patient_full_name(record):
     return " ".join(
         str(record.get(field) or "").strip()
@@ -253,44 +232,63 @@ def _render_patient_results(records, filters_applied):
         f"### {len(records):,} "
         f"{'matching' if filters_applied else 'archived'} patient record(s)"
     )
-    for record in records:
-        patient_id = record["patient_id"]
-        full_name = _patient_full_name(record) or "Unnamed patient"
-        with st.expander(full_name, key=f"patient-result-{patient_id}"):
-            information_column, edit_column, delete_column = st.columns(3)
-            with information_column:
-                if st.button(
-                    "See information",
-                    icon=":material/visibility:",
-                    key=f"see_patient_{patient_id}",
-                    width="stretch",
-                ):
-                    st.session_state["manage_selected_patient_id"] = patient_id
-                    st.session_state.pop("manage_edit_patient_id", None)
-                    st.session_state.pop("manage_delete_patient_id", None)
-                    st.rerun()
-            with edit_column:
-                if st.button(
-                    "Edit",
-                    icon=":material/edit:",
-                    key=f"edit_patient_{patient_id}",
-                    width="stretch",
-                ):
-                    st.session_state["manage_selected_patient_id"] = patient_id
-                    st.session_state["manage_edit_patient_id"] = patient_id
-                    st.session_state.pop("manage_delete_patient_id", None)
-                    st.rerun()
-            with delete_column:
-                if st.button(
-                    "Delete",
-                    icon=":material/delete:",
-                    key=f"delete_patient_{patient_id}",
-                    width="stretch",
-                ):
-                    st.session_state["manage_selected_patient_id"] = patient_id
-                    st.session_state["manage_delete_patient_id"] = patient_id
-                    st.session_state.pop("manage_edit_patient_id", None)
-                    st.rerun()
+    with st.container(horizontal=True, horizontal_alignment="right"):
+        if st.button(
+            "+ Encode new record",
+            type="primary",
+            key="open_encode_dialog",
+            width="content",
+        ):
+            st.session_state["show_encode_dialog"] = True
+
+    overview_rows = pd.DataFrame(
+        [
+            {
+                "Patient ID": record.get("patient_case_number") or "Not assigned",
+                "Address": ", ".join(
+                    part
+                    for part in (
+                        str(record.get("city_municipality") or "").strip(),
+                        str(record.get("province") or "").strip(),
+                    )
+                    if part
+                )
+                or "Not recorded",
+                "Gender": record.get("sex") or "Not recorded",
+                "Age": (
+                    record["calculated_age"]
+                    if record.get("calculated_age") is not None
+                    else "Not recorded"
+                ),
+            }
+            for record in records
+        ],
+        columns=["Patient ID", "Address", "Gender", "Age"],
+    )
+    selection = st.dataframe(
+        overview_rows,
+        hide_index=True,
+        width="stretch",
+        alt="Privacy-masked patient records",
+        key="record_results_table",
+        on_select="rerun",
+        selection_mode="single-row",
+    )
+    with st.container(key="patient-results-table-hint"):
+        st.caption(
+            "Click the selection box on the left of any row to open the full "
+            "patient record."
+        )
+    selected_rows = selection.selection.rows
+    if selected_rows and 0 <= selected_rows[0] < len(records):
+        selected_record = records[selected_rows[0]]
+        st.session_state["manage_selected_patient_id"] = selected_record[
+            "patient_id"
+        ]
+        st.session_state.pop("manage_edit_patient_id", None)
+        st.session_state.pop("manage_delete_patient_id", None)
+        st.session_state.pop("manage_return_session_patient_id", None)
+        st.rerun()
 
 
 def _render_selected_patient_detail(selected_id):
@@ -311,40 +309,48 @@ def _render_selected_patient_detail(selected_id):
 
     if selected_patient is None:
         st.error("The selected patient record is no longer available.")
-        st.session_state.pop("manage_selected_patient_id", None)
-        st.session_state.pop("manage_edit_patient_id", None)
-        st.session_state.pop("manage_delete_patient_id", None)
+        _close_patient_detail_dialog()
         st.rerun()
         return
 
     patient = dict(selected_patient)
     selected_name = _patient_full_name(patient) or "Unnamed patient"
+    case_number = patient.get("patient_case_number") or "Not assigned"
     editing = st.session_state.get("manage_edit_patient_id") == selected_id
+    logging_return_session = (
+        st.session_state.get("manage_return_session_patient_id") == selected_id
+    )
     with st.container(key="selected-patient-details"):
+        st.caption("Patient ID / Case Number")
+        st.title(case_number)
+        if logging_return_session:
+            if st.button(
+                "Back to patient details",
+                key=f"return-session-back-{selected_id}",
+            ):
+                st.session_state.pop("manage_return_session_patient_id", None)
+                st.rerun()
+            st.subheader("Log Return Session")
+            _render_return_session_form(selected_id)
+            return
+
         with st.container(border=True):
-            back_column, title_column, action_column, delete_column = st.columns(
-                [0.8, 3.4, 1.2, 1.1], vertical_alignment="center"
+            back_column, edit_column, delete_column, session_column = st.columns(
+                [0.8, 1, 1, 1.8], vertical_alignment="center"
             )
             with back_column:
                 if st.button(
                     "Back",
                     icon=":material/arrow_back:",
-                    key="back_to_patient_results",
+                    key=f"back_to_patient_results-{selected_id}",
                     width="stretch",
                 ):
-                    st.session_state.pop("manage_selected_patient_id", None)
-                    st.session_state.pop("manage_edit_patient_id", None)
-                    st.session_state.pop("manage_delete_patient_id", None)
+                    _close_patient_detail_dialog()
                     st.rerun()
-            with title_column:
-                st.markdown(f"### {selected_name}")
-                st.caption(f"Patient record · ID {selected_id}")
-            with action_column:
-                action_label = "View information" if editing else "Edit"
-                action_icon = ":material/visibility:" if editing else ":material/edit:"
+            with edit_column:
                 if st.button(
-                    action_label,
-                    icon=action_icon,
+                    "Cancel edit" if editing else "Edit",
+                    icon=":material/edit:",
                     key=f"toggle_patient_edit_{selected_id}",
                     width="stretch",
                 ):
@@ -364,6 +370,19 @@ def _render_selected_patient_detail(selected_id):
                     st.session_state["manage_delete_patient_id"] = selected_id
                     st.session_state.pop("manage_edit_patient_id", None)
                     st.rerun()
+            with session_column:
+                if st.button(
+                    "Log Return Session",
+                    icon=":material/event_note:",
+                    key=f"log_return_session_{selected_id}",
+                    width="stretch",
+                ):
+                    st.session_state["manage_return_session_patient_id"] = (
+                        selected_id
+                    )
+                    st.session_state.pop("manage_edit_patient_id", None)
+                    st.session_state.pop("manage_delete_patient_id", None)
+                    st.rerun()
 
         delete_id = st.session_state.get("manage_delete_patient_id")
         if delete_id == selected_id:
@@ -371,7 +390,170 @@ def _render_selected_patient_detail(selected_id):
         elif editing:
             _render_patient_editor(selected_id, patient)
         else:
+            st.markdown(f"### {selected_name}")
             _render_patient_details(patient)
+            _render_return_session_history(selected_id)
+
+
+def _close_patient_detail_dialog():
+    for key in (
+        "manage_selected_patient_id",
+        "manage_edit_patient_id",
+        "manage_delete_patient_id",
+        "manage_return_session_patient_id",
+        "record_results_table",
+    ):
+        st.session_state.pop(key, None)
+
+
+def _save_return_session(
+    patient_id,
+    session_date,
+    session_time,
+    notes,
+    attendance_status,
+):
+    conn = get_local_connection()
+    try:
+        with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            patient_exists = conn.execute(
+                "SELECT 1 FROM patients WHERE patient_id = ?",
+                (patient_id,),
+            ).fetchone()
+            if patient_exists is None:
+                raise ValueError("The patient record is no longer available.")
+            conn.execute(
+                """
+                INSERT INTO patient_return_sessions (
+                    patient_id, session_date, session_time, notes,
+                    attendance_status
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    patient_id,
+                    session_date.isoformat(),
+                    session_time.strftime("%H:%M"),
+                    notes.strip(),
+                    attendance_status,
+                ),
+            )
+            conn.execute(
+                "INSERT INTO admin_logs (action_type, details) VALUES (?, ?)",
+                (
+                    "PATIENT RETURN SESSION LOGGED",
+                    f"Logged a return session for patient record {patient_id} "
+                    f"on {session_date.isoformat()} ({attendance_status}).",
+                ),
+            )
+    finally:
+        conn.close()
+
+
+def _render_return_session_form(patient_id):
+    with st.form(key=f"return-session-form-{patient_id}"):
+        date_column, time_column = st.columns(2)
+        with date_column:
+            session_date = st.date_input(
+                "Session date",
+                value=datetime.date.today(),
+                key=f"return-session-date-{patient_id}",
+            )
+        with time_column:
+            session_time = st.time_input(
+                "Session time",
+                value=datetime.datetime.now().time().replace(
+                    second=0,
+                    microsecond=0,
+                ),
+                key=f"return-session-time-{patient_id}",
+            )
+        notes = st.text_area(
+            "Notes / remarks",
+            key=f"return-session-notes-{patient_id}",
+        )
+        attendance_status = st.selectbox(
+            "Attendance / status",
+            APPOINTMENT_STATUSES,
+            index=None,
+            placeholder="Choose a status",
+            key=f"return-session-status-{patient_id}",
+        )
+        submitted = st.form_submit_button(
+            "Save return session",
+            type="primary",
+        )
+
+    if submitted:
+        if attendance_status not in APPOINTMENT_STATUSES:
+            st.error("Choose an attendance status before saving the session.")
+            return
+        try:
+            _save_return_session(
+                patient_id,
+                session_date,
+                session_time,
+                notes,
+                attendance_status,
+            )
+        except Exception as error:
+            st.error(f"Unable to save the return session: {error}")
+        else:
+            st.session_state.pop("manage_return_session_patient_id", None)
+            st.session_state["manage_success_message"] = (
+                "Return session logged successfully."
+            )
+            st.rerun()
+
+
+def _render_return_session_history(patient_id):
+    try:
+        conn = get_local_connection()
+    except Exception as error:
+        st.error(f"Unable to open the local patient archive: {error}")
+        return
+    try:
+        sessions = conn.execute(
+            """
+            SELECT session_date AS "Session date",
+                   session_time AS "Session time",
+                   attendance_status AS "Attendance / status",
+                   notes AS "Notes / remarks"
+            FROM patient_return_sessions
+            WHERE patient_id = ?
+            ORDER BY session_date DESC, session_time DESC, return_session_id DESC
+            """,
+            (patient_id,),
+        ).fetchall()
+    except Exception as error:
+        st.error(f"Unable to read return-session history: {error}")
+        return
+    finally:
+        conn.close()
+
+    with st.container(border=True, key="patient-return-session-history"):
+        st.markdown("#### Return session history")
+        if not sessions:
+            st.info("No return sessions have been logged for this patient.")
+            return
+        st.table(
+            pd.DataFrame([dict(session) for session in sessions]),
+            hide_index=True,
+            width="stretch",
+        )
+
+
+@st.dialog(
+    "Patient record",
+    width="large",
+    on_dismiss=_close_patient_detail_dialog,
+)
+def show_patient_detail_dialog(selected_id, success_message=None):
+    with st.container(key="paper-modal-content"):
+        if success_message:
+            st.success(success_message)
+        _render_selected_patient_detail(selected_id)
 
 
 def _render_patient_delete_confirmation(patient_id, patient):
@@ -379,7 +561,8 @@ def _render_patient_delete_confirmation(patient_id, patient):
     with st.container(border=True, key="patient-delete-confirmation"):
         st.warning(
             f"Delete the complete local patient record for **{delete_name}** "
-            f"(ID {patient_id})? This cannot be undone."
+            f"(Patient ID {patient.get('patient_case_number') or 'not assigned'})? "
+            "This cannot be undone."
         )
         cancel_column, confirm_column = st.columns(2)
         with cancel_column:
@@ -404,6 +587,11 @@ def _render_patient_delete_confirmation(patient_id, patient):
                     return
                 try:
                     with conn:
+                        conn.execute(
+                            "DELETE FROM patient_return_sessions "
+                            "WHERE patient_id = ?",
+                            (patient_id,),
+                        )
                         result = conn.execute(
                             "DELETE FROM patients WHERE patient_id = ?",
                             (patient_id,),
@@ -428,6 +616,11 @@ def _render_patient_delete_confirmation(patient_id, patient):
                     st.session_state.pop("manage_delete_patient_id", None)
                     st.session_state.pop("manage_edit_patient_id", None)
                     st.session_state.pop("manage_selected_patient_id", None)
+                    st.session_state.pop(
+                        "manage_return_session_patient_id",
+                        None,
+                    )
+                    st.session_state.pop("record_results_table", None)
                     st.session_state["manage_success_message"] = (
                         "The patient record was permanently deleted."
                     )
@@ -765,20 +958,14 @@ def _render_patient_editor(target_id, p):
 def show_manage_page():
     selected_id = st.session_state.get("manage_selected_patient_id")
     success_message = st.session_state.pop("manage_success_message", None)
+    search_notice = st.session_state.pop("manage_search_notice", None)
     if selected_id is not None:
-        with st.container(key="admin-search-page"):
-            st.markdown(
-                '<div class="search-eyebrow">Archived patient record</div>',
-                unsafe_allow_html=True,
-            )
-            st.markdown("# Patient information")
-            if success_message:
-                st.success(success_message)
-            _render_selected_patient_detail(selected_id)
+        show_patient_detail_dialog(selected_id, success_message)
         return
 
     st.session_state.pop("manage_edit_patient_id", None)
     st.session_state.pop("manage_delete_patient_id", None)
+    st.session_state.pop("manage_return_session_patient_id", None)
     with st.container(key="admin-search-page"):
         st.markdown(
             '<div class="search-eyebrow">Patient records</div>',
@@ -786,18 +973,14 @@ def show_manage_page():
         )
         st.markdown("# Search records")
         st.write(
-            "Search the local archive, review patient summaries, and securely "
-            "manage complete records."
+            "Search by Patient ID or use the restricted name lookup to review "
+            "and manage records."
         )
         if success_message:
             st.success(success_message)
-        st.session_state.setdefault("patient_search_query", "")
-        search_term = st.text_input(
-            "Search by patient name, ID, or location",
-            key="patient_search_query",
-            placeholder="Search patient name, ID, or location...",
-            icon=":material/search:",
-        ).strip()
+        if search_notice:
+            st.info(search_notice)
+        search_controls_placeholder = st.empty()
 
     try:
         conn = get_local_connection()
@@ -807,11 +990,11 @@ def show_manage_page():
     try:
         all_records = conn.execute(
             """
-            SELECT patient_id, first_name, middle_name, last_name, extension_name,
-                   calculated_age, sex, status, street_address, barangay,
-                   city_municipality, province
+            SELECT patient_id, patient_case_number, first_name, middle_name,
+                   last_name, extension_name, calculated_age, sex,
+                   city_municipality, province, barangay
             FROM patients
-            ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE, patient_id
+            ORDER BY patient_case_number COLLATE NOCASE, patient_id
             """
         ).fetchall()
     except Exception as error:
@@ -866,69 +1049,136 @@ def show_manage_page():
     if st.session_state.get("record_filter_barangay") not in barangay_options:
         st.session_state.pop("record_filter_barangay", None)
 
-    with st.container(border=True, key="record-search-filters"):
-        st.markdown("### Filter records")
-        province_column, city_column, barangay_column, gender_column = st.columns(4)
-        with province_column:
-            selected_province = st.selectbox(
-                "Province",
-                province_names,
-                index=None,
-                placeholder="Choose a Bicol province",
-                key="record_filter_province",
-                on_change=_clear_record_city_and_barangay,
+    with search_controls_placeholder.container():
+        search_column, name_column = st.columns([1.5, 1])
+        with search_column:
+            st.markdown("**Patient ID**")
+            st.session_state.setdefault(
+                "patient_case_search_year",
+                str(datetime.date.today().year),
             )
-        with city_column:
-            selected_city = st.selectbox(
-                "Municipality / City",
-                municipality_options,
-                index=None,
-                placeholder=(
-                    "Choose a province first"
-                    if selected_province is None
-                    else "Choose a municipality or city"
-                ),
-                disabled=selected_province is None,
-                key="record_filter_city",
-                on_change=_clear_record_barangay,
+            with st.container(
+                horizontal=True,
+                wrap=False,
+                vertical_alignment="center",
+                gap="small",
+            ):
+                st.markdown("**BOC -**", width="content")
+                patient_year = st.text_input(
+                    "Year",
+                    key="patient_case_search_year",
+                    max_chars=4,
+                    placeholder="YYYY",
+                    label_visibility="collapsed",
+                    width=76,
+                ).strip()
+                st.markdown("**-**", width="content")
+                patient_number = st.text_input(
+                    "Unique number",
+                    key="patient_case_search_number",
+                    max_chars=4,
+                    placeholder="0001",
+                    label_visibility="collapsed",
+                    width=80,
+                ).strip()
+        with name_column:
+            st.markdown("**Restricted Name Lookup**")
+            name_lookup_column, filter_button_column = st.columns(
+                [0.88, 0.12],
+                gap="small",
+                vertical_alignment="center",
             )
-        with barangay_column:
-            selected_barangay = st.selectbox(
-                "Barangay",
-                barangay_options,
-                index=None,
-                placeholder=(
-                    "Choose a municipality or city first"
-                    if selected_city is None
-                    else "Choose a barangay"
-                ),
-                disabled=selected_city is None,
-                key="record_filter_barangay",
-            )
-        with gender_column:
-            selected_gender = st.selectbox(
-                "Gender",
-                ["All genders", *genders],
-                key="record_filter_gender",
-            )
+            with name_lookup_column:
+                st.session_state.setdefault("patient_name_lookup_query", "")
+                name_search_term = st.text_input(
+                    "Restricted Name Lookup",
+                    key="patient_name_lookup_query",
+                    placeholder="Enter a patient name",
+                    type="password",
+                    label_visibility="collapsed",
+                    width="stretch",
+                ).strip()
+            with filter_button_column:
+                with st.popover(
+                    "",
+                    icon=":material/filter_alt:",
+                    help="Filter records",
+                    key="record_filters_popover",
+                    width="stretch",
+                ):
+                    province_column, city_column, barangay_column, gender_column = (
+                        st.columns(4)
+                    )
+                    with province_column:
+                        selected_province = st.selectbox(
+                            "Province",
+                            province_names,
+                            index=None,
+                            placeholder="Choose a Bicol province",
+                            key="record_filter_province",
+                            on_change=_clear_record_city_and_barangay,
+                        )
+                    with city_column:
+                        selected_city = st.selectbox(
+                            "Municipality / City",
+                            municipality_options,
+                            index=None,
+                            placeholder=(
+                                "Choose a province first"
+                                if selected_province is None
+                                else "Choose a municipality or city"
+                            ),
+                            disabled=selected_province is None,
+                            key="record_filter_city",
+                            on_change=_clear_record_barangay,
+                        )
+                    with barangay_column:
+                        selected_barangay = st.selectbox(
+                            "Barangay",
+                            barangay_options,
+                            index=None,
+                            placeholder=(
+                                "Choose a municipality or city first"
+                                if selected_city is None
+                                else "Choose a barangay"
+                            ),
+                            disabled=selected_city is None,
+                            key="record_filter_barangay",
+                        )
+                    with gender_column:
+                        selected_gender = st.selectbox(
+                            "Gender",
+                            ["All genders", *genders],
+                            key="record_filter_gender",
+                        )
 
-        minimum_age_column, maximum_age_column = st.columns(2)
-        with minimum_age_column:
-            minimum_age = st.number_input(
-                "Minimum age",
-                min_value=0,
-                max_value=120,
-                value=0,
-                key="record_filter_minimum_age",
-            )
-        with maximum_age_column:
-            maximum_age = st.number_input(
-                "Maximum age",
-                min_value=0,
-                max_value=120,
-                value=120,
-                key="record_filter_maximum_age",
-            )
+                    minimum_age_column, maximum_age_column = st.columns(2)
+                    with minimum_age_column:
+                        minimum_age = st.number_input(
+                            "Minimum age",
+                            min_value=0,
+                            max_value=120,
+                            value=0,
+                            key="record_filter_minimum_age",
+                        )
+                    with maximum_age_column:
+                        maximum_age = st.number_input(
+                            "Maximum age",
+                            min_value=0,
+                            max_value=120,
+                            value=120,
+                            key="record_filter_maximum_age",
+                        )
+
+    case_number_search_term = ""
+    if _is_four_digit_value(patient_year) and _is_four_digit_value(
+        patient_number
+    ):
+        case_number_search_term = f"BOC-{patient_year}-{patient_number}"
+    elif patient_number:
+        st.caption(
+            "Enter a four-digit year and unique number to search by Patient ID."
+        )
 
     if minimum_age > maximum_age:
         st.error("Minimum age cannot be greater than maximum age.")
@@ -936,23 +1186,16 @@ def show_manage_page():
 
     filtered_records = []
     for record in record_dicts:
-        if search_term:
-            searchable_values = (
-                record["patient_id"],
-                record["first_name"],
-                record["middle_name"],
-                record["last_name"],
-                record["extension_name"],
-                record["street_address"],
-                record["barangay"],
-                record["city_municipality"],
-                record["province"],
-            )
-            search_text = " ".join(
-                str(value or "") for value in searchable_values
-            ).casefold()
-            if search_term.casefold() not in search_text:
-                continue
+        if case_number_search_term and not _matches_patient_case_number(
+            record,
+            case_number_search_term,
+        ):
+            continue
+        if name_search_term and (
+            name_search_term.casefold()
+            not in _patient_full_name(record).casefold()
+        ):
+            continue
         if selected_province is not None and (
             _location_key(record["province"]) != _location_key(selected_province)
         ):
@@ -980,7 +1223,8 @@ def show_manage_page():
         filtered_records.append(record)
 
     filters_applied = bool(
-        search_term
+        case_number_search_term
+        or name_search_term
         or selected_province is not None
         or selected_city is not None
         or selected_barangay is not None
@@ -988,13 +1232,15 @@ def show_manage_page():
         or minimum_age > 0
         or maximum_age < 120
     )
-    st.markdown("---")
-    if not record_dicts:
-        st.info("There are no patient records in the local archive yet.")
-    elif not filtered_records:
-        st.info("No patient records match the search and selected filters.")
-    else:
+    with st.container(key="admin-search-results"):
+        st.markdown("---")
+        if not record_dicts:
+            st.info("There are no patient records in the local archive yet.")
+        elif not filtered_records:
+            st.info("No patient records match the search and selected filters.")
         _render_patient_results(filtered_records, filters_applied)
+    if st.session_state.get("show_encode_dialog"):
+        show_encode_dialog()
 
 if __name__ == "__main__":
     show_manage_page()

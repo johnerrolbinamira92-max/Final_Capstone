@@ -1188,6 +1188,13 @@ st.markdown(
             color: var(--hfrc-text);
         }
 
+        .st-key-admin-search-results {
+            max-width: 1440px;
+            margin-inline: auto;
+            padding-inline: clamp(1.25rem, 3vw, 2.5rem);
+            color: var(--hfrc-text);
+        }
+
         .st-key-admin-calendar-page .calendar-eyebrow,
         .st-key-admin-notifications-page .notifications-eyebrow,
         .st-key-admin-activity-page .activity-eyebrow {
@@ -1286,10 +1293,8 @@ st.markdown(
             letter-spacing: -.04em;
         }
 
-        .st-key-record-search-filters [data-testid="stVerticalBlockBorderWrapper"] {
-            border-color: var(--hfrc-line);
-            border-radius: 1rem;
-            background: var(--hfrc-surface);
+        .st-key-patient-results-table-hint [data-testid="stCaptionContainer"] {
+            color: var(--hfrc-teal-bright) !important;
         }
 
         [class*="st-key-patient-result-"] [data-testid="stExpander"],
@@ -1315,6 +1320,212 @@ st.markdown(
         .st-key-selected-patient-details .patient-not-recorded {
             color: var(--hfrc-muted) !important;
             font-size: .78rem;
+        }
+
+        [role="dialog"]:has(.st-key-paper-modal-content) {
+            background: #ffffff !important;
+            color: #111827 !important;
+        }
+
+        .st-key-paper-modal-content {
+            padding: 1.5rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 1rem;
+            background: #ffffff !important;
+            color: #111827 !important;
+            box-shadow: 0 1rem 2.5rem rgba(19, 52, 48, .12);
+        }
+
+        [role="dialog"]:has(.st-key-paper-modal-content) *,
+        [role="dialog"]:has(.st-key-paper-modal-content),
+        .st-key-paper-modal-content *,
+        .st-key-paper-modal-content {
+            color: #111827 !important;
+        }
+
+        .st-key-paper-modal-content .patient-not-recorded,
+        .st-key-selected-patient-details .patient-not-recorded,
+        .st-key-selected-patient-details [data-testid="stButton"] button,
+        .st-key-selected-patient-details [data-testid="stButton"] button * {
+            color: #111827 !important;
+        }
+
+        .st-key-paper-modal-content [data-testid="stVerticalBlockBorderWrapper"] {
+            border-color: #cbd5e1;
+            background: #ffffff !important;
+        }
+
+        .st-key-paper-modal-content [data-testid="stTextInput"] input,
+        .st-key-paper-modal-content [data-testid="stTextArea"] textarea,
+        .st-key-paper-modal-content [data-testid="stDateInput"] input,
+        .st-key-paper-modal-content [data-testid="stTimeInput"] input,
+        .st-key-paper-modal-content [data-testid="stNumberInput"] input,
+        .st-key-paper-modal-content [data-testid="stSelectbox"] [data-baseweb="select"] > div {
+            border: 1px solid #cbd5e1 !important;
+            background: #f8fafc !important;
+            color: #111827 !important;
+        }
+
+        .st-key-paper-modal-content [data-testid="stTextInput"] input::placeholder,
+        .st-key-paper-modal-content [data-testid="stTextArea"] textarea::placeholder,
+        .st-key-paper-modal-content [data-testid="stDateInput"] input::placeholder,
+        .st-key-paper-modal-content [data-testid="stTimeInput"] input::placeholder,
+        .st-key-paper-modal-content [data-testid="stNumberInput"] input::placeholder {
+            color: #64748b !important;
+            opacity: 1 !important;
+        }
+
+        .st-key-paper-modal-content [data-testid="stSelectbox"] [data-baseweb="select"] * {
+            color: #111827 !important;
+        }
+
+        .st-key-paper-modal-content [data-testid="stSelectbox"] [data-baseweb="select"] div:has(> svg) {
+            border-color: #113c38 !important;
+            border-radius: 0 .45rem .45rem 0;
+            background: #0b2e2b !important;
+        }
+
+        .st-key-paper-modal-content [data-testid="stSelectbox"] [data-baseweb="select"] svg,
+        .st-key-paper-modal-content [data-testid="stSelectbox"] [data-baseweb="select"] svg * {
+            color: #ffffff !important;
+            fill: #ffffff !important;
+            stroke: #ffffff !important;
+        }
+
+        .st-key-paper-modal-content [data-testid="stDateInput"] button {
+            border-color: #113c38 !important;
+            background: #0b2e2b !important;
+            color: #ffffff !important;
+        }
+
+        .st-key-paper-modal-content [data-testid="stDateInput"] button svg,
+        .st-key-paper-modal-content [data-testid="stDateInput"] button svg * {
+            color: #ffffff !important;
+            fill: #ffffff !important;
+            stroke: #ffffff !important;
+        }
+
+        .st-key-paper-modal-content [data-testid="stNumberInput"] button {
+            border-color: #cbd5e1 !important;
+            background: #f8fafc !important;
+            color: #111827 !important;
+        }
+
+        .st-key-paper-modal-content [data-testid="stDataEditor"],
+        .st-key-paper-modal-content [data-testid="stDataEditor"] * {
+            --gdg-bg-cell: #0b2e2b !important;
+            --gdg-bg-cell-medium: #113c38 !important;
+            --gdg-bg-group-header: #113c38 !important;
+            --gdg-bg-group-header-hovered: #164b45 !important;
+            --gdg-bg-header: #113c38 !important;
+            --gdg-bg-header-has-focus: #164b45 !important;
+            --gdg-bg-header-hovered: #164b45 !important;
+            --gdg-bg-search-result: #3a625d !important;
+            --gdg-border-color: #6f9c95 !important;
+            --gdg-horizontal-border-color: #6f9c95 !important;
+            --gdg-header-bottom-border-color: #8bb5ad !important;
+            --gdg-text-dark: #ffffff !important;
+            --gdg-text-medium: #e2f5f1 !important;
+            --gdg-text-light: #c5e3dd !important;
+            --gdg-text-header: #ffffff !important;
+            --gdg-text-header-selected: #ffffff !important;
+            --gdg-text-group-header: #ffffff !important;
+            --gdg-accent-color: #7ce0d2 !important;
+            --gdg-accent-fg: #0b2e2b !important;
+            --gdg-accent-light: #164b45 !important;
+            --gdg-bg-icon-header: #113c38 !important;
+            --gdg-fg-icon-header: #ffffff !important;
+            --gdg-link-color: #9af0e3 !important;
+        }
+
+        .st-key-paper-modal-content [data-testid="stDataEditor"] {
+            border: 1px solid #477872 !important;
+            border-radius: .5rem;
+            background: #0b2e2b !important;
+        }
+
+        .st-key-paper-modal-content [data-testid="stDataEditor"] * {
+            color: #ffffff !important;
+        }
+
+        .st-key-patient-return-session-history [data-testid="stVerticalBlockBorderWrapper"] {
+            border-color: #cbd5e1 !important;
+            background: #f8fafc !important;
+        }
+
+        .st-key-paper-modal-content [data-testid="stTable"],
+        .st-key-paper-modal-content [data-testid="stTable"] table,
+        .st-key-paper-modal-content [data-testid="stTable"] th,
+        .st-key-paper-modal-content [data-testid="stTable"] td {
+            border-color: #cbd5e1 !important;
+            background: #f8fafc !important;
+            color: #111827 !important;
+        }
+
+        .st-key-paper-modal-content [data-testid="stTable"] table {
+            border-collapse: collapse;
+        }
+
+        .st-key-paper-modal-content [data-testid="stTable"] th,
+        .st-key-paper-modal-content [data-testid="stTable"] td {
+            border-bottom: 1px solid #cbd5e1 !important;
+        }
+
+        .st-key-paper-modal-content [data-testid="stDataFrame"],
+        .st-key-paper-modal-content [data-testid="stDataFrame"] * {
+            --gdg-bg-cell: #ffffff !important;
+            --gdg-bg-cell-medium: #f8fafc !important;
+            --gdg-bg-group-header: #f1f5f9 !important;
+            --gdg-bg-group-header-hovered: #e2e8f0 !important;
+            --gdg-bg-header: #f1f5f9 !important;
+            --gdg-bg-header-has-focus: #e2e8f0 !important;
+            --gdg-bg-header-hovered: #e2e8f0 !important;
+            --gdg-bg-search-result: #fef3c7 !important;
+            --gdg-border-color: #cbd5e1 !important;
+            --gdg-horizontal-border-color: #cbd5e1 !important;
+            --gdg-header-bottom-border-color: #cbd5e1 !important;
+            --gdg-text-dark: #111827 !important;
+            --gdg-text-medium: #334155 !important;
+            --gdg-text-light: #475569 !important;
+            --gdg-text-header: #111827 !important;
+            --gdg-text-header-selected: #111827 !important;
+            --gdg-text-group-header: #111827 !important;
+            --gdg-accent-color: #0f766e !important;
+            --gdg-accent-fg: #ffffff !important;
+            --gdg-accent-light: #ccfbf1 !important;
+            background-color: #f8fafc !important;
+            color: #111827 !important;
+        }
+
+        body:has(.st-key-paper-modal-content) [data-baseweb="popover"],
+        body:has(.st-key-paper-modal-content) [data-baseweb="menu"],
+        body:has(.st-key-paper-modal-content) [role="listbox"] {
+            border-color: #cbd5e1 !important;
+            background: #ffffff !important;
+            color: #111827 !important;
+        }
+
+        body:has(.st-key-paper-modal-content) [role="option"] {
+            background: #ffffff !important;
+            color: #111827 !important;
+        }
+
+        body:has(.st-key-paper-modal-content) [role="option"] *,
+        body:has(.st-key-paper-modal-content) [data-baseweb="calendar"] * {
+            color: #111827 !important;
+        }
+
+        body:has(.st-key-paper-modal-content) [role="option"]:hover,
+        body:has(.st-key-paper-modal-content) [role="option"][aria-selected="true"] {
+            background: #e2e8f0 !important;
+            color: #111827 !important;
+        }
+
+        body:has(.st-key-paper-modal-content) [data-baseweb="calendar"],
+        body:has(.st-key-paper-modal-content) [data-baseweb="calendar"] button {
+            border-color: #cbd5e1 !important;
+            background: #ffffff !important;
+            color: #111827 !important;
         }
 
         [data-testid="stMainBlockContainer"]:has(.st-key-admin-search-page) [data-testid="stExpander"] {
@@ -1503,8 +1714,9 @@ encode_page = st.Page(
 
 search_page = st.Page(
     show_search_page,
-    title="Search Records",
+    title="Record Management",
     icon=":material/search:",
+    url_path="record_management",
 )
 
 appointments_page = st.Page(
@@ -1554,7 +1766,6 @@ if SUPABASE_URL and SUPABASE_KEY:
 def show_overview_page():
     show_home_dashboard_page(
         statistics_page=dashboard_page,
-        encode_page=encode_page,
         appointments_page=appointments_page,
         search_page=search_page,
         notifications_page=notifications_page,
@@ -1614,8 +1825,7 @@ with st.sidebar:
         for page, label, icon in (
             (home_page, "Home", ":material/home:"),
             (dashboard_page, "Patient Statistics", ":material/analytics:"),
-            (encode_page, "Add Records", ":material/person_add:"),
-            (search_page, "Search Records", ":material/search:"),
+            (search_page, "Record Management", ":material/manage_search:"),
             (appointments_page, "Appointments", ":material/calendar_month:"),
             (
                 notifications_page,

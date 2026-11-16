@@ -1,4 +1,6 @@
+import datetime
 import os
+import re
 import sqlite3
 from pathlib import Path
 from urllib.parse import urlparse
@@ -38,6 +40,7 @@ def initialize_local_database():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS patients (
         patient_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        patient_case_number TEXT,
         date_registered TEXT DEFAULT CURRENT_DATE,
         
         -- Page 1: Referral & Intake
@@ -107,6 +110,53 @@ def initialize_local_database():
     existing_columns = {
         row[1] for row in cursor.execute("PRAGMA table_info(patients)").fetchall()
     }
+    if "patient_case_number" not in existing_columns:
+        cursor.execute("ALTER TABLE patients ADD COLUMN patient_case_number TEXT")
+        existing_columns.add("patient_case_number")
+
+    current_year = datetime.date.today().year
+    case_number_pattern = re.compile(
+        rf"BOC-{current_year}-(\d+)",
+        re.IGNORECASE,
+    )
+    existing_case_numbers = cursor.execute(
+        "SELECT patient_id, patient_case_number FROM patients "
+        "ORDER BY patient_id"
+    ).fetchall()
+    used_case_numbers = {
+        row["patient_case_number"].strip().casefold()
+        for row in existing_case_numbers
+        if row["patient_case_number"] and row["patient_case_number"].strip()
+    }
+    sequence = max(
+        (
+            int(match.group(1))
+            for row in existing_case_numbers
+            if row["patient_case_number"]
+            and (match := case_number_pattern.fullmatch(row["patient_case_number"].strip()))
+        ),
+        default=0,
+    )
+    for row in existing_case_numbers:
+        if row["patient_case_number"] and row["patient_case_number"].strip():
+            continue
+        while True:
+            sequence += 1
+            case_number = f"BOC-{current_year}-{sequence:04d}"
+            if case_number.casefold() not in used_case_numbers:
+                break
+        cursor.execute(
+            "UPDATE patients SET patient_case_number = ? WHERE patient_id = ?",
+            (case_number, row["patient_id"]),
+        )
+        used_case_numbers.add(case_number.casefold())
+
+    cursor.execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_patients_case_number_unique
+    ON patients(patient_case_number COLLATE NOCASE)
+    WHERE patient_case_number IS NOT NULL AND TRIM(patient_case_number) != ''
+    """)
+
     if "purok" not in existing_columns:
         cursor.execute("ALTER TABLE patients ADD COLUMN purok TEXT")
         existing_columns.add("purok")
@@ -160,6 +210,23 @@ def initialize_local_database():
     """)
 
     cursor.execute("""
+    CREATE TABLE IF NOT EXISTS patient_return_sessions (
+        return_session_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        patient_id INTEGER NOT NULL,
+        session_date TEXT NOT NULL,
+        session_time TEXT NOT NULL,
+        notes TEXT,
+        attendance_status TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(patient_id) REFERENCES patients(patient_id) ON DELETE CASCADE
+    );
+    """)
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_patient_return_sessions_patient
+    ON patient_return_sessions(patient_id, session_date DESC, session_time DESC);
+    """)
+
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS admin_notification_reads (
         admin_user_id TEXT NOT NULL,
         notification_id TEXT NOT NULL,
@@ -170,6 +237,35 @@ def initialize_local_database():
 
     conn.commit()
     conn.close()
+
+
+def get_next_patient_case_number(year=None):
+    """Return the next BOC case number for the requested year."""
+    target_year = int(year or datetime.date.today().year)
+    year_label = f"{target_year:04d}"
+    pattern = re.compile(rf"BOC-{year_label}-(\d+)", re.IGNORECASE)
+    conn = get_local_connection()
+    try:
+        case_numbers = conn.execute(
+            "SELECT patient_case_number FROM patients "
+            "WHERE patient_case_number IS NOT NULL"
+        ).fetchall()
+        sequence = max(
+            (
+                int(match.group(1))
+                for row in case_numbers
+                if (match := pattern.fullmatch(row["patient_case_number"].strip()))
+            ),
+            default=0,
+        )
+        if sequence >= 9999:
+            raise ValueError(
+                f"No four-digit Patient ID sequence numbers remain for {year_label}."
+            )
+        return f"BOC-{year_label}-{sequence + 1:04d}"
+    finally:
+        conn.close()
+
 
 def authenticate_admin(email: str, password: str) -> dict:
     """Authenticate a private-app administrator through Supabase Auth and RLS."""

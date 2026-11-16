@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from database import get_local_connection
+from database import get_local_connection, get_next_patient_case_number
 from views.record_tables import dataframe_to_storage
 
 # Define static calendar threshold boundaries globally at the top level
@@ -40,6 +40,30 @@ def _clear_birth_month_and_day(month_key, day_key):
 
 def _clear_birth_day(day_key):
     st.session_state.pop(day_key, None)
+
+
+def _is_four_digit_value(value):
+    return (
+        len(value) == 4
+        and value.isascii()
+        and value.isdigit()
+        and int(value) > 0
+    )
+
+
+def _refresh_case_number_sequence(year_key, sequence_key):
+    year = st.session_state.get(year_key, "")
+    if _is_four_digit_value(year):
+        error_key = f"{sequence_key}_error"
+        try:
+            st.session_state[sequence_key] = get_next_patient_case_number(
+                int(year)
+            ).rsplit("-", 1)[1]
+        except ValueError as error:
+            st.session_state[sequence_key] = ""
+            st.session_state[error_key] = str(error)
+        else:
+            st.session_state.pop(error_key, None)
 
 
 def _calculate_age(birth_date, today=None):
@@ -242,7 +266,23 @@ def _save_patient_record(payload, first_name, last_name):
     conn = get_local_connection()
     try:
         with conn:
+            case_number = str(payload.get("patient_case_number", "")).strip()
+            if not case_number:
+                raise ValueError("Patient ID / Case Number is required.")
+            payload["patient_case_number"] = case_number
+
+            conn.execute("BEGIN IMMEDIATE")
             cursor = conn.cursor()
+            duplicate = cursor.execute(
+                "SELECT patient_id FROM patients "
+                "WHERE patient_case_number = ? COLLATE NOCASE",
+                (case_number,),
+            ).fetchone()
+            if duplicate is not None:
+                raise ValueError(
+                    f"Patient ID / Case Number '{case_number}' is already in use."
+                )
+
             columns = ", ".join(payload.keys())
             placeholders = ", ".join(["?"] * len(payload))
             query = f"INSERT INTO patients ({columns}) VALUES ({placeholders})"
@@ -333,6 +373,55 @@ def show_encode_page():
     address_hierarchy = _load_bicol_address_hierarchy()
 
     # --- Section Layout Form Setup ---
+    year_key = widget_key("patient_case_year")
+    sequence_key = widget_key("patient_case_sequence")
+    if year_key not in st.session_state:
+        st.session_state[year_key] = str(datetime.date.today().year)
+    if sequence_key not in st.session_state:
+        st.session_state[sequence_key] = ""
+        _refresh_case_number_sequence(year_key, sequence_key)
+
+    st.markdown("### Patient ID / Case Number")
+    with st.container(
+        horizontal=True,
+        wrap=False,
+        vertical_alignment="center",
+        gap="small",
+    ):
+        st.markdown("**BOC -**", width="content")
+        patient_year = st.text_input(
+            "Year",
+            key=year_key,
+            max_chars=4,
+            placeholder="YYYY",
+            on_change=_refresh_case_number_sequence,
+            args=(year_key, sequence_key),
+            label_visibility="collapsed",
+            width=76,
+        ).strip()
+        st.markdown("**-**", width="content")
+        patient_sequence = st.text_input(
+            "Unique number",
+            key=sequence_key,
+            max_chars=4,
+            placeholder="0001",
+            label_visibility="collapsed",
+            width=80,
+        ).strip()
+    patient_case_number = (
+        f"BOC-{patient_year}-{patient_sequence}"
+        if _is_four_digit_value(patient_year)
+        and _is_four_digit_value(patient_sequence)
+        else ""
+    )
+    st.caption(
+        "The unique number is auto-filled from the selected year and remains "
+        "editable."
+    )
+    sequence_error = st.session_state.get(f"{sequence_key}_error")
+    if sequence_error:
+        st.error(sequence_error)
+
     st.markdown("### 🏢 Referral Context & Interview Logistics")
     c_ref1, c_ref2 = st.columns(2)
     with c_ref1:
@@ -504,7 +593,14 @@ def show_encode_page():
     )
 
     if submit_button:
-        if not last_name or not first_name:
+        if not _is_four_digit_value(patient_year) or not _is_four_digit_value(
+            patient_sequence
+        ):
+            st.error(
+                "⚠️ Validation Error: Year and unique number must each contain "
+                "exactly four digits."
+            )
+        elif not last_name or not first_name:
             st.error("⚠️ Validation Error: Last Name and First Name fields must be filled.")
         else:
             try:
@@ -513,6 +609,7 @@ def show_encode_page():
                 med_text_summary = dataframe_to_storage(edited_med_df)
 
                 raw_payload = {
+                    "patient_case_number": patient_case_number,
                     "referral_noted_by": referral_noted_by, "means_of_referral": means_of_referral,
                     "interview_date": str(interview_date) if interview_date else None, "interview_place": interview_place,
                     "interview_persons_present": interview_persons_present, "primary_source_of_information": primary_source_info,
@@ -548,22 +645,28 @@ def show_encode_page():
                 # Filter empty parameters
                 cleaned_payload = {k: v for k, v in raw_payload.items() if v != ""}
 
-                patient_id = _save_patient_record(
-                    cleaned_payload,
-                    first_name,
-                    last_name,
-                )
-                st.session_state["record_added_pending"] = True
-                st.session_state["record_added_id"] = patient_id
-                st.rerun()
+                try:
+                    _save_patient_record(
+                        cleaned_payload,
+                        first_name,
+                        last_name,
+                    )
+                except ValueError as e:
+                    st.error(f"⚠️ Validation Error: {str(e)}")
+                else:
+                    st.session_state["record_added_pending"] = True
+                    st.session_state["record_added_case_number"] = (
+                        patient_case_number
+                    )
+                    st.rerun()
             except Exception as e:
                 st.error(f"❌ Storage Execution Error: {str(e)}")
 
     if st.session_state.get("record_added_pending"):
-        patient_id = st.session_state.pop("record_added_id", None)
-        if patient_id is not None:
+        case_number = st.session_state.pop("record_added_case_number", None)
+        if case_number is not None:
             st.success(
-                f"Record #{patient_id} was saved and verified in the local archive."
+                f"Patient ID {case_number} was saved and verified in the local archive."
             )
         st.button(
             "✅ Record added — click here to clear the form",
@@ -571,5 +674,22 @@ def show_encode_page():
             type="primary",
         )
 
+
+def _dismiss_encode_dialog():
+    st.session_state.pop("show_encode_dialog", None)
+    if st.session_state.get("record_added_pending"):
+        _reset_encode_form()
+
+
+@st.dialog(
+    "Encode patient information",
+    width="large",
+    on_dismiss=_dismiss_encode_dialog,
+)
+def show_encode_dialog():
+    with st.container(key="encode-modal-content"):
+        show_encode_page()
+
+
 if __name__ == "__main__":
-            show_encode_page()
+    show_encode_page()

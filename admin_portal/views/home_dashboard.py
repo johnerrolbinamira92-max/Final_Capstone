@@ -60,8 +60,49 @@ PROVINCE_COLORS = (
 def _submit_overview_search(search_page):
     query = st.session_state.get("home_search_query", "").strip()
     if search_page is not None:
-        st.session_state["patient_search_query"] = query
+        year = str(datetime.now().year)
+        sequence = ""
+        parts = query.upper().split("-")
+        if (
+            len(parts) == 3
+            and parts[0] == "BOC"
+            and len(parts[1]) == 4
+            and parts[1].isascii()
+            and parts[1].isdigit()
+            and len(parts[2]) == 4
+            and parts[2].isascii()
+            and parts[2].isdigit()
+        ):
+            year, sequence = parts[1], parts[2]
+            st.session_state.pop("manage_search_notice", None)
+        elif len(query) == 4 and query.isascii() and query.isdigit():
+            sequence = query
+            st.session_state.pop("manage_search_notice", None)
+        elif query:
+            st.session_state["manage_search_notice"] = (
+                "Enter a full BOC-YYYY-NNNN Patient ID or a four-digit "
+                "sequence number."
+            )
+        else:
+            st.session_state.pop("manage_search_notice", None)
+        st.session_state["patient_case_search_year"] = year
+        st.session_state["patient_case_search_number"] = sequence
         st.switch_page(search_page)
+
+
+def _open_encode_from_home(search_page):
+    if search_page is None:
+        return
+    for key in (
+        "manage_selected_patient_id",
+        "manage_edit_patient_id",
+        "manage_delete_patient_id",
+        "manage_return_session_patient_id",
+        "record_results_table",
+    ):
+        st.session_state.pop(key, None)
+    st.session_state["show_encode_dialog"] = True
+    st.switch_page(search_page)
 
 
 def _render_overview_toolbar(
@@ -85,7 +126,7 @@ def _render_overview_toolbar(
                 ):
                     st.text_input(
                         "Search patient records",
-                        placeholder="Search patient name, ID, or location...",
+                        placeholder="Patient ID (BOC-2026-0001)...",
                         icon=":material/search:",
                         label_visibility="collapsed",
                         key="home_search_query",
@@ -94,7 +135,7 @@ def _render_overview_toolbar(
                     submitted = st.form_submit_button(
                         "Search",
                         key="overview-search-submit",
-                        help="Open Search Records",
+                        help="Open Record Management",
                         width="content",
                         disabled=search_page is None,
                     )
@@ -321,7 +362,6 @@ def _render_appointments(appointments, today, appointments_page, error=None):
 def show_home_dashboard_page(
     *,
     statistics_page=None,
-    encode_page=None,
     appointments_page=None,
     search_page=None,
     notifications_page=None,
@@ -390,14 +430,15 @@ def show_home_dashboard_page(
                 st.markdown(f"## {greeting_period}, Administrator.")
                 st.write("Here’s what’s happening at Holy Face Center today.")
             with encode_column:
-                if encode_page is not None:
+                if search_page is not None:
                     with st.container(key="home-encode-action"):
-                        st.page_link(
-                            encode_page,
-                            label="Encode new record",
-                            icon=":material/add:",
+                        if st.button(
+                            "+ Encode new record",
+                            type="primary",
+                            key="home-encode-new-record",
                             width="stretch",
-                        )
+                        ):
+                            _open_encode_from_home(search_page)
 
             kpi_data = [
                 (
