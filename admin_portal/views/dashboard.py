@@ -310,8 +310,8 @@ def show_dashboard_page():
         with st.container(key="statistics-intro"):
             st.markdown(
                 """
-                <div class="statistics-eyebrow">Regional analytics</div>
-                <h1 class="statistics-title">Patient statistics</h1>
+                <div class="statistics-eyebrow">Regional Analytics</div>
+                <h1 class="statistics-title">Patient Statistics</h1>
                 <p class="statistics-description">
                   Explore patient distribution and status across Bicol Region.
                 </p>
@@ -392,7 +392,7 @@ def show_dashboard_page():
         province_data = df.iloc[0:0]
         city_data = df.iloc[0:0]
         barangay_data = df.iloc[0:0]
-        location_label = "All patients"
+        location_label = "All Patients"
         if province is not None:
             province_data = df[df["province_key"] == _location_key(province)]
             selected_data = province_data
@@ -412,17 +412,17 @@ def show_dashboard_page():
 
         with st.container(horizontal=True, key="statistics-kpis"):
             st.metric(
-                f"Total patients · {location_label}",
+                f"Total Patients · {location_label}",
                 f"{len(selected_data):,}",
                 border=True,
             )
             st.metric(
-                "Alive patients",
+                "Alive Patients",
                 f"{int((selected_data['status'] == 'Alive').sum()):,}",
                 border=True,
             )
             st.metric(
-                "Deceased patients",
+                "Deceased Patients",
                 f"{int((selected_data['status'] == 'Deceased').sum()):,}",
                 border=True,
             )
@@ -431,18 +431,18 @@ def show_dashboard_page():
         with growth_column:
             with st.container(border=True, key="statistics-growth-card"):
                 st.markdown(
-                    '<div class="statistics-card-eyebrow">Patient growth</div>',
+                    '<div class="statistics-card-eyebrow">Patient Growth</div>',
                     unsafe_allow_html=True,
                 )
-                st.markdown("### Monthly registrations")
+                st.markdown("### Monthly Registrations")
                 _render_registration_chart(selected_data)
         with status_column:
             with st.container(border=True, key="statistics-status-card"):
                 st.markdown(
-                    '<div class="statistics-card-eyebrow">Patient status</div>',
+                    '<div class="statistics-card-eyebrow">Patient Status</div>',
                     unsafe_allow_html=True,
                 )
-                st.markdown("### Current distribution")
+                st.markdown("### Current Distribution")
                 _render_status_distribution(selected_data)
 
         if province is None:
@@ -452,7 +452,7 @@ def show_dashboard_page():
                 "Province",
                 province_options,
             )
-            chart_title = "Patients by province"
+            chart_title = "Patients by Province"
             category_label = "Province"
         elif city is None:
             chart_data = _location_counts(
@@ -461,7 +461,7 @@ def show_dashboard_page():
                 "Municipality / City",
                 municipality_options,
             )
-            chart_title = f"Patients by municipality / city in {province}"
+            chart_title = f"Patients by Municipality / City in {province}"
             category_label = "Municipality / City"
         elif barangay is None:
             chart_data = _location_counts(
@@ -470,7 +470,7 @@ def show_dashboard_page():
                 "Barangay",
                 barangay_options,
             )
-            chart_title = f"Patients by barangay in {city}"
+            chart_title = f"Patients by Barangay in {city}"
             category_label = "Barangay"
         else:
             chart_data = _location_counts(
@@ -478,12 +478,12 @@ def show_dashboard_page():
                 "purok",
                 "Purok",
             )
-            chart_title = f"Patients by purok in {barangay}"
+            chart_title = f"Patients by Purok in {barangay}"
             category_label = "Purok"
 
         with st.container(border=True, key="statistics-distribution"):
             st.markdown(
-                '<div class="statistics-card-eyebrow">Geographic breakdown</div>',
+                '<div class="statistics-card-eyebrow">Geographic Breakdown</div>',
                 unsafe_allow_html=True,
             )
             st.markdown(f"### {chart_title}")

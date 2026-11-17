@@ -8,6 +8,7 @@ const form = document.querySelector("#entry-form");
 const messageField = document.querySelector("#message");
 const countLabel = document.querySelector("#character-count");
 const submitButton = document.querySelector("#submit-button");
+const viewTabs = Array.from(document.querySelectorAll('[role="tab"]'));
 
 const privateEntries = createPrivateEntries({
   historyElement: document.querySelector("#entry-history"),
@@ -15,6 +16,73 @@ const privateEntries = createPrivateEntries({
 });
 const callbackSchedule = initCallbackSchedule({
   onSelection: hideFeedback
+});
+
+function activateView(tab, moveFocus = false) {
+  viewTabs.forEach((candidate) => {
+    const isActive = candidate === tab;
+    candidate.setAttribute("aria-selected", String(isActive));
+    candidate.tabIndex = isActive ? 0 : -1;
+    document.getElementById(
+      candidate.getAttribute("aria-controls")
+    ).hidden = !isActive;
+  });
+  if (moveFocus) tab.focus();
+}
+
+viewTabs.forEach((tab, index) => {
+  tab.addEventListener("click", () => activateView(tab));
+  tab.addEventListener("keydown", (event) => {
+    let nextIndex;
+    if (event.key === "ArrowRight") {
+      nextIndex = (index + 1) % viewTabs.length;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex = (index - 1 + viewTabs.length) % viewTabs.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = viewTabs.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    activateView(viewTabs[nextIndex], true);
+  });
+});
+activateView(viewTabs.find((tab) => tab.getAttribute("aria-selected") === "true"));
+
+document
+  .querySelector(".hero-actions a[href=\"#share\"]")
+  .addEventListener("click", () => {
+    activateView(viewTabs[0]);
+  });
+
+const callCenterButton = document.querySelector("#call-center-button");
+const contactDialog = document.querySelector("#contact-dialog");
+const mobileUserAgent = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+
+callCenterButton.addEventListener("click", (event) => {
+  if (window.innerWidth > 768 || !mobileUserAgent) {
+    event.preventDefault();
+    contactDialog.showModal();
+  }
+});
+
+document.querySelector("#contact-dialog-close").addEventListener("click", () => {
+  contactDialog.close();
+});
+contactDialog.addEventListener("click", (event) => {
+  if (event.target === contactDialog) contactDialog.close();
+});
+
+document.querySelector("#copy-number-button").addEventListener("click", async () => {
+  const copyStatus = document.querySelector("#copy-number-status");
+  try {
+    await navigator.clipboard.writeText("0920-691-5015");
+    copyStatus.textContent = "Number copied.";
+  } catch {
+    copyStatus.textContent = "Copying isn’t available here. You can call 0920-691-5015 directly.";
+  }
 });
 
 function setFlow(value) {

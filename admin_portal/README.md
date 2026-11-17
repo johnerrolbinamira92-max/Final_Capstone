@@ -20,6 +20,16 @@ Set `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_KEY` in `.env` to the
 values for your Supabase project. Keep the service-role/secret key private; do
 not put it in `patient_portal/config.js` or commit `.env`.
 
+## Offline admin login
+
+To seed a local fallback account before the first online sign-in, set
+`LOCAL_ADMIN_EMAIL` and a strong, unique `LOCAL_ADMIN_PASSWORD` in the private
+repository-root `.env` file. `LOCAL_ADMIN_DISPLAY_NAME` and `LOCAL_ADMIN_ROLE`
+are optional. The password is stored in SQLite only as a salted PBKDF2 hash.
+Once an admin signs in online successfully, that account's local password hash
+is refreshed automatically. Do not commit the `.env` file or share its
+credentials.
+
 ## Create the single admin account
 
 1. In Supabase, open **Authentication → Users** and create the admin user with

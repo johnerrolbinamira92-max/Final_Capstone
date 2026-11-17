@@ -5,7 +5,13 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
-from database import get_local_connection, get_supabase_client
+from database import (
+    SUPABASE_KEY,
+    get_local_connection,
+    get_supabase_client,
+    is_supabase_connection_available,
+    is_supabase_connection_error,
+)
 
 
 ACTIVE_STATUSES = ("Pending", "Scheduled", "Rescheduled")
@@ -417,7 +423,7 @@ def _render_selected_day(appointments, selected_date):
     display_date = (
         f"{selected_date.strftime('%A, %B')} {selected_date.day}, {selected_date.year}"
     )
-    st.markdown("#### Selected day")
+    st.markdown("#### Selected Day")
     st.markdown(f"### {display_date}")
     if day_appointments.empty:
         st.info("No appointments are recorded for this date yet.")
@@ -473,7 +479,7 @@ def _render_selected_day(appointments, selected_date):
 
 
 def _render_appointment_history(appointments, today):
-    st.markdown("#### Appointment history")
+    st.markdown("#### Appointment History")
     st.caption(
         "Completed means the patient attended; No-show means they did not attend. "
         "Past appointments without an outcome remain visible until updated."
@@ -576,7 +582,7 @@ def _update_appointment_outcome(client, appointment, status):
 
 def _render_awaiting_outcomes(appointments, client, *, now=None):
     now = now or datetime.now(ZoneInfo("Asia/Manila"))
-    st.markdown("### Visits awaiting outcome")
+    st.markdown("### Visits Awaiting Outcome")
     st.caption(
         "Appointments remain here after their scheduled time until you mark "
         "them done, cancelled, or as a no-show."
@@ -653,7 +659,7 @@ def _log_appointment_action(action_type, details):
 
 
 def _render_schedule_form(client):
-    st.markdown("### Set an appointment")
+    st.markdown("### Set an Appointment")
     st.caption(
         "Patient-app requests appear here with Pending status. "
         "Appointments entered by an admin are saved as Scheduled."
@@ -1017,7 +1023,7 @@ def _render_help_requests(client):
 def show_appointments_page():
     with st.container(key="admin-calendar-page"):
         st.markdown(
-            '<div class="calendar-eyebrow">Appointment management</div>',
+            '<div class="calendar-eyebrow">Appointment Management</div>',
             unsafe_allow_html=True,
         )
         title_column, action_column = st.columns(
@@ -1036,10 +1042,11 @@ def show_appointments_page():
                 width="stretch",
                 key="appointment_refresh_data",
             ):
+                is_supabase_connection_available.clear()
                 st.rerun()
 
             if st.button(
-                "Set an appointment",
+                "Set an Appointment",
                 type="primary",
                 icon=":material/add:",
                 width="stretch",
@@ -1048,8 +1055,25 @@ def show_appointments_page():
                 st.query_params["focus"] = "schedule"
                 st.rerun()
 
+        if not SUPABASE_KEY:
+            st.info(
+                "Appointments need the Supabase service key in the private .env "
+                "file. Local records remain available offline."
+            )
+            return
+        if not is_supabase_connection_available():
+            st.info(
+                "Appointments require a Supabase connection. Reconnect to load "
+                "online schedules; local records remain available offline."
+            )
+            return
+
         client = get_supabase_client()
         if client is None:
+            st.info(
+                "Appointments are unavailable until the Supabase connection is "
+                "configured."
+            )
             return
 
         try:
@@ -1058,6 +1082,13 @@ def show_appointments_page():
                 client, appointments
             )
         except Exception as error:
+            if is_supabase_connection_error(error):
+                is_supabase_connection_available.clear()
+                st.info(
+                    "Appointments are temporarily unavailable because Supabase "
+                    "cannot be reached. Reconnect and refresh to try again."
+                )
+                return
             st.error(
                 "Unable to load the appointment calendar from Supabase. Check the "
                 "project API URL, run the appointment and patient-help-request SQL "

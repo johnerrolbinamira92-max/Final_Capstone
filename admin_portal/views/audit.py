@@ -104,10 +104,10 @@ def _format_activity(action_type, details):
 def show_audit_page():
     with st.container(key="admin-activity-page"):
         st.markdown(
-            '<div class="activity-eyebrow">Admin actions</div>',
+            '<div class="activity-eyebrow">Admin Actions</div>',
             unsafe_allow_html=True,
         )
-        st.markdown("# Activity history")
+        st.markdown("# Activity History")
         st.write(
             "Review patient record and appointment changes saved by administrators. "
             "Navigation and searches are not recorded."

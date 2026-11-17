@@ -1,6 +1,7 @@
 import base64
 import mimetypes
 import os
+import sqlite3
 from pathlib import Path
 
 import streamlit as st
@@ -8,7 +9,12 @@ from database import (
     SUPABASE_KEY,
     SUPABASE_URL,
     authenticate_admin,
+    authenticate_local_admin,
+    cache_local_admin_user,
     get_supabase_client,
+    is_supabase_connection_available,
+    is_supabase_connection_error,
+    OnlineAuthenticationUnavailable,
 )
 from views.appointments import show_appointments_page
 from views.audit import show_audit_page
@@ -1317,102 +1323,68 @@ st.markdown(
             background: var(--hfrc-surface);
         }
 
+        [role="dialog"]:has(.st-key-selected-patient-details) {
+            background: #003f3b !important;
+            color: #e6f4f1 !important;
+        }
+
+        [role="dialog"]:has(.st-key-selected-patient-details) *,
+        .st-key-selected-patient-details,
+        .st-key-selected-patient-details * {
+            color: #e6f4f1 !important;
+        }
+
+        .st-key-selected-patient-details .patient-field-label {
+            display: block;
+            margin-bottom: .35rem;
+            color: #94b8b3 !important;
+            font-size: .78rem !important;
+            font-weight: 600;
+            letter-spacing: .04em;
+            line-height: 1.35;
+            text-transform: uppercase;
+        }
+
         .st-key-selected-patient-details .patient-not-recorded {
-            color: var(--hfrc-muted) !important;
-            font-size: .78rem;
+            color: #6b8e89 !important;
+            font-size: .82rem;
+            font-style: italic;
         }
 
-        [role="dialog"]:has(.st-key-paper-modal-content) {
-            background: #ffffff !important;
-            color: #111827 !important;
+        .st-key-selected-patient-details .patient-field-value {
+            margin-bottom: .5rem;
+            box-sizing: border-box;
+            padding: 10px 12px;
+            border: 1px solid rgba(167, 243, 208, .14);
+            border-radius: 8px;
+            background: #0b2e2b;
+            color: #ffffff !important;
+            font-size: 1rem !important;
+            font-weight: 500;
+            line-height: 1.55;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
         }
 
-        .st-key-paper-modal-content {
-            padding: 1.5rem;
-            border: 1px solid #cbd5e1;
-            border-radius: 1rem;
-            background: #ffffff !important;
-            color: #111827 !important;
-            box-shadow: 0 1rem 2.5rem rgba(19, 52, 48, .12);
+        .st-key-selected-patient-details [data-testid="stVerticalBlockBorderWrapper"] {
+            border-color: #6f9c95 !important;
+            background: #064c46 !important;
         }
 
-        [role="dialog"]:has(.st-key-paper-modal-content) *,
-        [role="dialog"]:has(.st-key-paper-modal-content),
-        .st-key-paper-modal-content *,
-        .st-key-paper-modal-content {
-            color: #111827 !important;
+        .st-key-selected-patient-details [data-testid="stButton"] button {
+            border-color: #6f9c95 !important;
+            background: #064c46 !important;
+            color: #e6f4f1 !important;
         }
 
-        .st-key-paper-modal-content .patient-not-recorded,
-        .st-key-selected-patient-details .patient-not-recorded,
-        .st-key-selected-patient-details [data-testid="stButton"] button,
         .st-key-selected-patient-details [data-testid="stButton"] button * {
-            color: #111827 !important;
+            color: #e6f4f1 !important;
         }
 
-        .st-key-paper-modal-content [data-testid="stVerticalBlockBorderWrapper"] {
-            border-color: #cbd5e1;
-            background: #ffffff !important;
-        }
-
-        .st-key-paper-modal-content [data-testid="stTextInput"] input,
-        .st-key-paper-modal-content [data-testid="stTextArea"] textarea,
-        .st-key-paper-modal-content [data-testid="stDateInput"] input,
-        .st-key-paper-modal-content [data-testid="stTimeInput"] input,
-        .st-key-paper-modal-content [data-testid="stNumberInput"] input,
-        .st-key-paper-modal-content [data-testid="stSelectbox"] [data-baseweb="select"] > div {
-            border: 1px solid #cbd5e1 !important;
-            background: #f8fafc !important;
-            color: #111827 !important;
-        }
-
-        .st-key-paper-modal-content [data-testid="stTextInput"] input::placeholder,
-        .st-key-paper-modal-content [data-testid="stTextArea"] textarea::placeholder,
-        .st-key-paper-modal-content [data-testid="stDateInput"] input::placeholder,
-        .st-key-paper-modal-content [data-testid="stTimeInput"] input::placeholder,
-        .st-key-paper-modal-content [data-testid="stNumberInput"] input::placeholder {
-            color: #64748b !important;
-            opacity: 1 !important;
-        }
-
-        .st-key-paper-modal-content [data-testid="stSelectbox"] [data-baseweb="select"] * {
-            color: #111827 !important;
-        }
-
-        .st-key-paper-modal-content [data-testid="stSelectbox"] [data-baseweb="select"] div:has(> svg) {
-            border-color: #113c38 !important;
-            border-radius: 0 .45rem .45rem 0;
-            background: #0b2e2b !important;
-        }
-
-        .st-key-paper-modal-content [data-testid="stSelectbox"] [data-baseweb="select"] svg,
-        .st-key-paper-modal-content [data-testid="stSelectbox"] [data-baseweb="select"] svg * {
-            color: #ffffff !important;
-            fill: #ffffff !important;
-            stroke: #ffffff !important;
-        }
-
-        .st-key-paper-modal-content [data-testid="stDateInput"] button {
-            border-color: #113c38 !important;
-            background: #0b2e2b !important;
-            color: #ffffff !important;
-        }
-
-        .st-key-paper-modal-content [data-testid="stDateInput"] button svg,
-        .st-key-paper-modal-content [data-testid="stDateInput"] button svg * {
-            color: #ffffff !important;
-            fill: #ffffff !important;
-            stroke: #ffffff !important;
-        }
-
-        .st-key-paper-modal-content [data-testid="stNumberInput"] button {
-            border-color: #cbd5e1 !important;
-            background: #f8fafc !important;
-            color: #111827 !important;
-        }
-
-        .st-key-paper-modal-content [data-testid="stDataEditor"],
-        .st-key-paper-modal-content [data-testid="stDataEditor"] * {
+        .st-key-selected-patient-details [data-testid="stDataFrame"],
+        .st-key-selected-patient-details [data-testid="stDataFrame"] *,
+        .st-key-selected-patient-details [data-testid="stDataEditor"],
+        .st-key-selected-patient-details [data-testid="stDataEditor"] * {
             --gdg-bg-cell: #0b2e2b !important;
             --gdg-bg-cell-medium: #113c38 !important;
             --gdg-bg-group-header: #113c38 !important;
@@ -1438,94 +1410,29 @@ st.markdown(
             --gdg-link-color: #9af0e3 !important;
         }
 
-        .st-key-paper-modal-content [data-testid="stDataEditor"] {
-            border: 1px solid #477872 !important;
+        .st-key-selected-patient-details [data-testid="stDataFrame"],
+        .st-key-selected-patient-details [data-testid="stDataEditor"] {
+            border: 1px solid #8bb5ad !important;
             border-radius: .5rem;
             background: #0b2e2b !important;
         }
 
-        .st-key-paper-modal-content [data-testid="stDataEditor"] * {
+        .st-key-selected-patient-details [data-testid="stTable"],
+        .st-key-selected-patient-details [data-testid="stTable"] table,
+        .st-key-selected-patient-details [data-testid="stTable"] th,
+        .st-key-selected-patient-details [data-testid="stTable"] td {
+            border-color: #8bb5ad !important;
+            background: #0b2e2b !important;
             color: #ffffff !important;
         }
 
-        .st-key-patient-return-session-history [data-testid="stVerticalBlockBorderWrapper"] {
-            border-color: #cbd5e1 !important;
-            background: #f8fafc !important;
-        }
-
-        .st-key-paper-modal-content [data-testid="stTable"],
-        .st-key-paper-modal-content [data-testid="stTable"] table,
-        .st-key-paper-modal-content [data-testid="stTable"] th,
-        .st-key-paper-modal-content [data-testid="stTable"] td {
-            border-color: #cbd5e1 !important;
-            background: #f8fafc !important;
-            color: #111827 !important;
-        }
-
-        .st-key-paper-modal-content [data-testid="stTable"] table {
+        .st-key-selected-patient-details [data-testid="stTable"] table {
             border-collapse: collapse;
         }
 
-        .st-key-paper-modal-content [data-testid="stTable"] th,
-        .st-key-paper-modal-content [data-testid="stTable"] td {
-            border-bottom: 1px solid #cbd5e1 !important;
-        }
-
-        .st-key-paper-modal-content [data-testid="stDataFrame"],
-        .st-key-paper-modal-content [data-testid="stDataFrame"] * {
-            --gdg-bg-cell: #ffffff !important;
-            --gdg-bg-cell-medium: #f8fafc !important;
-            --gdg-bg-group-header: #f1f5f9 !important;
-            --gdg-bg-group-header-hovered: #e2e8f0 !important;
-            --gdg-bg-header: #f1f5f9 !important;
-            --gdg-bg-header-has-focus: #e2e8f0 !important;
-            --gdg-bg-header-hovered: #e2e8f0 !important;
-            --gdg-bg-search-result: #fef3c7 !important;
-            --gdg-border-color: #cbd5e1 !important;
-            --gdg-horizontal-border-color: #cbd5e1 !important;
-            --gdg-header-bottom-border-color: #cbd5e1 !important;
-            --gdg-text-dark: #111827 !important;
-            --gdg-text-medium: #334155 !important;
-            --gdg-text-light: #475569 !important;
-            --gdg-text-header: #111827 !important;
-            --gdg-text-header-selected: #111827 !important;
-            --gdg-text-group-header: #111827 !important;
-            --gdg-accent-color: #0f766e !important;
-            --gdg-accent-fg: #ffffff !important;
-            --gdg-accent-light: #ccfbf1 !important;
-            background-color: #f8fafc !important;
-            color: #111827 !important;
-        }
-
-        body:has(.st-key-paper-modal-content) [data-baseweb="popover"],
-        body:has(.st-key-paper-modal-content) [data-baseweb="menu"],
-        body:has(.st-key-paper-modal-content) [role="listbox"] {
-            border-color: #cbd5e1 !important;
-            background: #ffffff !important;
-            color: #111827 !important;
-        }
-
-        body:has(.st-key-paper-modal-content) [role="option"] {
-            background: #ffffff !important;
-            color: #111827 !important;
-        }
-
-        body:has(.st-key-paper-modal-content) [role="option"] *,
-        body:has(.st-key-paper-modal-content) [data-baseweb="calendar"] * {
-            color: #111827 !important;
-        }
-
-        body:has(.st-key-paper-modal-content) [role="option"]:hover,
-        body:has(.st-key-paper-modal-content) [role="option"][aria-selected="true"] {
-            background: #e2e8f0 !important;
-            color: #111827 !important;
-        }
-
-        body:has(.st-key-paper-modal-content) [data-baseweb="calendar"],
-        body:has(.st-key-paper-modal-content) [data-baseweb="calendar"] button {
-            border-color: #cbd5e1 !important;
-            background: #ffffff !important;
-            color: #111827 !important;
+        .st-key-selected-patient-details [data-testid="stTable"] th,
+        .st-key-selected-patient-details [data-testid="stTable"] td {
+            border-bottom: 1px solid #8bb5ad !important;
         }
 
         [data-testid="stMainBlockContainer"]:has(.st-key-admin-search-page) [data-testid="stExpander"] {
@@ -1622,7 +1529,7 @@ def show_login_page():
                     </div>
                     <div class="st-key-admin-login-hero-copy">
                       <div class="login-eyebrow">Holy Face Center · Region V</div>
-                      <h1>Care that begins<br>with <em>good information.</em></h1>
+                      <h1>Care That Begins<br>With <em>Good Information.</em></h1>
                       <div class="login-description">
                         A unified and secure patient records system built to support
                         compassionate mental healthcare at the Brothers of Charity
@@ -1638,8 +1545,8 @@ def show_login_page():
 
         with form_column:
             with st.container(key="admin-login-panel"):
-                st.markdown('<div class="login-panel-eyebrow">Secure admin portal</div>', unsafe_allow_html=True)
-                st.markdown("## Welcome back")
+                st.markdown('<div class="login-panel-eyebrow">Secure Admin Portal</div>', unsafe_allow_html=True)
+                st.markdown("## Welcome Back")
                 st.markdown(
                     '<div class="login-panel-description">Enter your account details to access the system.</div>',
                     unsafe_allow_html=True,
@@ -1668,12 +1575,46 @@ def show_login_page():
                 if submitted:
                     try:
                         admin = authenticate_admin(email, password)
+                    except OnlineAuthenticationUnavailable:
+                        try:
+                            admin = authenticate_local_admin(email, password)
+                        except PermissionError:
+                            st.error(
+                                "Supabase is unavailable and the local admin "
+                                "credentials could not be verified. Configure a "
+                                "bootstrap account in the private .env file or "
+                                "connect online and sign in once."
+                            )
+                        except (sqlite3.Error, ValueError):
+                            st.error(
+                                "Supabase is unavailable and the local admin "
+                                "credential cache could not be read. Restore the "
+                                "local database or reconnect to sign in online."
+                            )
+                        else:
+                            st.session_state["admin_authenticated"] = True
+                            st.session_state["admin_auth_mode"] = "offline"
+                            st.session_state["admin_profile"] = admin
+                            st.rerun()
                     except PermissionError as error:
                         st.error(str(error))
                     except Exception as error:
                         st.error(f"Unable to authenticate with Supabase: {error}")
                     else:
+                        try:
+                            cache_local_admin_user(
+                                email,
+                                admin["display_name"],
+                                admin["role"],
+                                password,
+                            )
+                        except sqlite3.Error:
+                            st.session_state["offline_cache_warning"] = (
+                                "Signed in online, but the local offline "
+                                "credential cache could not be updated."
+                            )
                         st.session_state["admin_authenticated"] = True
+                        st.session_state["admin_auth_mode"] = "online"
                         st.session_state["admin_profile"] = admin
                         st.rerun()
 
@@ -1695,19 +1636,23 @@ if not st.session_state.get("admin_authenticated", False):
     ).run()
     st.stop()
 
+offline_cache_warning = st.session_state.pop("offline_cache_warning", None)
+if offline_cache_warning:
+    st.warning(offline_cache_warning)
+
 def show_patient_statistics_page():
     show_dashboard_page()
 
 
 dashboard_page = st.Page(
     show_patient_statistics_page,
-    title="Patient statistics",
+    title="Patient Statistics",
     icon=":material/analytics:",
 )
 
 encode_page = st.Page(
     show_encode_page,
-    title="Record encoding",
+    title="Record Encoding",
     icon=":material/person_add:",
     url_path="show_encode_page",
 )
@@ -1745,12 +1690,20 @@ notification_ids = set()
 notification_read_ids = set()
 notification_load_errors = []
 notification_read_state_error = None
-if SUPABASE_URL and SUPABASE_KEY:
+supabase_connection_online = is_supabase_connection_available()
+if supabase_connection_online and SUPABASE_KEY:
     notification_client = get_supabase_client()
     if notification_client is not None:
         notification_items, notification_load_errors = _load_notifications(
             notification_client
         )
+        if any(
+            is_supabase_connection_error(error)
+            for _, error in notification_load_errors
+        ):
+            supabase_connection_online = False
+            is_supabase_connection_available.clear()
+            notification_load_errors = []
         notification_ids = {item["id"] for item in notification_items}
         try:
             notification_read_ids = _load_notification_read_ids()
@@ -1761,6 +1714,16 @@ if SUPABASE_URL and SUPABASE_KEY:
             notification_unread_count = len(
                 notification_ids - notification_read_ids
             )
+
+
+@st.fragment(run_every="15s")
+def render_offline_status_badge():
+    if not is_supabase_connection_available():
+        st.badge(
+            "Offline Mode — Local Records Active",
+            icon=":material/wifi_off:",
+            color="orange",
+        )
 
 
 def show_overview_page():
@@ -1821,6 +1784,7 @@ with st.sidebar:
         """,
         unsafe_allow_html=True,
     )
+    render_offline_status_badge()
     with st.container(key="hfrc-sidebar-navigation"):
         for page, label, icon in (
             (home_page, "Home", ":material/home:"),
@@ -1839,7 +1803,7 @@ with st.sidebar:
                     st.page_link(page, label=label, icon=icon, width="stretch")
             else:
                 st.page_link(page, label=label, icon=icon, width="stretch")
-        if SUPABASE_URL and SUPABASE_KEY:
+        if supabase_connection_online and SUPABASE_URL and SUPABASE_KEY:
             render_notification_alerts()
         for source, error in notification_load_errors:
             st.warning(f"Unread notifications could not be checked for {source}.")
@@ -1857,6 +1821,7 @@ with st.sidebar:
     st.space("stretch")
     if st.button("Log out"):
         st.session_state["admin_authenticated"] = False
+        st.session_state.pop("admin_auth_mode", None)
         st.session_state.pop("admin_profile", None)
         st.rerun()
 

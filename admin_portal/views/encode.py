@@ -346,8 +346,8 @@ def show_encode_page():
     with st.container(key="encode-page-header"):
         st.markdown(
             """
-            <div class="encode-page-eyebrow">New patient record</div>
-            <h1>Encode patient information</h1>
+            <div class="encode-page-eyebrow">New Patient Record</div>
+            <h1>Encode Patient Information</h1>
             <p>Digitized from the standard patient intake and clinical record sheets.</p>
             """,
             unsafe_allow_html=True,
@@ -510,7 +510,7 @@ def show_encode_page():
     with c_guard3:
         g_middle_name = st.text_input("Guardian Middle Name", placeholder="Santos", key=widget_key("guardian_middle_name"))
 
-    st.markdown("**Guardian address:**")
+    st.markdown("**Guardian Address:**")
     guardian_address = _render_address_dropdowns(
         "guardian_address",
         widget_key,
@@ -682,7 +682,7 @@ def _dismiss_encode_dialog():
 
 
 @st.dialog(
-    "Encode patient information",
+    "Encode Patient Information",
     width="large",
     on_dismiss=_dismiss_encode_dialog,
 )

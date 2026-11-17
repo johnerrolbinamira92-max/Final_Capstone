@@ -275,12 +275,12 @@ def _render_appointments(appointments, today, appointments_page, error=None):
                 f'<div class="home-eyebrow">Today · {today.strftime("%B")} {today.day}</div>',
                 unsafe_allow_html=True,
             )
-            st.markdown("### Upcoming appointments")
+            st.markdown("### Upcoming Appointments")
         with link_column:
             if appointments_page is not None:
                 st.page_link(
                     appointments_page,
-                    label="Full calendar",
+                    label="Full Calendar",
                     icon=":material/arrow_forward:",
                     width="content",
                 )
@@ -352,7 +352,7 @@ def _render_appointments(appointments, today, appointments_page, error=None):
         if appointments_page is not None:
             st.page_link(
                 appointments_page,
-                label="Add appointment",
+                label="Add Appointment",
                 icon=":material/add:",
                 width="stretch",
                 query_params={"focus": "schedule"},
@@ -427,13 +427,13 @@ def show_home_dashboard_page(
                     f'<div class="home-eyebrow">{today.strftime("%A, %d %B %Y").upper()}</div>',
                     unsafe_allow_html=True,
                 )
-                st.markdown(f"## {greeting_period}, Administrator.")
+                st.markdown(f"## {greeting_period.title()}, Administrator.")
                 st.write("Here’s what’s happening at Holy Face Center today.")
             with encode_column:
                 if search_page is not None:
                     with st.container(key="home-encode-action"):
                         if st.button(
-                            "+ Encode new record",
+                            "+ Encode New Record",
                             type="primary",
                             key="home-encode-new-record",
                             width="stretch",
@@ -442,28 +442,28 @@ def show_home_dashboard_page(
 
             kpi_data = [
                 (
-                    "Total patient records",
+                    "Total Patient Records",
                     _format_count(len(records)),
                     "All archived records",
                     "♙",
                     "teal",
                 ),
                 (
-                    "Alive patients",
+                    "Alive Patients",
                     _format_count(int((records["status"] == "Alive").sum())),
                     "Current administrative status",
                     "♡",
                     "blue",
                 ),
                 (
-                    "Appointments today",
+                    "Appointments Today",
                     _format_count(today_count) if appointments is not None else "—",
                     "Scheduled for today",
                     "▦",
                     "coral",
                 ),
                 (
-                    "Pending requests",
+                    "Pending Requests",
                     _format_count(pending_count) if appointments is not None else "—",
                     "Awaiting staff review",
                     "♧",
@@ -501,15 +501,15 @@ def show_home_dashboard_page(
                     )
                     with regional_title:
                         st.markdown(
-                            '<div class="home-eyebrow">Regional overview</div>',
+                            '<div class="home-eyebrow">Regional Overview</div>',
                             unsafe_allow_html=True,
                         )
-                        st.markdown("### Patients across Bicol")
+                        st.markdown("### Patients Across Bicol")
                     with regional_link:
                         if statistics_page is not None:
                             st.page_link(
                                 statistics_page,
-                                label="View details",
+                                label="View Details",
                                 icon=":material/arrow_forward:",
                             )
 
@@ -523,7 +523,7 @@ def show_home_dashboard_page(
                         }
                     )
                     overview_tab, map_tab = st.tabs(
-                        ["Province breakdown", "Offline map"]
+                        ["Province Breakdown", "Offline Map"]
                     )
                     with overview_tab:
                         _render_province_breakdown(

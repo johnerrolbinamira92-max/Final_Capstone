@@ -3,7 +3,14 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 
-from database import get_local_connection, get_supabase_client
+from database import (
+    SUPABASE_KEY,
+    SUPABASE_URL,
+    get_local_connection,
+    get_supabase_client,
+    is_supabase_connection_available,
+    is_supabase_connection_error,
+)
 from views.appointments import _format_received_at, _log_appointment_action
 
 
@@ -227,7 +234,7 @@ def _render_notification_list(
     items, read_ids, tab_key, appointments_page, client
 ):
     with st.container(border=True):
-        st.markdown("#### Recent activity")
+        st.markdown("#### Recent Activity")
         if not items:
             st.info("There are no notifications in this category.")
         for item in items:
@@ -417,7 +424,7 @@ def _render_notification_actions(client, item, appointments_page, tab_key):
     if status not in ("Pending", "Scheduled", "Rescheduled", "Cancelled"):
         return
 
-    st.markdown("#### Appointment response")
+    st.markdown("#### Appointment Response")
     try:
         requested_date = date.fromisoformat(item["requested_date"])
     except (TypeError, ValueError):
@@ -495,7 +502,7 @@ def _render_notification_actions(client, item, appointments_page, tab_key):
 
     rescheduling_key = f"notification_rescheduling:{tab_key}:{item['id']}"
     if st.session_state.get(rescheduling_key):
-        st.markdown("#### Choose a new schedule")
+        st.markdown("#### Choose a New Schedule")
         try:
             fallback_date = date.fromisoformat(item.get("requested_date") or "")
         except ValueError:
@@ -593,7 +600,7 @@ def _render_notification_actions(client, item, appointments_page, tab_key):
 
 
 def _render_notification_detail(item, appointments_page, client, tab_key):
-    st.markdown("#### Full details")
+    st.markdown("#### Full Details")
     heading = (
         "Patient Help Request"
         if item["kind"] == "help_request"
@@ -613,10 +620,10 @@ def _render_notification_detail(item, appointments_page, client, tab_key):
     st.write(f"**Contact:** {item.get('contact') or 'Not provided'}")
 
     if item.get("message"):
-        st.markdown("**Message from the patient**")
+        st.markdown("**Message From the Patient**")
         st.write(item["message"])
     elif item.get("summary"):
-        st.markdown("**Request details**")
+        st.markdown("**Request Details**")
         st.write(item["summary"])
 
     _render_notification_actions(client, item, appointments_page, tab_key)
@@ -642,6 +649,21 @@ def _render_notification_tab(items, category, appointments_page, read_ids, tab_k
 @st.fragment(run_every="5s")
 def _render_live_notification_feed(client, appointments_page):
     items, errors = _load_notifications(client)
+    if any(is_supabase_connection_error(error) for _, error in errors):
+        is_supabase_connection_available.clear()
+        st.info(
+            "Notifications are temporarily unavailable because Supabase cannot "
+            "be reached. Reconnect and retry to restore live updates."
+        )
+        if st.button(
+            "Retry connection",
+            icon=":material/refresh:",
+            key="notification_feed_retry_connection",
+        ):
+            is_supabase_connection_available.clear()
+            st.rerun()
+        return
+
     try:
         read_ids = _load_notification_read_ids()
     except Exception as error:
@@ -662,7 +684,7 @@ def _render_live_notification_feed(client, appointments_page):
     responded = [item for item in items if item["status"] != "Pending"]
     not_responded_tab, responded_tab = st.tabs(
         [
-            f"Not responded ({len(not_responded)})",
+            f"Not Responded ({len(not_responded)})",
             f"Responded ({len(responded)})",
         ]
     )
@@ -725,12 +747,22 @@ def render_notification_alerts():
             unsafe_allow_html=True,
         )
 
+    if (
+        not SUPABASE_URL
+        or not SUPABASE_KEY
+        or not is_supabase_connection_available()
+    ):
+        return
+
     client = get_supabase_client()
     if client is None:
         return
 
     items, errors = _load_notifications(client)
     if errors:
+        if any(is_supabase_connection_error(error) for _, error in errors):
+            is_supabase_connection_available.clear()
+            return
         st.caption("Live notification updates are temporarily unavailable.")
         if st.session_state.get("overview_notification_unread", False):
             render_notification_dots()
@@ -765,7 +797,7 @@ def render_notification_alerts():
 def show_notifications_page(*, appointments_page=None):
     with st.container(key="admin-notifications-page"):
         st.markdown(
-            '<div class="notifications-eyebrow">Patient activity</div>',
+            '<div class="notifications-eyebrow">Patient Activity</div>',
             unsafe_allow_html=True,
         )
         st.markdown("# Notifications")
@@ -773,8 +805,29 @@ def show_notifications_page(*, appointments_page=None):
         if "notification_flash" in st.session_state:
             st.success(st.session_state.pop("notification_flash"))
 
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            st.info(
+                "Notifications require Supabase configuration in the private "
+                ".env file. Local records remain available offline."
+            )
+            return
+        if not is_supabase_connection_available():
+            st.info(
+                "Notifications require a Supabase connection. Reconnect to load "
+                "online appointment and patient activity updates."
+            )
+            if st.button(
+                "Retry connection",
+                icon=":material/refresh:",
+                key="notifications_retry_connection",
+            ):
+                is_supabase_connection_available.clear()
+                st.rerun()
+            return
+
         client = get_supabase_client()
         if client is None:
-            st.stop()
+            st.info("Notifications are unavailable until Supabase is configured.")
+            return
 
         _render_live_notification_feed(client, appointments_page)

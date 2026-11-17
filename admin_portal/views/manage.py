@@ -1,11 +1,12 @@
 import datetime
+import html
 import json
+import sqlite3
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 from database import get_local_connection
-from views.appointments import APPOINTMENT_STATUSES
 from views.encode import show_encode_dialog
 from views.record_tables import (
     FAMILY_COLUMNS,
@@ -61,7 +62,7 @@ def _matches_patient_case_number(record, case_number):
 
 PATIENT_DETAIL_SECTIONS = (
     (
-        "Registration and interview",
+        "Registration and Interview",
         (
             "referral_noted_by",
             "means_of_referral",
@@ -72,7 +73,7 @@ PATIENT_DETAIL_SECTIONS = (
         ),
     ),
     (
-        "Patient profile",
+        "Patient Profile",
         (
             "first_name",
             "middle_name",
@@ -89,7 +90,7 @@ PATIENT_DETAIL_SECTIONS = (
         ),
     ),
     (
-        "Residential address",
+        "Residential Address",
         (
             "street_address",
             "purok",
@@ -99,7 +100,7 @@ PATIENT_DETAIL_SECTIONS = (
         ),
     ),
     (
-        "Guardian and nearest relative",
+        "Guardian and Nearest Relative",
         (
             "guardian_first_name",
             "guardian_middle_name",
@@ -117,7 +118,7 @@ PATIENT_DETAIL_SECTIONS = (
         ),
     ),
     (
-        "Household and socioeconomic information",
+        "Household and Socioeconomic Information",
         (
             "family_composition",
             "total_annual_income",
@@ -128,7 +129,7 @@ PATIENT_DETAIL_SECTIONS = (
         ),
     ),
     (
-        "Complaints and history",
+        "Complaints and History",
         (
             "chief_complaint_patient",
             "chief_complaint_relatives",
@@ -139,7 +140,7 @@ PATIENT_DETAIL_SECTIONS = (
         ),
     ),
     (
-        "Clinical notes and treatment",
+        "Clinical Notes and Treatment",
         (
             "interviewers_initial_impression",
             "history_of_illness",
@@ -157,6 +158,13 @@ def _detail_label(field_name):
     return field_name.replace("_", " ").strip().title()
 
 
+def _render_patient_detail_label(label):
+    st.markdown(
+        f'<div class="patient-field-label">{html.escape(label)}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def _render_patient_detail_value(value):
     display_value = (
         "Not recorded" if value is None or value == "" else str(value)
@@ -167,7 +175,10 @@ def _render_patient_detail_value(value):
             unsafe_allow_html=True,
         )
     else:
-        st.text(display_value)
+        st.markdown(
+            f'<div class="patient-field-value">{html.escape(display_value)}</div>',
+            unsafe_allow_html=True,
+        )
 
 
 def _render_patient_details(patient):
@@ -190,7 +201,7 @@ def _render_patient_details(patient):
             for index, field in enumerate(fields):
                 value = patient[field]
                 with value_columns[index % 2]:
-                    st.markdown(f"**{_detail_label(field)}**")
+                    _render_patient_detail_label(_detail_label(field))
                     if field == "family_composition":
                         st.dataframe(
                             dataframe_from_storage(value, FAMILY_COLUMNS),
@@ -211,12 +222,12 @@ def _render_patient_details(patient):
     ]
     if remaining_fields:
         with st.container(border=True):
-            st.markdown("#### Other record fields")
+            st.markdown("#### Other Record Fields")
             value_columns = st.columns(2)
             for index, field in enumerate(remaining_fields):
                 value = patient[field]
                 with value_columns[index % 2]:
-                    st.markdown(f"**{_detail_label(field)}**")
+                    _render_patient_detail_label(_detail_label(field))
                     _render_patient_detail_value(value)
 
 def _patient_full_name(record):
@@ -230,11 +241,11 @@ def _patient_full_name(record):
 def _render_patient_results(records, filters_applied):
     st.markdown(
         f"### {len(records):,} "
-        f"{'matching' if filters_applied else 'archived'} patient record(s)"
+        f"{'Matching' if filters_applied else 'Archived'} Patient Record(s)"
     )
     with st.container(horizontal=True, horizontal_alignment="right"):
         if st.button(
-            "+ Encode new record",
+            "+ Encode New Record",
             type="primary",
             key="open_encode_dialog",
             width="content",
@@ -325,13 +336,13 @@ def _render_selected_patient_detail(selected_id):
         st.title(case_number)
         if logging_return_session:
             if st.button(
-                "Back to patient details",
+                "Back to Patient Details",
                 key=f"return-session-back-{selected_id}",
             ):
                 st.session_state.pop("manage_return_session_patient_id", None)
                 st.rerun()
             st.subheader("Log Return Session")
-            _render_return_session_form(selected_id)
+            _render_return_session_form(selected_id, case_number)
             return
 
         with st.container(border=True):
@@ -349,7 +360,7 @@ def _render_selected_patient_detail(selected_id):
                     st.rerun()
             with edit_column:
                 if st.button(
-                    "Cancel edit" if editing else "Edit",
+                    "Cancel Edit" if editing else "Edit",
                     icon=":material/edit:",
                     key=f"toggle_patient_edit_{selected_id}",
                     width="stretch",
@@ -407,97 +418,247 @@ def _close_patient_detail_dialog():
 
 
 def _save_return_session(
-    patient_id,
-    session_date,
-    session_time,
-    notes,
-    attendance_status,
-):
+    patient_id: int,
+    session_date: datetime.date,
+    session_time: datetime.time,
+    *,
+    interview_place: str,
+    information_noted_by: str,
+    interview_persons_present: str,
+    chief_complaint_patient: str,
+    chief_complaint_relatives: str,
+    recent_manifestations: str,
+    new_hospitalization_since_last_visit: str,
+    mental_status_examination: str,
+    nurses_observation: str,
+    diagnosis_statement: str,
+    treatment_plan: str,
+    parenteral_medication_records: str,
+) -> None:
+    attendance_status = "Completed"
     conn = get_local_connection()
     try:
         with conn:
             conn.execute("BEGIN IMMEDIATE")
-            patient_exists = conn.execute(
-                "SELECT 1 FROM patients WHERE patient_id = ?",
+            patient = conn.execute(
+                "SELECT patient_case_number FROM patients WHERE patient_id = ?",
                 (patient_id,),
             ).fetchone()
-            if patient_exists is None:
+            if patient is None:
                 raise ValueError("The patient record is no longer available.")
             conn.execute(
                 """
                 INSERT INTO patient_return_sessions (
-                    patient_id, session_date, session_time, notes,
-                    attendance_status
+                    patient_id, session_date, session_time, attendance_status,
+                    interview_place, information_noted_by,
+                    interview_persons_present, chief_complaint_patient,
+                    chief_complaint_relatives, recent_manifestations,
+                    new_hospitalization_since_last_visit,
+                    mental_status_examination, nurses_observation,
+                    diagnosis_statement, treatment_plan,
+                    parenteral_medication_records
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     patient_id,
                     session_date.isoformat(),
                     session_time.strftime("%H:%M"),
-                    notes.strip(),
                     attendance_status,
+                    _clean_return_session_text(interview_place),
+                    _clean_return_session_text(information_noted_by),
+                    _clean_return_session_text(interview_persons_present),
+                    _clean_return_session_text(chief_complaint_patient),
+                    _clean_return_session_text(chief_complaint_relatives),
+                    _clean_return_session_text(recent_manifestations),
+                    _clean_return_session_text(
+                        new_hospitalization_since_last_visit
+                    ),
+                    _clean_return_session_text(mental_status_examination),
+                    _clean_return_session_text(nurses_observation),
+                    _clean_return_session_text(diagnosis_statement),
+                    _clean_return_session_text(treatment_plan),
+                    parenteral_medication_records,
                 ),
             )
             conn.execute(
                 "INSERT INTO admin_logs (action_type, details) VALUES (?, ?)",
                 (
                     "PATIENT RETURN SESSION LOGGED",
-                    f"Logged a return session for patient record {patient_id} "
-                    f"on {session_date.isoformat()} ({attendance_status}).",
+                    f"Logged a return session for patient case "
+                    f"{patient['patient_case_number'] or 'not assigned'} on "
+                    f"{session_date.isoformat()} ({attendance_status}).",
                 ),
             )
     finally:
         conn.close()
 
 
-def _render_return_session_form(patient_id):
+def _clean_return_session_text(value: str | None) -> str | None:
+    cleaned_value = str(value or "").strip()
+    return cleaned_value or None
+
+
+def _serialize_return_session_medication_log(
+    dataframe: pd.DataFrame,
+) -> str:
+    records = []
+    for row in dataframe.to_dict(orient="records"):
+        cleaned_row = {}
+        for column in MEDICATION_COLUMNS:
+            value = row.get(column)
+            if value is None or pd.isna(value):
+                cleaned_row[column] = None
+            elif isinstance(value, str) and not value.strip():
+                cleaned_row[column] = None
+            else:
+                cleaned_row[column] = value
+        if any(value is not None for value in cleaned_row.values()):
+            records.append(cleaned_row)
+    return dataframe_to_storage(
+        pd.DataFrame(records, columns=MEDICATION_COLUMNS)
+    )
+
+
+def _render_return_session_form(patient_id: int, case_number: str) -> None:
     with st.form(key=f"return-session-form-{patient_id}"):
+        st.markdown("#### Visit & Interview Logistics")
         date_column, time_column = st.columns(2)
         with date_column:
             session_date = st.date_input(
-                "Session date",
+                "Session Date",
                 value=datetime.date.today(),
                 key=f"return-session-date-{patient_id}",
             )
         with time_column:
             session_time = st.time_input(
-                "Session time",
+                "Session Time",
                 value=datetime.datetime.now().time().replace(
                     second=0,
                     microsecond=0,
                 ),
                 key=f"return-session-time-{patient_id}",
             )
-        notes = st.text_area(
-            "Notes / remarks",
-            key=f"return-session-notes-{patient_id}",
+        st.caption(f"Patient Case Number: {case_number}")
+        place_column, noted_by_column = st.columns(2)
+        with place_column:
+            interview_place = st.text_input(
+                "Place of Interview",
+                key=f"return-session-place-{patient_id}",
+            )
+        with noted_by_column:
+            information_noted_by = st.text_input(
+                "Information Noted By",
+                key=f"return-session-noted-by-{patient_id}",
+            )
+        interview_persons_present = st.text_area(
+            "Persons Present During Interview",
+            key=f"return-session-persons-present-{patient_id}",
         )
-        attendance_status = st.selectbox(
-            "Attendance / status",
-            APPOINTMENT_STATUSES,
-            index=None,
-            placeholder="Choose a status",
-            key=f"return-session-status-{patient_id}",
+        st.markdown("#### Follow-Up Chief Complaint & Manifestations")
+        complaint_column, relative_column = st.columns(2)
+        with complaint_column:
+            chief_complaint_patient = st.text_area(
+                "Chief Complaint (Patient)",
+                key=f"return-session-complaint-patient-{patient_id}",
+            )
+        with relative_column:
+            chief_complaint_relatives = st.text_area(
+                "Chief Complaint (Relatives)",
+                key=f"return-session-complaint-relatives-{patient_id}",
+            )
+        manifestation_column, hospitalization_column = st.columns(2)
+        with manifestation_column:
+            recent_manifestations = st.text_area(
+                "Recent Manifestations",
+                key=f"return-session-manifestations-{patient_id}",
+            )
+        with hospitalization_column:
+            new_hospitalization_since_last_visit = st.text_area(
+                "Any New Hospitalization Since Last Visit",
+                key=f"return-session-hospitalization-{patient_id}",
+            )
+
+        st.markdown(
+            "#### Clinical Examination, Treatment & Parenteral Medication"
+        )
+        examination_column, observation_column = st.columns(2)
+        with examination_column:
+            mental_status_examination = st.text_area(
+                "Mental Status Examination (MSE)",
+                key=f"return-session-mse-{patient_id}",
+            )
+        with observation_column:
+            nurses_observation = st.text_area(
+                "Nurses Observation",
+                key=f"return-session-nurses-observation-{patient_id}",
+            )
+        diagnosis_column, treatment_column = st.columns(2)
+        with diagnosis_column:
+            diagnosis_statement = st.text_area(
+                "Updated Diagnosis Statement",
+                key=f"return-session-diagnosis-{patient_id}",
+            )
+        with treatment_column:
+            treatment_plan = st.text_area(
+                "Treatment Plan / Progress Notes",
+                key=f"return-session-treatment-{patient_id}",
+            )
+        st.markdown("##### Parenteral Medication Log Sheet")
+        medication_table = pd.DataFrame(
+            [
+                {
+                    column: None if column.startswith("Date") else ""
+                    for column in MEDICATION_COLUMNS
+                }
+            ],
+            columns=MEDICATION_COLUMNS,
+        )
+        edited_medication_table = st.data_editor(
+            medication_table,
+            column_config={
+                column: st.column_config.DateColumn(
+                    column,
+                    format="YYYY-MM-DD",
+                )
+                for column in MEDICATION_COLUMNS[::2]
+            },
+            num_rows="dynamic",
+            width="stretch",
+            alt="Parenteral medication entries for this return session",
+            key=f"return-session-medications-{patient_id}",
         )
         submitted = st.form_submit_button(
-            "Save return session",
+            "Save Return Session",
             type="primary",
         )
 
     if submitted:
-        if attendance_status not in APPOINTMENT_STATUSES:
-            st.error("Choose an attendance status before saving the session.")
-            return
         try:
             _save_return_session(
                 patient_id,
                 session_date,
                 session_time,
-                notes,
-                attendance_status,
+                interview_place=interview_place,
+                information_noted_by=information_noted_by,
+                interview_persons_present=interview_persons_present,
+                chief_complaint_patient=chief_complaint_patient,
+                chief_complaint_relatives=chief_complaint_relatives,
+                recent_manifestations=recent_manifestations,
+                new_hospitalization_since_last_visit=(
+                    new_hospitalization_since_last_visit
+                ),
+                mental_status_examination=mental_status_examination,
+                nurses_observation=nurses_observation,
+                diagnosis_statement=diagnosis_statement,
+                treatment_plan=treatment_plan,
+                parenteral_medication_records=(
+                    _serialize_return_session_medication_log(
+                        edited_medication_table
+                    )
+                ),
             )
-        except Exception as error:
+        except (sqlite3.Error, TypeError, ValueError) as error:
             st.error(f"Unable to save the return session: {error}")
         else:
             st.session_state.pop("manage_return_session_patient_id", None)
@@ -507,7 +668,7 @@ def _render_return_session_form(patient_id):
             st.rerun()
 
 
-def _render_return_session_history(patient_id):
+def _render_return_session_history(patient_id: int) -> None:
     try:
         conn = get_local_connection()
     except Exception as error:
@@ -519,7 +680,23 @@ def _render_return_session_history(patient_id):
             SELECT session_date AS "Session date",
                    session_time AS "Session time",
                    attendance_status AS "Attendance / status",
-                   notes AS "Notes / remarks"
+                   interview_place AS "Place of Interview",
+                   information_noted_by AS "Information Noted By",
+                   interview_persons_present AS "Persons Present During Interview",
+                   chief_complaint_patient AS "Chief Complaint (Patient)",
+                   chief_complaint_relatives AS "Chief Complaint (Relatives)",
+                   recent_manifestations AS "Recent Manifestations",
+                   new_hospitalization_since_last_visit AS
+                       "Any New Hospitalization Since Last Visit",
+                   mental_status_examination AS
+                       "Mental Status Examination (MSE)",
+                   nurses_observation AS "Nurses Observation",
+                   diagnosis_statement AS "Updated Diagnosis Statement",
+                   treatment_plan AS "Treatment Plan / Progress Notes",
+                   parenteral_medication_records AS
+                       "Parenteral Medication Log",
+                   notes AS "Notes / remarks",
+                   return_session_id AS "Return Session ID"
             FROM patient_return_sessions
             WHERE patient_id = ?
             ORDER BY session_date DESC, session_time DESC, return_session_id DESC
@@ -533,27 +710,149 @@ def _render_return_session_history(patient_id):
         conn.close()
 
     with st.container(border=True, key="patient-return-session-history"):
-        st.markdown("#### Return session history")
+        st.markdown("#### Return Session History")
         if not sessions:
             st.info("No return sessions have been logged for this patient.")
             return
-        st.table(
-            pd.DataFrame([dict(session) for session in sessions]),
-            hide_index=True,
-            width="stretch",
+        for session in sessions:
+            session_date_label = _format_return_session_date(
+                session["Session date"]
+            )
+            session_time_label = _format_return_session_time(
+                session["Session time"]
+            )
+            status_label = session["Attendance / status"] or "Status not recorded"
+            session_expander = st.expander(
+                f"{session_date_label} · {session_time_label} · {status_label}",
+                key=(
+                    f"return-session-history-{patient_id}-"
+                    f"{session['Return Session ID']}"
+                ),
+                on_change="rerun",
+            )
+            if session_expander.open:
+                with session_expander:
+                    st.markdown("##### Visit & Interview Logistics")
+                    logistics_left, logistics_right = st.columns(2)
+                    with logistics_left:
+                        _render_return_session_value(
+                            "Place of Interview", session["Place of Interview"]
+                        )
+                        _render_return_session_value(
+                            "Information Noted By",
+                            session["Information Noted By"],
+                        )
+                    with logistics_right:
+                        _render_return_session_value(
+                            "Attendance / Status",
+                            session["Attendance / status"],
+                        )
+                        _render_return_session_value(
+                            "Persons Present During Interview",
+                            session["Persons Present During Interview"],
+                        )
+
+                    st.markdown(
+                        "##### Follow-Up Chief Complaint & Manifestations"
+                    )
+                    complaint_left, complaint_right = st.columns(2)
+                    with complaint_left:
+                        _render_return_session_value(
+                            "Chief Complaint (Patient)",
+                            session["Chief Complaint (Patient)"],
+                        )
+                        _render_return_session_value(
+                            "Recent Manifestations",
+                            session["Recent Manifestations"],
+                        )
+                    with complaint_right:
+                        _render_return_session_value(
+                            "Chief Complaint (Relatives)",
+                            session["Chief Complaint (Relatives)"],
+                        )
+                        _render_return_session_value(
+                            "Any New Hospitalization Since Last Visit",
+                            session[
+                                "Any New Hospitalization Since Last Visit"
+                            ],
+                        )
+
+                    st.markdown(
+                        "##### Clinical Examination, Treatment & Progress"
+                    )
+                    clinical_left, clinical_right = st.columns(2)
+                    with clinical_left:
+                        _render_return_session_value(
+                            "Mental Status Examination (MSE)",
+                            session["Mental Status Examination (MSE)"],
+                        )
+                        _render_return_session_value(
+                            "Updated Diagnosis Statement",
+                            session["Updated Diagnosis Statement"],
+                        )
+                    with clinical_right:
+                        _render_return_session_value(
+                            "Nurses Observation",
+                            session["Nurses Observation"],
+                        )
+                        _render_return_session_value(
+                            "Treatment Plan / Progress Notes",
+                            session["Treatment Plan / Progress Notes"],
+                        )
+
+                    st.markdown("##### Parenteral Medication Log")
+                    medication_table = dataframe_from_storage(
+                        session["Parenteral Medication Log"],
+                        MEDICATION_COLUMNS,
+                    )
+                    if medication_table.empty:
+                        st.caption(
+                            "No parenteral medication entries recorded."
+                        )
+                    else:
+                        st.dataframe(
+                            medication_table,
+                            hide_index=True,
+                            width="stretch",
+                            alt="Parenteral medication entries for this return session",
+                        )
+                    _render_return_session_value(
+                        "Notes / Remarks", session["Notes / remarks"]
+                    )
+
+
+def _format_return_session_date(value: str | None) -> str:
+    try:
+        return datetime.date.fromisoformat(str(value)).strftime("%B %d, %Y")
+    except (TypeError, ValueError):
+        return str(value or "Date not recorded")
+
+
+def _format_return_session_time(value: str | None) -> str:
+    try:
+        return (
+            datetime.datetime.strptime(str(value), "%H:%M")
+            .strftime("%I:%M %p")
+            .lstrip("0")
         )
+    except (TypeError, ValueError):
+        return str(value or "Time not recorded")
+
+
+def _render_return_session_value(label: str, value: str | None) -> None:
+    _render_patient_detail_label(label)
+    _render_patient_detail_value(value)
 
 
 @st.dialog(
-    "Patient record",
+    "Patient Record",
     width="large",
     on_dismiss=_close_patient_detail_dialog,
 )
 def show_patient_detail_dialog(selected_id, success_message=None):
-    with st.container(key="paper-modal-content"):
-        if success_message:
-            st.success(success_message)
-        _render_selected_patient_detail(selected_id)
+    if success_message:
+        st.success(success_message)
+    _render_selected_patient_detail(selected_id)
 
 
 def _render_patient_delete_confirmation(patient_id, patient):
@@ -575,7 +874,7 @@ def _render_patient_delete_confirmation(patient_id, patient):
                 st.rerun()
         with confirm_column:
             if st.button(
-                "Yes, permanently delete",
+                "Yes, Permanently Delete",
                 type="primary",
                 key=f"confirm_patient_delete_{patient_id}",
                 width="stretch",
@@ -631,7 +930,7 @@ def _render_patient_delete_confirmation(patient_id, patient):
 
 def _render_patient_editor(target_id, p):
     with st.container(border=True, key=f"patient-editor-{target_id}"):
-        st.subheader(f"Edit patient record · {p['first_name']} {p['last_name']}")
+        st.subheader(f"Edit Patient Record · {p['first_name']} {p['last_name']}")
         st.write(
             "Expand the panels below to edit the corresponding patient record sections."
         )
@@ -968,10 +1267,10 @@ def show_manage_page():
     st.session_state.pop("manage_return_session_patient_id", None)
     with st.container(key="admin-search-page"):
         st.markdown(
-            '<div class="search-eyebrow">Patient records</div>',
+            '<div class="search-eyebrow">Patient Records</div>',
             unsafe_allow_html=True,
         )
-        st.markdown("# Search records")
+        st.markdown("# Search Records")
         st.write(
             "Search by Patient ID or use the restricted name lookup to review "
             "and manage records."
