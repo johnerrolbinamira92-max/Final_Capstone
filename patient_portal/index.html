@@ -20,12 +20,18 @@
         </a>
         <div class="header-actions">
           <a class="phone-pill" href="tel:09206915015"><span aria-hidden="true">☎</span> 0920-691-5015</a>
+          <button class="auth-pill" id="auth-open-button" type="button" data-open-auth>Sign In</button>
+          <div class="auth-account" id="auth-account" hidden>
+            <span class="auth-email" id="auth-email"></span>
+            <button class="auth-pill" id="auth-signout" type="button">Sign Out</button>
+          </div>
           <button class="theme-button" id="theme-toggle" type="button" aria-label="Switch to light theme" title="Toggle color theme">☼</button>
         </div>
       </div>
     </header>
 
     <main>
+      <div class="appointment-status page-width" id="appointment-status" role="status" aria-live="polite" hidden></div>
       <section class="hero page-width" aria-labelledby="hero-title">
         <div class="hero-copy">
           <span class="eyebrow pill-eyebrow"><span class="status-dot"></span> A private space to be heard</span>
@@ -81,7 +87,10 @@
                 <p class="panel-intro">Take your time. There’s no perfect way to say it.</p>
                 <label class="sr-only" for="message">Your message</label>
                 <textarea id="message" name="message" placeholder="I’ve been feeling..." maxlength="10000" required></textarea>
-                <div class="field-hint"><span>Your words stay on this device unless you ask for help.</span><span id="character-count">0 / 10,000</span></div>
+                <div class="field-hint">
+                  <span><span id="entry-hint-prefix">Your words stay on this device unless you ask for help or </span><span id="textarea-guest-prompt"> <button class="inline-signin" id="textarea-signin-link" type="button" data-open-auth aria-haspopup="dialog" aria-controls="auth-dialog">sign in to save them permanently</button>.</span></span>
+                  <span id="character-count">0 / 10,000</span>
+                </div>
                 <fieldset class="choice-fieldset">
                   <legend>What would feel right after sharing?</legend>
                   <div class="choice-grid">
@@ -137,19 +146,22 @@
                   </div>
                   <label class="consent-row">
                     <input id="consent" name="consent" type="checkbox" required>
-                    <span>I give Holy Face Center permission to securely collect and use my name, age, contact number, message, and chosen schedule to respond to this help request.</span>
+                    <span>I give Holy Face Center permission to securely collect and use my name, age, contact number, message, and chosen schedule to respond to this help request. If I’m signed in, this request is linked to my account so I can view status updates.</span>
                   </label>
                 </section>
 
                 <section class="panel private-note-panel" id="private-note-panel" aria-labelledby="private-title" hidden>
                   <div class="panel-icon" aria-hidden="true">♙</div>
                   <h3 id="private-title">No personal details needed.</h3>
-                  <p>Your entry is saved only in this browser on this device for up to 30 days. It is not sent to the center. You can remove it at any time.</p>
+                  <p id="private-note-copy">Your entry is saved only in this browser on this device for up to 30 days. It is not sent to the center. You can remove it at any time.</p>
                 </section>
 
-                <div id="form-message" class="form-message" role="status" aria-live="polite" hidden></div>
-                <button class="button button-submit" id="submit-button" type="submit">Send my help request <span aria-hidden="true">›</span></button>
-                <p class="retention-note">By submitting, you acknowledge the 30-day device-history notice. This service does not replace emergency care.</p>
+                <div class="entry-actions">
+                  <div id="form-message" class="form-message" role="status" aria-live="polite" hidden></div>
+                  <button class="button button-submit" id="submit-button" type="submit">Send my help request <span aria-hidden="true">›</span></button>
+                  <p class="signin-helper" id="private-entry-signin-helper">Want to save your entries permanently &amp; get appointment updates? <button class="inline-signin" id="private-entry-signin-link" type="button" data-open-auth aria-haspopup="dialog" aria-controls="auth-dialog">Sign in</button></p>
+                  <p class="retention-note">By submitting, you acknowledge the 30-day device-history notice. This service does not replace emergency care.</p>
+                </div>
               </div>
             </div>
           </form>
@@ -159,8 +171,18 @@
       <section class="history-section" id="history" role="tabpanel" aria-labelledby="recent-tab" tabindex="0" hidden>
         <div class="page-width">
           <div class="history-heading">
-            <div><p class="eyebrow">Private on this device</p><h2 id="history-title">Your recent entries</h2></div>
-            <p>Private entries disappear from this list after 30 days. Clearing browser data will remove this device copy sooner.</p>
+            <div><p class="eyebrow">Your private entries</p><h2 id="history-title">Your recent entries</h2></div>
+            <p id="history-retention-note">Entries saved as a guest remain on this device for 30 days. Clearing browser data removes them sooner.</p>
+          </div>
+          <div class="history-signin-banner" id="history-signin-banner">
+            Saved on this device for 30 days. <button class="inline-signin" id="recent-signin-link" type="button" data-open-auth aria-haspopup="dialog" aria-controls="auth-dialog">Sign in with email</button> to save entries permanently and see appointment updates.
+          </div>
+          <div class="wellness-email-setting" id="wellness-email-setting" hidden>
+            <label for="wellness-email-opt-in">
+              <input id="wellness-email-opt-in" type="checkbox">
+              <span>Email me an optional, non-clinical wellness check-in after every five saved entries. You can change this anytime.</span>
+            </label>
+            <p id="wellness-email-status" role="status" aria-live="polite"></p>
           </div>
           <div id="entry-history" class="entry-history"></div>
         </div>
@@ -208,6 +230,52 @@
         </section>
       </div>
     </dialog>
+
+    <dialog class="auth-dialog" id="auth-dialog" aria-labelledby="auth-title" aria-describedby="auth-intro">
+      <div class="auth-dialog-header">
+        <p class="auth-clinic-badge">BROTHERS OF CHARITY <span aria-hidden="true">•</span> HOLY FACE CENTER FOR MENTAL HEALTH</p>
+        <button class="contact-dialog-close" id="auth-dialog-close" type="button" aria-label="Close sign-in dialog">×</button>
+      </div>
+      <h2 id="auth-title">Patient Portal Sign In</h2>
+      <p class="auth-intro" id="auth-intro">Sign in with your email to permanently save private entries and view appointment confirmations.</p>
+      <div class="auth-mode-tabs" role="group" aria-label="Patient account options">
+        <button class="auth-mode-tab" id="auth-signin-tab" type="button" aria-pressed="true">Sign In</button>
+        <button class="auth-mode-tab" id="auth-signup-tab" type="button" aria-pressed="false">Create Account</button>
+      </div>
+      <form id="auth-form" aria-labelledby="auth-title">
+        <label class="auth-field-label" for="auth-input-email">Email Address</label>
+        <input id="auth-input-email" name="email" type="email" autocomplete="email" maxlength="254" required>
+        <label class="auth-field-label" for="auth-input-password">Password</label>
+        <div class="auth-password-field">
+          <input id="auth-input-password" name="password" type="password" autocomplete="current-password" minlength="6" required>
+          <button class="auth-password-toggle" id="auth-password-toggle" type="button" aria-label="Show password" aria-controls="auth-input-password" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
+        <label class="auth-wellness-consent" id="auth-wellness-consent" for="auth-wellness-opt-in" hidden>
+          <input id="auth-wellness-opt-in" type="checkbox">
+          <span>Yes, email me optional, non-clinical wellness check-ins after every five saved entries. I can change this anytime in Recent Entries.</span>
+        </label>
+        <div class="auth-error" id="auth-error" role="alert" hidden></div>
+        <button class="auth-submit" id="auth-submit" type="submit">Sign In to Portal</button>
+      </form>
+      <p class="auth-privacy-note">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 3 19 6v5c0 4.7-2.9 8-7 10-4.1-2-7-5.3-7-10V6l7-3Z"></path>
+          <path d="m9 12 2 2 4-4"></path>
+        </svg>
+        <span>Protected under RA 10173 (Data Privacy Act). Your private journal entries remain encrypted and visible only to you.</span>
+      </p>
+    </dialog>
+
+    <div class="entry-toast" id="entry-toast" role="status" aria-live="polite" hidden>
+      <span>Sign in to back up entries and choose optional wellness check-ins.</span>
+      <button class="toast-signin" id="toast-signin" type="button" data-open-auth>Sign In</button>
+      <button class="toast-close" id="toast-close" type="button" aria-label="Dismiss message">×</button>
+    </div>
 
     <script src="config.js"></script>
     <script type="module" src="js/app.js"></script>

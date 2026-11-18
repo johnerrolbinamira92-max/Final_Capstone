@@ -106,6 +106,32 @@ a { color: inherit; }
 .phone-pill span { font-size: 18px; }
 .theme-button { width: 42px; background: var(--surface); cursor: pointer; font-size: 20px; }
 .theme-button:hover, .phone-pill:hover { filter: brightness(1.13); }
+.auth-pill {
+  min-height: 42px;
+  padding: 0 17px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.auth-pill:hover { border-color: var(--teal-bright); color: var(--text); }
+.auth-account { display: flex; align-items: center; gap: 8px; }
+.auth-email { max-width: 180px; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.appointment-status {
+  margin-block: 14px 0;
+  padding: 12px 16px;
+  border: 1px solid #4d8177;
+  border-radius: 14px;
+  background: var(--success);
+  color: var(--text);
+  font-size: 13px;
+}
+.appointment-status p { margin: 0; }
+.appointment-status ul { display: grid; gap: 5px; margin: 7px 0 0; padding-left: 20px; color: var(--muted); }
 
 .hero {
   min-height: 550px;
@@ -214,6 +240,51 @@ h1 em { color: var(--teal-bright); font-weight: 500; }
   color: var(--text);
   box-shadow: var(--shadow);
 }
+.auth-dialog {
+  width: min(460px, calc(100% - 32px));
+  max-width: none;
+  padding: clamp(22px, 5vw, 34px);
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  background: #f8fafc;
+  color: #111827;
+  box-shadow: 0 22px 65px rgb(3 14 13 / 32%);
+}
+.auth-dialog::backdrop { background: rgb(3 14 13 / 76%); backdrop-filter: blur(4px); }
+.auth-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.auth-clinic-badge { max-width: 340px; margin: 5px 0 0; color: #14534d; font-size: 10px; font-weight: 700; letter-spacing: .08em; line-height: 1.55; }
+.auth-dialog .contact-dialog-close { border-color: #cbd5e1; background: #f1f5f9; color: #334155; }
+.auth-dialog h2 { margin: 20px 0 7px; color: #111827; font-family: "DM Sans", sans-serif; font-size: clamp(22px, 5vw, 27px); font-weight: 700; letter-spacing: -.025em; line-height: 1.25; }
+.auth-intro { margin: 0 0 19px; color: #475569; font-size: 13px; line-height: 1.6; }
+.auth-mode-tabs { display: flex; gap: 4px; margin-bottom: 20px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 9px; background: #e9eef4; }
+.auth-mode-tab { min-height: 40px; flex: 1; padding: 7px 10px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #475569; font-size: 12px; font-weight: 700; cursor: pointer; }
+.auth-mode-tab[aria-pressed="true"] { border-color: #d7dee7; background: #fff; color: #123f3a; box-shadow: 0 1px 3px rgb(15 23 42 / 10%); }
+.auth-mode-tab:focus-visible { outline: 3px solid #367a75; outline-offset: 2px; }
+.auth-dialog form { display: grid; gap: 9px; }
+.auth-field-label { color: #334155; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.auth-dialog input:not([type="checkbox"]) {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #111827;
+  font-size: 13px;
+}
+.auth-wellness-consent { display: flex; align-items: flex-start; gap: 9px; margin-block: 4px; color: #475569; font-size: 11px; font-weight: 500; line-height: 1.5; cursor: pointer; }
+.auth-wellness-consent input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 auto; margin: 1px 0 0; accent-color: #14534d; }
+.auth-password-field { position: relative; }
+.auth-password-field input { padding-right: 48px; }
+.auth-password-toggle { width: 40px; height: 40px; position: absolute; top: 3px; right: 3px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #64748b; cursor: pointer; }
+.auth-password-toggle:hover { background: #f1f5f9; color: #123f3a; }
+.auth-password-toggle svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.auth-error { padding: 10px 12px; border: 1px solid #fecaca; border-radius: 8px; background: #fef2f2; color: #991b1b; font-size: 12px; }
+.auth-submit { min-height: 48px; margin-top: 6px; padding: 0 16px; border: 1px solid #123f3a; border-radius: 8px; background: #123f3a; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; transition: background-color 140ms ease, filter 140ms ease; }
+.auth-submit:hover:not(:disabled) { background: #0e332f; }
+.auth-submit:disabled { opacity: .65; cursor: wait; }
+.auth-privacy-note { display: flex; align-items: flex-start; gap: 9px; margin: 18px 0 0; padding-top: 14px; border-top: 1px solid #e2e8f0; color: #475569; font-size: 11px; line-height: 1.55; }
+.auth-privacy-note svg { width: 18px; height: 18px; flex: 0 0 auto; fill: none; stroke: #14756d; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .contact-dialog::backdrop { background: rgb(3 14 13 / 76%); backdrop-filter: blur(4px); }
 .contact-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .contact-dialog-header .eyebrow { margin-bottom: 8px; }
@@ -276,6 +347,18 @@ h1 em { color: var(--teal-bright); font-weight: 500; }
 }
 textarea::placeholder, input::placeholder { color: #759994; opacity: 1; }
 .field-hint { display: flex; justify-content: space-between; gap: 8px; padding-top: 8px; color: var(--muted); font-size: 11px; }
+.inline-signin {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #FCD34D;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.inline-signin:hover { color: #FBBF24; }
 .choice-fieldset { min-width: 0; margin: 25px 0 0; padding: 0; border: 0; }
 .choice-fieldset legend { margin-bottom: 12px; font-size: 14px; font-weight: 700; }
 .choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -349,9 +432,18 @@ textarea::placeholder, input::placeholder { color: #759994; opacity: 1; }
 .button-submit { width: 100%; min-height: 52px; border-radius: 999px; background: var(--coral); color: #fff; }
 .button-submit.private-submit { background: var(--teal); }
 .button-submit:disabled { opacity: .6; cursor: wait; }
+.entry-actions { display: grid; gap: 10px; align-content: start; }
+.signin-helper { margin: 0; color: #FCD34D; font-size: .95rem; font-weight: 600; line-height: 1.5; text-align: center; }
 .retention-note { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.6; text-align: center; }
 
 .history-section { padding: 72px 0; background: var(--surface-soft); }
+.history-signin-banner { margin-bottom: 18px; padding: 11px 15px; border: 1px solid var(--line); border-radius: 13px; background: color-mix(in srgb, var(--surface) 70%, transparent); color: var(--muted); font-size: .98rem; line-height: 1.55; }
+.wellness-email-setting { margin-bottom: 18px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--muted); }
+.wellness-email-setting label { display: flex; align-items: flex-start; gap: 10px; font-size: 12px; line-height: 1.5; cursor: pointer; }
+.wellness-email-setting input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 auto; margin: 2px 0 0; accent-color: var(--teal); }
+.wellness-email-setting p { margin: 5px 0 0 26px; font-size: 11px; }
+.wellness-email-setting p:empty { display: none; }
+.wellness-email-setting p.error { color: var(--coral); }
 .history-heading { display: grid; grid-template-columns: 1fr .7fr; align-items: end; gap: 32px; margin-bottom: 26px; }
 .history-heading > p { max-width: 440px; justify-self: end; margin: 0 0 5px; color: var(--muted); font-size: 12px; }
 .entry-history { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
@@ -366,6 +458,26 @@ textarea::placeholder, input::placeholder { color: #759994; opacity: 1; }
 .entry-card-bottom { padding-top: 12px; border-top: 1px solid var(--line); line-height: 1.7; }
 .remove-entry { border: 0; background: transparent; color: var(--coral); font-size: 12px; font-weight: 700; cursor: pointer; }
 .remove-entry:hover { text-decoration: underline; }
+.entry-toast {
+  position: fixed;
+  z-index: 8;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(520px, calc(100% - 32px));
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+}
+.toast-signin, .toast-close { border: 0; background: transparent; cursor: pointer; }
+.toast-signin { color: var(--teal-bright); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.toast-close { padding: 0 2px; color: var(--muted); font-size: 19px; line-height: 1; }
 
 .site-footer { padding: 30px 0; background: var(--teal); }
 .footer-inner { display: flex; align-items: center; justify-content: space-between; gap: 28px; }
@@ -399,6 +511,8 @@ textarea::placeholder, input::placeholder { color: #759994; opacity: 1; }
 .light-theme .calendar-day:disabled { color: #9ab0aa; }
 .light-theme .time-slot:disabled { color: #829e98; }
 .light-theme .phone-pill, .light-theme .button-primary, .light-theme .button-submit { color: #fff; }
+.light-theme .inline-signin, .light-theme .signin-helper { color: #795000; }
+.light-theme .inline-signin:hover { color: #5c3c00; }
 
 @media (max-width: 900px) {
   .form-grid { grid-template-columns: 1fr; }
@@ -415,6 +529,10 @@ textarea::placeholder, input::placeholder { color: #759994; opacity: 1; }
   .brand-kicker { font-size: 8px; }
   .brand-copy strong { font-size: 12px; }
   .phone-pill { min-height: 37px; padding-inline: 11px; font-size: 11px; }
+  .phone-pill span { display: none; }
+  .auth-pill { min-height: 37px; padding-inline: 11px; font-size: 11px; }
+  .auth-account { gap: 5px; }
+  .auth-email { max-width: 62px; font-size: 9px; }
   .theme-button { width: 37px; min-height: 37px; }
   .header-actions { gap: 6px; }
   .hero { min-height: 0; padding-block: 52px; }
@@ -435,6 +553,7 @@ textarea::placeholder, input::placeholder { color: #759994; opacity: 1; }
   .history-section { padding: 50px 0; }
   .history-heading { grid-template-columns: 1fr; gap: 8px; }
   .history-heading > p { justify-self: start; }
+  .entry-toast { right: 12px; bottom: 12px; left: 12px; max-width: none; gap: 8px; font-size: 11px; }
   .footer-inner { align-items: flex-start; flex-direction: column; }
   .footer-contact { justify-items: start; padding-left: 50px; }
 }

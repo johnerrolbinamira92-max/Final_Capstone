@@ -23,6 +23,7 @@ function validateHelpRequest() {
 export async function sendHelpRequest({
   form,
   messageField,
+  session,
   showFeedback,
   hideFeedback,
   onSuccess
@@ -45,6 +46,7 @@ export async function sendHelpRequest({
     patient_age: Number(document.querySelector("#patient-age").value),
     contact_number: document.querySelector("#patient-contact").value.trim(),
     message: messageField.value.trim(),
+    patient_user_id: session ? session.user.id : null,
     requested_date: document.querySelector("#requested-date").value,
     requested_time_slot: document.querySelector("#requested-time").value,
     consent_given: true
@@ -62,7 +64,7 @@ export async function sendHelpRequest({
       method: "POST",
       headers: {
         apikey: config.supabaseAnonKey,
-        Authorization: `Bearer ${config.supabaseAnonKey}`,
+        Authorization: `Bearer ${session ? session.access_token : config.supabaseAnonKey}`,
         "Content-Type": "application/json",
         Prefer: "return=minimal"
       },

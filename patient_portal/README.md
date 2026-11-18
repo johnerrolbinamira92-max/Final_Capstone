@@ -10,21 +10,43 @@ from the private Streamlit admin app.
 - `js/app.js` initializes the portal and connects the feature modules.
 - `js/features/callback-schedule.js` manages the callback calendar and time slots.
 - `js/features/callback-request.js` validates and submits callback requests.
-- `js/features/private-entries.js` manages entries stored only in this browser.
+- `js/features/private-entries.js` manages device entries and account backups.
 - `js/features/theme.js` handles the color-theme toggle.
 - `js/ui/feedback.js` displays shared form feedback.
 
 The portal uses native JavaScript modules; continue serving it over HTTP as
 described below rather than opening `index.html` directly.
 
-## Set up the callback form
+## Set up Supabase
 
-1. In the Supabase SQL Editor for the same project as the admin app, run [`../supabase/patient_help_requests.sql`](../supabase/patient_help_requests.sql).
-2. In Supabase **Project Settings → API**, copy the project URL and the **publishable** key (or legacy anon key).
-3. Put those two public values in [`config.js`](./config.js). Never put a `service_role` or secret key in this folder.
-4. The Streamlit admin app must keep using its server-side key in its private `.env` file. Open **Appointment Schedule → Confidential help requests** to review and update requests.
+1. In the Supabase SQL Editor for the same project as the admin app, run [`../supabase/patient_help_requests.sql`](../supabase/patient_help_requests.sql), then [`../supabase/patient_portal_auth.sql`](../supabase/patient_portal_auth.sql).
+2. In Supabase **Authentication → Providers**, enable Email/password sign-in. Configure the allowed redirect URLs for the deployed portal if email confirmation is enabled.
+3. In Supabase **Project Settings → API**, copy the project URL and the **publishable** key (or legacy anon key).
+4. Put those two public values in [`config.js`](./config.js). Never put a `service_role` or secret key in this folder.
+5. The Streamlit admin app must keep using its server-side key in its private `.env` file. Open **Appointment Schedule → Confidential help requests** to review and update requests.
 
-The database permits unauthenticated patients to insert consented requests only. The public key cannot read, change, or delete submitted requests. The admin app uses its private server-side key to read the queue. Do not grant public `SELECT` access to this table.
+The journal table uses row-level security so authenticated patients can access only their own entries. Authenticated callback requests are linked to the account that submitted them; guest requests remain unlinked and cannot be read from the public portal. For manually created appointments, set `patient_user_id` to the patient's Supabase Auth user UUID to show its status to that patient; this separate field avoids changing the admin app's existing internal `patient_id`. The admin app uses its private server-side key to manage requests and appointments. Do not expose a `service_role` or secret key in this folder.
+
+## Optional wellness check-in emails
+
+Wellness emails are **off by default**. Patients can opt in when creating an account or change the preference in Recent Entries. If opted in, the portal sends a short, non-clinical check-in after each fifth saved account entry. The database sends only the account UUID, email address, and entry count to the function; journal text is never included. Patients can turn the emails off at any time from Recent Entries.
+
+To enable the feature:
+
+1. In Supabase **Database → Extensions**, enable `pg_net` if it is not already enabled. The portal SQL migration creates the journal counter and trigger.
+2. Create a unique random webhook secret. In Supabase **Integrations → Vault**, add these secrets:
+   - `patient_portal_project_url`: the Supabase project URL.
+   - `patient_portal_publishable_key`: the project's publishable key (or legacy anon key).
+   - `patient_portal_wellness_webhook_secret`: the random webhook secret.
+3. Verify a sender address or domain in Resend.
+4. In Supabase **Edge Functions → Secrets**, set `GEMINI_API_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL` (the verified Resend sender), and `WELLNESS_WEBHOOK_SECRET`. Set `WELLNESS_WEBHOOK_SECRET` to the same value as `patient_portal_wellness_webhook_secret` in Vault.
+5. From the repository root, deploy the function with JWT verification disabled because the database webhook authenticates using the shared secret:
+
+   ```powershell
+   supabase functions deploy notify-five-entries --project-ref <project-ref> --no-verify-jwt
+   ```
+
+Keep the webhook secret and provider API keys private. The function validates the webhook secret itself; do not put any of these values in `patient_portal/config.js` or other browser code. Check Supabase Edge Function logs and Resend delivery status when validating the setup.
 
 Because the callback form accepts public submissions, add rate limiting or another anti-abuse control at the hosting/API layer before opening it to the public. The publishable key is expected to be visible in the browser; it is not a substitute for RLS or abuse protection.
 
@@ -40,8 +62,9 @@ Open `http://localhost:8000`. Serving the folder over HTTP is needed for browser
 
 ## Privacy behavior
 
-- **“I don’t need help”** saves the note in this browser’s local storage only. It is not sent to Supabase or the center. The portal removes it from the local list after 30 days; clearing browser data removes it sooner.
+- **“I don’t need help”** always saves the note in this browser first. Guests keep device-only entries for 30 days. Signed-in patients also back up entries to their account, where they remain until removed; signing in imports both local entries and previous account entries.
 - **“I need help”** sends the message, name, age, phone number, and selected callback schedule to the center’s Supabase project after consent. The request is visible to authorized staff in the admin app. Do not submit an emergency through this form.
+- Sign-in is optional. Guest visitors can use the venting space and request a callback without creating an account.
 - The selected callback time is a preference, not a confirmed booking. Staff confirm the time by phone.
 - Callback requests are stored in Supabase until staff handle them. Apply the center’s approved retention and privacy policy to those requests before deploying the portal publicly.
 - Avoid leaving private entries on a shared device; remove them from the page or clear that browser’s site data when finished.
