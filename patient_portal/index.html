@@ -10,6 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="css/chatbot.css">
   </head>
   <body>
     <header class="site-header">
@@ -114,14 +115,14 @@
                   <h3 id="callback-title">Request a confidential callback</h3>
                   <p class="panel-intro">These details and your message are visible only to authorized administrators.</p>
                   <div class="callback-fields">
-                    <label>Name
-                      <input id="patient-name" name="patient-name" type="text" autocomplete="name" maxlength="160" placeholder="Your full name" required>
+                    <label>Name (optional)
+                      <input id="patient-name" name="patient-name" type="text" autocomplete="name" maxlength="160" placeholder="e.g., Juan, a nickname, or leave blank">
                     </label>
-                    <label>Age
-                      <input id="patient-age" name="patient-age" type="number" min="1" max="120" inputmode="numeric" placeholder="Age" required>
+                    <label>Age (optional)
+                      <input id="patient-age" name="patient-age" type="number" min="1" max="120" inputmode="numeric" placeholder="e.g., 24 (optional)">
                     </label>
-                    <label class="full-field">Contact number
-                      <input id="patient-contact" name="patient-contact" type="tel" autocomplete="tel" maxlength="24" placeholder="09XX XXX XXXX" required>
+                    <label class="full-field">Contact number (required)
+                      <input id="patient-contact" name="patient-contact" type="tel" autocomplete="tel" maxlength="24" placeholder="e.g., 0917 123 4567" required>
                     </label>
                   </div>
                   <div class="schedule-section">
@@ -226,7 +227,7 @@
         <section class="crisis-contact" aria-labelledby="crisis-hotline-title">
           <h3 id="crisis-hotline-title">After-Hours Urgent Support</h3>
           <p>24/7 National Center for Mental Health Crisis Hotline</p>
-          <a href="tel:1553">Call 1553</a>
+          <a href="tel:1553">Call 1553 (landline) or 0919-057-1553 (Smart/TNT) / 0917-899-8727 (Globe/TM)</a>
         </section>
       </div>
     </dialog>
@@ -279,5 +280,6 @@
 
     <script src="config.js"></script>
     <script type="module" src="js/app.js"></script>
+    <script type="module" src="js/chatbot.js"></script>
   </body>
 </html>

@@ -37,6 +37,7 @@ APPOINTMENT_COLUMNS = [
     "appointment_id",
     "patient_id",
     "patient_name",
+    "patient_email",
     "contact_number",
     "requested_date",
     "requested_time_slot",
@@ -82,6 +83,12 @@ def _format_optional(value):
     if value is None or pd.isna(value) or not str(value).strip():
         return "Not provided"
     return str(value)
+
+
+def _format_patient_email(value):
+    if value is None or pd.isna(value) or not str(value).strip():
+        return "Not provided (Guest)"
+    return str(value).strip()
 
 
 def _calendar_appointment_status_label(appointment):
@@ -178,8 +185,9 @@ def _load_calendar_appointments(client, appointments=None):
         response = (
             client.table("patient_help_requests")
             .select(
-                "request_id, patient_name, patient_age, contact_number, message, "
-                "requested_date, requested_time_slot, approval_status, created_at"
+                "request_id, patient_name, patient_age, patient_email, "
+                "contact_number, message, requested_date, requested_time_slot, "
+                "approval_status, created_at"
             )
             .in_("approval_status", list(HELP_REQUEST_STATUSES))
             .order("requested_date")
@@ -197,6 +205,7 @@ def _load_calendar_appointments(client, appointments=None):
             "appointment_id": f"help_request:{request['request_id']}",
             "patient_id": None,
             "patient_name": request.get("patient_name"),
+            "patient_email": request.get("patient_email"),
             "contact_number": request.get("contact_number"),
             "requested_date": request.get("requested_date"),
             "requested_time_slot": request.get("requested_time_slot"),
@@ -454,6 +463,9 @@ def _render_selected_day(appointments, selected_date):
                 )
                 st.text(
                     f"Contact: {_format_optional(appointment.get('contact_number'))}"
+                )
+                st.text(
+                    f"Email: {_format_patient_email(appointment.get('patient_email'))}"
                 )
                 if appointment.get("event_source") == "help_request":
                     st.text("Request type: Patient Help Request")
@@ -812,6 +824,10 @@ def _render_schedule_list(appointments, client):
             col_patient, col_contact = st.columns(2)
             with col_patient:
                 st.write(f"**Patient:** {appointment['patient_name']}")
+                st.write(
+                    "**Email:** "
+                    f"{_format_patient_email(appointment.get('patient_email'))}"
+                )
                 st.write(f"**Patient app ID:** {appointment['patient_id'] or 'Not linked'}")
                 st.write(f"**Status:** {status}")
                 reason = _format_optional(appointment.get("reason"))
@@ -904,8 +920,9 @@ def _render_help_requests(client):
         response = (
             client.table("patient_help_requests")
             .select(
-                "request_id, patient_name, patient_age, contact_number, message, "
-                "requested_date, requested_time_slot, approval_status, created_at"
+                "request_id, patient_name, patient_age, patient_email, "
+                "contact_number, message, requested_date, requested_time_slot, "
+                "approval_status, created_at"
             )
             .order("created_at", desc=True)
             .limit(500)
@@ -937,8 +954,12 @@ def _render_help_requests(client):
         ):
             patient_col, schedule_col = st.columns(2)
             with patient_col:
-                st.text(f"Patient: {request['patient_name']}")
-                st.text(f"Age: {request['patient_age']}")
+                st.text(f"Patient: {request.get('patient_name') or 'Not provided'}")
+                st.text(
+                    "Email: "
+                    f"{_format_patient_email(request.get('patient_email'))}"
+                )
+                st.text(f"Age: {request.get('patient_age') or 'Not provided'}")
                 st.text(f"Contact: {request['contact_number']}")
             with schedule_col:
                 st.text(f"Requested callback: {requested_date} · {requested_time}")

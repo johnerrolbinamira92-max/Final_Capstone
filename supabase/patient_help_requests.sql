@@ -1,7 +1,7 @@
 create table if not exists public.patient_help_requests (
     request_id uuid primary key default gen_random_uuid(),
-    patient_name text not null check (char_length(btrim(patient_name)) between 1 and 160),
-    patient_age smallint not null check (patient_age between 1 and 120),
+    patient_name text check (char_length(btrim(patient_name)) between 1 and 160),
+    patient_age smallint check (patient_age between 1 and 120),
     contact_number text not null check (char_length(btrim(contact_number)) between 7 and 24),
     message text not null check (char_length(btrim(message)) between 1 and 10000),
     requested_date date not null,
@@ -11,6 +11,10 @@ create table if not exists public.patient_help_requests (
         check (approval_status in ('Pending', 'Scheduled', 'Rescheduled', 'Completed', 'No-show', 'Cancelled')),
     created_at timestamptz not null default now()
 );
+
+alter table public.patient_help_requests
+    alter column patient_name drop not null,
+    alter column patient_age drop not null;
 
 create index if not exists patient_help_requests_created_at_idx
     on public.patient_help_requests (created_at desc);
@@ -39,3 +43,16 @@ create policy "Anyone can submit a consented help request"
         and extract(minute from requested_time_slot) in (0, 30)
         and extract(second from requested_time_slot) = 0
     );
+
+alter table public.patient_help_requests enable row level security;
+
+grant select on table public.patient_help_requests to authenticated;
+
+drop policy if exists "Patients can read their own help requests"
+    on public.patient_help_requests;
+
+create policy "Patients can read their own help requests"
+    on public.patient_help_requests
+    for select
+    to authenticated
+    using (patient_user_id = auth.uid());

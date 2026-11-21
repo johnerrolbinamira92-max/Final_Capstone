@@ -11,7 +11,11 @@ from database import (
     is_supabase_connection_available,
     is_supabase_connection_error,
 )
-from views.appointments import _format_received_at, _log_appointment_action
+from views.appointments import (
+    _format_patient_email,
+    _format_received_at,
+    _log_appointment_action,
+)
 
 
 MANILA_TZ = ZoneInfo("Asia/Manila")
@@ -145,7 +149,8 @@ def _load_notifications(client):
         response = (
             client.table("appointments")
             .select(
-                "appointment_id, patient_name, contact_number, reason, "
+                "appointment_id, patient_name, patient_email, contact_number, "
+                "reason, "
                 "requested_date, requested_time_slot, approval_status, created_at, "
                 "updated_at"
             )
@@ -172,6 +177,7 @@ def _load_notifications(client):
                     "categories": {"schedules"},
                     "title": appointment.get("patient_name") or "New appointment",
                     "summary": appointment.get("reason") or "Appointment request",
+                    "email": appointment.get("patient_email"),
                     "contact": appointment.get("contact_number"),
                     "requested_date": appointment.get("requested_date"),
                     "requested_time": appointment.get("requested_time_slot"),
@@ -186,7 +192,8 @@ def _load_notifications(client):
         response = (
             client.table("patient_help_requests")
             .select(
-                "request_id, patient_name, patient_age, contact_number, message, "
+                "request_id, patient_name, patient_age, patient_email, "
+                "contact_number, message, "
                 "requested_date, requested_time_slot, approval_status, created_at, "
                 "updated_at"
             )
@@ -215,6 +222,7 @@ def _load_notifications(client):
                     "categories": {"schedules", "vent_out"},
                     "title": request.get("patient_name") or "Patient",
                     "summary": "Patient Help Request",
+                    "email": request.get("patient_email"),
                     "contact": request.get("contact_number"),
                     "age": request.get("patient_age"),
                     "requested_date": request.get("requested_date"),
@@ -282,6 +290,7 @@ def _render_notification_list(
                     f"{_format_requested_date(item.get('requested_date'))} · "
                     f"{_format_requested_time(item.get('requested_time'))}"
                 )
+                st.write(f"**Email:** {_format_patient_email(item.get('email'))}")
                 details_key = f"notification_details_open:{tab_key}:{item['id']}"
                 show_details = st.session_state.get(details_key, False)
                 if st.button(
@@ -608,6 +617,7 @@ def _render_notification_detail(item, appointments_page, client, tab_key):
     )
     st.write(f"**Type:** {heading}")
     st.write(f"**Name:** {item['title']}")
+    st.write(f"**Email:** {_format_patient_email(item.get('email'))}")
     if item.get("age") is not None:
         st.write(f"**Age:** {item['age']}")
     st.write(

@@ -5,14 +5,17 @@ function validateContact(value) {
 
 function validateHelpRequest() {
   const name = document.querySelector("#patient-name").value.trim();
-  const age = Number(document.querySelector("#patient-age").value);
+  const ageValue = document.querySelector("#patient-age").value.trim();
+  const age = ageValue ? Number(ageValue) : null;
   const contact = document.querySelector("#patient-contact").value.trim();
   const date = document.querySelector("#requested-date").value;
   const time = document.querySelector("#requested-time").value;
   const consent = document.querySelector("#consent").checked;
 
-  if (!name || name.length > 160) return "Enter your name (up to 160 characters).";
-  if (!Number.isInteger(age) || age < 1 || age > 120) return "Enter a valid age between 1 and 120.";
+  if (name.length > 160) return "Enter a name up to 160 characters.";
+  if (age !== null && (!Number.isInteger(age) || age < 1 || age > 120)) {
+    return "Enter a valid age between 1 and 120.";
+  }
   if (!validateContact(contact)) return "Enter a valid Philippine mobile number.";
   if (!date) return "Choose an available weekday for the callback.";
   if (!time) return "Choose an available callback time.";
@@ -41,9 +44,11 @@ export async function sendHelpRequest({
     return;
   }
 
+  const patientName = document.querySelector("#patient-name").value.trim();
+  const ageValue = document.querySelector("#patient-age").value.trim();
   const payload = {
-    patient_name: document.querySelector("#patient-name").value.trim(),
-    patient_age: Number(document.querySelector("#patient-age").value),
+    patient_name: patientName || null,
+    patient_age: ageValue ? Number(ageValue) : null,
     contact_number: document.querySelector("#patient-contact").value.trim(),
     message: messageField.value.trim(),
     patient_user_id: session ? session.user.id : null,
