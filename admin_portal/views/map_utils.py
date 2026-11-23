@@ -100,7 +100,7 @@ def render_choropleth_svg(
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
         f'role="img" aria-label="{html.escape(aria_label)}" '
-        f'style="display:block;width:100%;height:auto;'
+        f'style="display:block;width:100%;height:300px;'
         f'background:{"#182523" if dark_mode else "transparent"}">'
         f'{"".join(paths)}</svg>'
         f'<div style="display:flex;align-items:center;justify-content:center;'

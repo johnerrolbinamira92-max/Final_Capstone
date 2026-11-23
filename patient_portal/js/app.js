@@ -27,7 +27,13 @@ const authModeTabs = [
 const authOpenButton = document.querySelector("#auth-open-button");
 const authAccount = document.querySelector("#auth-account");
 const authEmail = document.querySelector("#auth-email");
-const authAppointmentStatus = document.querySelector("#appointment-status");
+const notificationMenu = document.querySelector(".notification-menu");
+const notificationButton = document.querySelector("#notification-button");
+const notificationBadge = document.querySelector("#notification-badge");
+const notificationPopover = document.querySelector("#notification-popover");
+const notificationLatest = document.querySelector("#notification-latest");
+const notificationHistory = document.querySelector("#notification-history");
+const notificationRequestCount = document.querySelector("#notification-request-count");
 const historySigninBanner = document.querySelector("#history-signin-banner");
 const textareaGuestPrompt = document.querySelector("#textarea-guest-prompt");
 const privateEntrySigninHelper = document.querySelector("#private-entry-signin-helper");
@@ -38,6 +44,12 @@ let authUnavailable = false;
 let currentSession = null;
 let authMode = "signin";
 let toastTimeout;
+let requestPollingTimer = null;
+let requestLoadSequence = 0;
+let requestRows = [];
+let seenRequestStates = new Map();
+let requestHistoryLoaded = false;
+let requestHistoryError = false;
 
 const privateEntries = createPrivateEntries({
   historyElement: document.querySelector("#entry-history"),
@@ -100,27 +112,224 @@ function setAuthMode(mode) {
   });
 }
 
-function displayAppointmentUpdates(rows) {
-  authAppointmentStatus.replaceChildren();
-  if (!rows.length) {
-    authAppointmentStatus.hidden = true;
+function formatRequestDate(value) {
+  if (!value) return "Date not set";
+  const date = new Date(`${value.slice(0, 10)}T00:00:00`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+function formatRequestTime(value) {
+  if (!value) return "Time not set";
+  const [hours, minutes] = value.slice(0, 5).split(":").map(Number);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return value;
+  const time = new Date(2000, 0, 1, hours, minutes);
+  return time.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function requestSignature(row) {
+  return `${row.approval_status || "Pending"}|${row.updated_at || row.created_at || ""}`;
+}
+
+function requestHasUnreadUpdate(row) {
+  const signature = requestSignature(row);
+  const seenSignature = seenRequestStates.get(row.request_id);
+  if (seenSignature !== undefined) return seenSignature !== signature;
+  if ((row.approval_status || "Pending") === "Pending" || !row.updated_at || !row.created_at) return false;
+  return new Date(row.updated_at).getTime() > new Date(row.created_at).getTime();
+}
+
+function updateNotificationBadge() {
+  const unreadCount = requestRows.filter(requestHasUnreadUpdate).length;
+  notificationBadge.hidden = unreadCount === 0;
+  notificationBadge.textContent = unreadCount > 9 ? "9+" : String(unreadCount);
+  notificationButton.setAttribute(
+    "aria-label",
+    unreadCount ? `Request notifications, ${unreadCount} unread updates` : "Request notifications"
+  );
+}
+
+function renderRequestHistory(rows) {
+  notificationLatest.replaceChildren();
+  notificationHistory.replaceChildren();
+  notificationRequestCount.textContent = `${rows.length} ${rows.length === 1 ? "request" : "requests"}`;
+
+  if (!requestHistoryLoaded) {
+    const heading = document.createElement("h2");
+    heading.textContent = "Your requests";
+    const message = document.createElement("p");
+    message.className = "notification-empty";
+    message.textContent = "Loading your requests…";
+    notificationLatest.append(heading);
+    notificationHistory.append(message);
     return;
   }
 
-  const heading = document.createElement("strong");
-  heading.textContent = "Appointment updates";
-  const list = document.createElement("ul");
-  rows.forEach((row) => {
-    const item = document.createElement("li");
-    const date = row.requested_date
-      ? new Date(`${row.requested_date}T00:00:00`).toLocaleDateString(undefined, { dateStyle: "medium" })
-      : "Date not set";
-    item.textContent = `${date} — ${row.approval_status || "Pending"}`;
-    list.append(item);
+  if (requestHistoryError && !rows.length) {
+    const heading = document.createElement("h2");
+    heading.textContent = "Your requests";
+    const message = document.createElement("p");
+    message.className = "notification-empty notification-error";
+    message.textContent = "Request history couldn’t be loaded. Please try again later.";
+    notificationLatest.append(heading);
+    notificationHistory.append(message);
+    return;
+  }
+
+  if (!rows.length) {
+    const heading = document.createElement("h2");
+    heading.textContent = "Your requests";
+    const message = document.createElement("p");
+    message.className = "notification-empty";
+    message.textContent = "You haven’t submitted any callback requests yet.";
+    notificationLatest.append(heading);
+    notificationHistory.append(message);
+    return;
+  }
+
+  const updatedRows = rows.filter((row) =>
+    row.updated_at && row.created_at &&
+    new Date(row.updated_at).getTime() > new Date(row.created_at).getTime()
+  );
+  const latestCandidates = updatedRows.length ? updatedRows : rows;
+  const latest = latestCandidates.reduce((mostRecent, row) => {
+    const rowTime = new Date(row.updated_at || row.created_at || 0).getTime();
+    const latestTime = new Date(mostRecent.updated_at || mostRecent.created_at || 0).getTime();
+    return rowTime >= latestTime ? row : mostRecent;
   });
-  authAppointmentStatus.append(heading, list);
-  authAppointmentStatus.hidden = false;
+  const latestHeading = document.createElement("p");
+  latestHeading.className = "notification-eyebrow";
+  latestHeading.textContent = "Latest update";
+  const latestStatus = document.createElement("p");
+  latestStatus.className = "notification-latest-status";
+  latestStatus.textContent = `${formatRequestDate((latest.updated_at || latest.created_at || "").slice(0, 10))} — ${latest.approval_status || "Pending"}`;
+  const latestDetails = document.createElement("p");
+  latestDetails.className = "notification-latest-details";
+  latestDetails.textContent = ["Scheduled", "Rescheduled"].includes(latest.approval_status)
+    ? `Confirmed schedule: ${formatRequestDate(latest.requested_date)} · ${formatRequestTime(latest.requested_time_slot)}`
+    : `Requested: ${formatRequestDate(latest.requested_date)} · ${formatRequestTime(latest.requested_time_slot)}`;
+  notificationLatest.append(latestHeading, latestStatus, latestDetails);
+
+  const chronologicalRows = [...rows].sort(
+    (first, second) => new Date(first.created_at || 0) - new Date(second.created_at || 0)
+  );
+  if (requestHistoryError) {
+    const message = document.createElement("p");
+    message.className = "notification-empty notification-error";
+    message.textContent = "Could not refresh request history. Showing the last loaded requests.";
+    notificationHistory.append(message);
+  }
+  chronologicalRows.forEach((row) => {
+    const item = document.createElement("article");
+    item.className = "request-history-item";
+    const header = document.createElement("div");
+    header.className = "request-history-item-header";
+    const requestedDate = document.createElement("strong");
+    requestedDate.textContent = formatRequestDate(row.requested_date);
+    const status = document.createElement("span");
+    status.className = `request-status-badge status-${(row.approval_status || "Pending").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+    status.textContent = row.approval_status || "Pending";
+    header.append(requestedDate, status);
+
+    const preferredTime = document.createElement("p");
+    preferredTime.textContent = `Preferred time: ${formatRequestTime(row.requested_time_slot)}`;
+    item.append(header, preferredTime);
+    if (["Scheduled", "Rescheduled"].includes(row.approval_status)) {
+      const confirmedSchedule = document.createElement("p");
+      confirmedSchedule.className = "confirmed-schedule";
+      confirmedSchedule.textContent = `Confirmed schedule: ${formatRequestDate(row.requested_date)} · ${formatRequestTime(row.requested_time_slot)}`;
+      item.append(confirmedSchedule);
+    }
+    notificationHistory.append(item);
+  });
 }
+
+function markRequestStatesSeen() {
+  seenRequestStates = new Map(requestRows.map((row) => [row.request_id, requestSignature(row)]));
+  if (currentSession) {
+    try {
+      localStorage.setItem(
+        `patient-request-seen:${currentSession.user.id}`,
+        JSON.stringify(Object.fromEntries(seenRequestStates))
+      );
+    } catch (error) {
+      console.error("Could not save request notification state.", error);
+    }
+  }
+  updateNotificationBadge();
+}
+
+function setNotificationPopoverOpen(isOpen) {
+  notificationPopover.hidden = !isOpen;
+  notificationButton.setAttribute("aria-expanded", String(isOpen));
+  if (isOpen && requestHistoryLoaded) markRequestStatesSeen();
+}
+
+function loadSeenRequestStates(userId) {
+  seenRequestStates = new Map();
+  try {
+    const stored = JSON.parse(localStorage.getItem(`patient-request-seen:${userId}`) || "{}");
+    if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+      seenRequestStates = new Map(Object.entries(stored).map(([id, signature]) => [id, String(signature)]));
+    }
+  } catch (error) {
+    console.error("Could not load request notification state.", error);
+  }
+}
+
+function stopRequestPolling() {
+  window.clearInterval(requestPollingTimer);
+  requestPollingTimer = null;
+  requestLoadSequence += 1;
+  setNotificationPopoverOpen(false);
+  requestRows = [];
+  requestHistoryLoaded = false;
+  requestHistoryError = false;
+  renderRequestHistory(requestRows);
+  updateNotificationBadge();
+}
+
+function startRequestPolling(session) {
+  window.clearInterval(requestPollingTimer);
+  requestPollingTimer = window.setInterval(() => {
+    if (!document.hidden && currentSession && currentSession.user.id === session.user.id) {
+      loadRequestHistory(session).catch((error) => {
+        console.error("Could not refresh request history.", error);
+        showRequestHistoryError(session.user.id);
+      });
+    }
+  }, 15000);
+}
+
+function showRequestHistoryError(userId) {
+  if (!currentSession || currentSession.user.id !== userId) return;
+  requestHistoryLoaded = true;
+  requestHistoryError = true;
+  renderRequestHistory(requestRows);
+}
+
+notificationButton.addEventListener("click", () => {
+  setNotificationPopoverOpen(notificationPopover.hidden);
+});
+document.addEventListener("click", (event) => {
+  if (!notificationMenu.contains(event.target)) setNotificationPopoverOpen(false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !notificationPopover.hidden) {
+    setNotificationPopoverOpen(false);
+    notificationButton.focus();
+  }
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && currentSession) {
+    const userId = currentSession.user.id;
+    loadRequestHistory(currentSession).catch((error) => {
+      console.error("Could not refresh request history.", error);
+      showRequestHistoryError(userId);
+    });
+  }
+});
 
 function updateAccountCopy() {
   const isGuest = !currentSession;
@@ -141,24 +350,36 @@ function updateAccountCopy() {
   wellnessEmailOptIn.checked = Boolean(userMetadata && userMetadata.wellness_email_opt_in === true);
 }
 
-async function loadAppointmentUpdates(session) {
+async function loadRequestHistory(session) {
   const userId = session.user.id;
+  const loadId = ++requestLoadSequence;
   const [requestResult, appointmentResult] = await Promise.all([
     supabase
       .from("patient_help_requests")
-      .select("requested_date, approval_status")
+      .select("request_id, requested_date, requested_time_slot, approval_status, created_at, updated_at")
       .eq("patient_user_id", userId)
       .order("created_at", { ascending: false }),
     supabase
       .from("appointments")
-      .select("requested_date, approval_status")
+      .select("appointment_id, requested_date, requested_time_slot, approval_status, created_at, updated_at")
       .eq("patient_user_id", userId)
       .order("created_at", { ascending: false })
   ]);
   if (requestResult.error) throw requestResult.error;
   if (appointmentResult.error) throw appointmentResult.error;
-  if (currentSession && currentSession.user.id === userId) {
-    displayAppointmentUpdates([...requestResult.data, ...appointmentResult.data]);
+  if (currentSession && currentSession.user.id === userId && loadId === requestLoadSequence) {
+    requestRows = [
+      ...(requestResult.data || []),
+      ...(appointmentResult.data || []).map((row) => ({
+        ...row,
+        request_id: `appointment:${row.appointment_id}`
+      }))
+    ];
+      requestHistoryLoaded = true;
+      requestHistoryError = false;
+    renderRequestHistory(requestRows);
+    updateNotificationBadge();
+      if (!notificationPopover.hidden) markRequestStatesSeen();
   }
 }
 
@@ -168,20 +389,32 @@ async function handleSignedInSession(session, forceSync = false) {
     updateAccountCopy();
     return;
   }
+  const previousUserId = currentSession ? currentSession.user.id : null;
   currentSession = session;
+  if (!session || previousUserId !== session.user.id) {
+    setNotificationPopoverOpen(false);
+    requestRows = [];
+    requestHistoryLoaded = false;
+    requestHistoryError = false;
+    renderRequestHistory(requestRows);
+    updateNotificationBadge();
+  }
   updateAccountCopy();
   wellnessEmailStatus.textContent = "";
   wellnessEmailStatus.classList.remove("error");
   const signedIn = Boolean(session);
   authOpenButton.hidden = signedIn;
   authAccount.hidden = !signedIn;
+  notificationButton.hidden = !signedIn;
   historySigninBanner.hidden = signedIn;
   entryToast.hidden = true;
   if (!signedIn) {
-    authAppointmentStatus.hidden = true;
+    stopRequestPolling();
     return;
   }
 
+  loadSeenRequestStates(session.user.id);
+  startRequestPolling(session);
   authEmail.textContent = session.user.email || "";
   authEmail.title = session.user.email || "";
   try {
@@ -194,13 +427,10 @@ async function handleSignedInSession(session, forceSync = false) {
     showFeedback("You’re signed in, but your entries could not be backed up. They remain saved on this device; try again when your connection is available.", "error");
   }
   try {
-    await loadAppointmentUpdates(session);
+    await loadRequestHistory(session);
   } catch (error) {
-    console.error("Could not load appointment updates.", error);
-    if (currentSession && currentSession.user.id === session.user.id) {
-      authAppointmentStatus.textContent = "Appointment updates could not be loaded. Please try again later.";
-      authAppointmentStatus.hidden = false;
-    }
+    console.error("Could not load request history.", error);
+    showRequestHistoryError(session.user.id);
   }
 }
 
@@ -417,9 +647,13 @@ form.addEventListener("submit", async (event) => {
         callbackSchedule.reset();
         setFlow("help");
         countLabel.textContent = "0 / 10,000";
-        if (currentSession) loadAppointmentUpdates(currentSession).catch((error) => {
-          console.error("Could not refresh appointment updates.", error);
-        });
+        if (currentSession) {
+          const session = currentSession;
+          loadRequestHistory(session).catch((error) => {
+            console.error("Could not refresh request history.", error);
+            showRequestHistoryError(session.user.id);
+          });
+        }
       }
     });
     return;

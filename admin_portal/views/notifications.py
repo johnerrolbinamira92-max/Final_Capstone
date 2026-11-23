@@ -1,4 +1,5 @@
 from datetime import date, datetime, time, timedelta
+from html import escape
 from zoneinfo import ZoneInfo
 
 import streamlit as st
@@ -24,6 +25,178 @@ CALLBACK_TIME_SLOTS = [
     for hour in range(9, 17)
     for minute in (0, 30)
 ]
+NOTIFICATION_STYLES = """
+<style>
+.st-key-admin-notifications-page [class*="st-key-notification-row-"] {
+    position: relative;
+    margin-bottom: .45rem;
+    padding: .55rem .7rem;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 14px;
+    background: #112926;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .12);
+}
+.st-key-admin-notifications-page [class*="st-key-notification-row-selected-"] {
+    border-color: rgba(45, 212, 191, .22);
+    background: rgba(45, 212, 191, .12);
+}
+.st-key-admin-notifications-page [class*="st-key-notification-row-"]:hover {
+    border-color: rgba(45, 212, 191, .28);
+}
+.st-key-admin-notifications-page .notification-row-name {
+    color: #f5f1e7;
+    font-size: .92rem;
+    font-weight: 700;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+.st-key-admin-notifications-page [class*="st-key-notification-select-"] {
+    position: absolute !important;
+    z-index: 2;
+    inset: 0;
+    margin: 0 !important;
+}
+.st-key-admin-notifications-page [class*="st-key-notification-select-"] button {
+    position: absolute !important;
+    inset: 0;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    justify-content: flex-start !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: transparent !important;
+    opacity: 0 !important;
+    text-align: left !important;
+}
+.st-key-admin-notifications-page [class*="st-key-notification-detail-card-"] {
+    padding: 24px 28px;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 16px;
+    background: #112926;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, .2);
+}
+.st-key-admin-notifications-page .notification-detail-eyebrow {
+    margin: 0 0 .25rem;
+    color: #91aba5;
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .12em;
+    line-height: 1.4;
+    text-transform: uppercase;
+}
+.st-key-admin-notifications-page .notification-message-eyebrow {
+    margin-top: 24px;
+    margin-bottom: 0;
+}
+.st-key-admin-notifications-page .notification-field-label {
+    margin: 0 0 6px;
+    color: #91aba5;
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .12em;
+    line-height: 1.4;
+    text-transform: uppercase;
+}
+.st-key-admin-notifications-page .notification-detail-name {
+    margin: 0;
+    color: #f5f1e7;
+    font-size: clamp(1.25rem, 2vw, 1.55rem);
+    font-weight: 700;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+.st-key-admin-notifications-page .notification-field-value {
+    color: #f5f1e7;
+    font-size: .9rem;
+    font-weight: 500;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+.st-key-admin-notifications-page [class*="st-key-notification-metadata-"] {
+    margin-top: 20px;
+    row-gap: 22px;
+}
+.st-key-admin-notifications-page .notification-status-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .35rem;
+}
+.st-key-admin-notifications-page .notification-status-pill,
+.st-key-admin-notifications-page .notification-new-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: .22rem .62rem;
+    border-radius: 999px;
+    font-size: .68rem;
+    font-weight: 700;
+    line-height: 1.35;
+    white-space: nowrap;
+}
+.st-key-admin-notifications-page .notification-status-awaiting {
+    background: rgba(217, 164, 79, .16);
+    color: #e8c98d;
+}
+.st-key-admin-notifications-page .notification-status-scheduled {
+    background: #1b4d46;
+    color: #6ee7b7;
+}
+.st-key-admin-notifications-page .notification-status-cancelled {
+    background: rgba(229, 139, 125, .16);
+    color: #efb0a5;
+}
+.st-key-admin-notifications-page .notification-guest-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: .22rem .62rem;
+    border-radius: 999px;
+    background: rgba(169, 199, 193, .12);
+    color: #b7cbc6;
+    font-size: .68rem;
+    font-weight: 700;
+    line-height: 1.35;
+}
+.st-key-admin-notifications-page .notification-new-pill {
+    padding: .16rem .48rem;
+    background: rgba(45, 212, 191, .12);
+    color: #9bd9ce;
+    font-size: .62rem;
+}
+.st-key-admin-notifications-page [class*="st-key-notification-message-quote-"] {
+    display: flex;
+    align-items: center;
+    min-height: 52px;
+    margin-top: 8px;
+    margin-bottom: 1.1rem;
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: #0c201d;
+}
+.st-key-admin-notifications-page .notification-message-text {
+    margin: 0;
+    color: #d7e5e1;
+    font-size: .9rem;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+.st-key-admin-notifications-page [class*="st-key-notification-actions-"] {
+    margin-top: 1.4rem;
+    padding-top: .5rem;
+    row-gap: 18px;
+}
+.st-key-admin-notifications-page [class*="st-key-notification-detail-card-"] button {
+    min-height: 2.45rem;
+    border-radius: 999px !important;
+    padding-inline: 1rem !important;
+}
+</style>
+"""
 
 
 def _notification_admin_id(admin_user_id=None):
@@ -111,20 +284,33 @@ def _notification_status_label(status):
     }.get(status, status or "Awaiting confirmation")
 
 
-def _notification_status_color(status):
-    if status in ("Scheduled", "Rescheduled"):
-        return "green"
-    if status == "Cancelled":
-        return "red"
-    return "orange"
-
-
 def _new_unread_notifications(items, read_ids, seen_ids):
     return [
         item
         for item in items
         if item["id"] not in seen_ids and item["id"] not in read_ids
     ]
+
+
+def _select_notification_item(item_id, tab_key):
+    st.session_state[f"notification_selected_item:{tab_key}"] = item_id
+    st.session_state[f"notification_opened_item:{tab_key}"] = item_id
+
+
+def _notification_status_pill(status):
+    if status in ("Scheduled", "Rescheduled"):
+        status_class = "scheduled"
+    elif status == "Cancelled":
+        status_class = "cancelled"
+    else:
+        status_class = "awaiting"
+    label = escape(
+        "Awaiting" if status == "Pending" else _notification_status_label(status)
+    )
+    return (
+        '<span class="notification-status-pill '
+        f'notification-status-{status_class}">{label}</span>'
+    )
 
 
 def _is_recent_notification_update(updated_at):
@@ -241,68 +427,85 @@ def _load_notifications(client):
 def _render_notification_list(
     items, read_ids, tab_key, appointments_page, client
 ):
-    with st.container(border=True):
-        st.markdown("#### Recent Activity")
-        if not items:
-            st.info("There are no notifications in this category.")
-        for item in items:
-            expander_key = f"notification-preview-{tab_key}-{item['id']}"
-            read_error = None
-            if (
-                st.session_state.get(expander_key, False)
-                and item["id"] not in read_ids
-            ):
-                try:
-                    _mark_notifications_read([item["id"]])
-                except Exception as error:
-                    read_error = str(error)
-                else:
-                    read_ids.add(item["id"])
+    st.markdown("#### Patient Requests")
+    if not items:
+        st.info("There are no notifications in this category.")
+        return
 
-            heading = (
-                "Patient Help Request"
-                if item["kind"] == "help_request"
-                else "Appointment Request"
+    selected_key = f"notification_selected_item:{tab_key}"
+    selected_id = st.session_state.get(selected_key)
+    if not any(item["id"] == selected_id for item in items):
+        selected_id = items[0]["id"]
+        st.session_state[selected_key] = selected_id
+    selected_item = next(item for item in items if item["id"] == selected_id)
+
+    list_column, detail_column = st.columns([1.05, 1.35], gap="large")
+    read_error = None
+    opened_id = st.session_state.pop(
+        f"notification_opened_item:{tab_key}", None
+    )
+    if opened_id == selected_item["id"] and opened_id not in read_ids:
+        try:
+            _mark_notifications_read([opened_id])
+        except Exception as error:
+            read_error = str(error)
+        else:
+            read_ids.add(opened_id)
+
+    with list_column:
+        for item in items:
+            row_id = item["id"].replace(":", "-")
+            is_selected = item["id"] == selected_id
+            row_key = (
+                f"notification-row-selected-{row_id}"
+                if is_selected
+                else f"notification-row-{row_id}"
             )
-            status = item.get("status")
-            label = (
-                f"{heading} - {item['title']} · "
-                f"{_notification_status_label(status)}"
-            )
-            if item["id"] not in read_ids:
-                label += " · New"
-            with st.expander(
-                label,
-                key=expander_key,
-                on_change="rerun",
-            ):
-                if read_error is not None:
-                    st.error(
-                        "Unable to save this notification's read status: "
-                        f"{read_error}"
+            with st.container(key=row_key):
+                name_column, status_column = st.columns(
+                    [1.4, 1], vertical_alignment="center"
+                )
+                with name_column:
+                    st.markdown(
+                        '<div class="notification-row-name">'
+                        f"{escape(str(item['title']))}</div>",
+                        unsafe_allow_html=True,
                     )
-                st.badge(
-                    _notification_status_label(status),
-                    color=_notification_status_color(status),
-                )
-                st.write(
-                    f"**Requested:** "
-                    f"{_format_requested_date(item.get('requested_date'))} · "
-                    f"{_format_requested_time(item.get('requested_time'))}"
-                )
-                st.write(f"**Email:** {_format_patient_email(item.get('email'))}")
-                details_key = f"notification_details_open:{tab_key}:{item['id']}"
-                show_details = st.session_state.get(details_key, False)
-                if st.button(
-                    "Hide details" if show_details else "View details and respond",
-                    key=f"notification_details_{tab_key}_{item['id']}",
+                    st.caption(
+                        f"{_format_requested_date(item.get('requested_date'))} · "
+                        f"{_format_requested_time(item.get('requested_time'))}"
+                    )
+                with status_column:
+                    pills = [_notification_status_pill(item.get("status"))]
+                    if item["id"] not in read_ids:
+                        pills.append(
+                            '<span class="notification-new-pill">New</span>'
+                        )
+                    st.markdown(
+                        '<div class="notification-status-wrap">'
+                        + "".join(pills)
+                        + "</div>",
+                        unsafe_allow_html=True,
+                    )
+                st.button(
+                    item["title"],
+                    key=f"notification-select-{tab_key}-{row_id}",
+                    type="tertiary",
+                    on_click=_select_notification_item,
+                    args=(item["id"], tab_key),
+                    help="Select this patient request",
                     width="stretch",
-                ):
-                    st.session_state[details_key] = not show_details
-                if st.session_state.get(details_key, False):
-                    _render_notification_detail(
-                        item, appointments_page, client, tab_key
-                    )
+                )
+
+    with detail_column:
+        if read_error is not None:
+            st.error(
+                "Unable to save this notification's read status: "
+                f"{read_error}"
+            )
+        _render_notification_detail(
+            selected_item, appointments_page, client, tab_key
+        )
 
 
 def _validate_schedule_choice(requested_date, requested_time, *, help_request):
@@ -609,42 +812,95 @@ def _render_notification_actions(client, item, appointments_page, tab_key):
 
 
 def _render_notification_detail(item, appointments_page, client, tab_key):
-    st.markdown("#### Full Details")
-    heading = (
-        "Patient Help Request"
-        if item["kind"] == "help_request"
-        else "Appointment Request"
-    )
-    st.write(f"**Type:** {heading}")
-    st.write(f"**Name:** {item['title']}")
-    st.write(f"**Email:** {_format_patient_email(item.get('email'))}")
-    if item.get("age") is not None:
-        st.write(f"**Age:** {item['age']}")
-    st.write(
-        f"**Date:** {_format_requested_date(item.get('requested_date'))}"
-    )
-    st.write(
-        f"**Time:** {_format_requested_time(item.get('requested_time'))}"
-    )
-    st.write(f"**Received:** {_format_received_at(item.get('created_at'))}")
-    st.write(f"**Contact:** {item.get('contact') or 'Not provided'}")
-
-    if item.get("message"):
-        st.markdown("**Message From the Patient**")
-        st.write(item["message"])
-    elif item.get("summary"):
-        st.markdown("**Request Details**")
-        st.write(item["summary"])
-
-    _render_notification_actions(client, item, appointments_page, tab_key)
-
-    if appointments_page is not None:
-        st.page_link(
-            appointments_page,
-            label="Open calendar",
-            icon=":material/calendar_month:",
-            query_params={"focus": "schedule"},
+    email = item.get("email")
+    metadata = [
+        ("Email", email),
+        ("Contact Number", item.get("contact") or "Not provided"),
+        ("Age", item.get("age") if item.get("age") is not None else "Not provided"),
+        ("Received Timestamp", _format_received_at(item.get("created_at"))),
+        (
+            "Requested Date & Time",
+            f"{_format_requested_date(item.get('requested_date'))} · "
+            f"{_format_requested_time(item.get('requested_time'))}",
+        ),
+    ]
+    with st.container(key=f"notification-detail-card-{tab_key}"):
+        header_column, status_column = st.columns(
+            [4, 1.2], vertical_alignment="center"
         )
+        with header_column:
+            st.markdown(
+                '<div class="notification-detail-eyebrow">Patient request</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                '<div class="notification-detail-name">'
+                f"{escape(str(item.get('title') or 'Patient'))}</div>",
+                unsafe_allow_html=True,
+            )
+        with status_column:
+            st.markdown(
+                '<div class="notification-status-wrap">'
+                f"{_notification_status_pill(item.get('status'))}</div>",
+                unsafe_allow_html=True,
+            )
+
+        with st.container(key=f"notification-metadata-{tab_key}"):
+            for row_index in range(0, len(metadata), 2):
+                left_column, right_column = st.columns(2, gap="medium")
+                for column, (label, value) in zip(
+                    (left_column, right_column),
+                    metadata[row_index : row_index + 2],
+                ):
+                    with column:
+                        st.markdown(
+                            '<div class="notification-field-label">'
+                            f"{escape(label)}</div>",
+                            unsafe_allow_html=True,
+                        )
+                        if label == "Email":
+                            email_label = _format_patient_email(value)
+                            if email_label == "Not provided (Guest)":
+                                st.markdown(
+                                    '<span class="notification-guest-pill">'
+                                    "Guest</span>",
+                                    unsafe_allow_html=True,
+                                )
+                                continue
+                            value = email_label
+                        st.markdown(
+                            '<div class="notification-field-value">'
+                            f"{escape(str(value))}</div>",
+                            unsafe_allow_html=True,
+                        )
+
+        if item.get("message"):
+            st.markdown(
+                '<div class="notification-detail-eyebrow '
+                'notification-message-eyebrow">'
+                "Message from the patient</div>",
+                unsafe_allow_html=True,
+            )
+            message = item["message"]
+        else:
+            st.markdown(
+                '<div class="notification-detail-eyebrow '
+                'notification-message-eyebrow">'
+                "Request details</div>",
+                unsafe_allow_html=True,
+            )
+            message = item.get("summary") or "No additional details were provided."
+        with st.container(key=f"notification-message-quote-{tab_key}"):
+            st.markdown(
+                '<div class="notification-message-text">'
+                f"{escape(str(message))}</div>",
+                unsafe_allow_html=True,
+            )
+
+        with st.container(key=f"notification-actions-{tab_key}"):
+            _render_notification_actions(
+                client, item, appointments_page, tab_key
+            )
 
 
 def _render_notification_tab(items, category, appointments_page, read_ids, tab_key, client):
@@ -806,6 +1062,7 @@ def render_notification_alerts():
 
 def show_notifications_page(*, appointments_page=None):
     with st.container(key="admin-notifications-page"):
+        st.markdown(NOTIFICATION_STYLES, unsafe_allow_html=True)
         st.markdown(
             '<div class="notifications-eyebrow">Patient Activity</div>',
             unsafe_allow_html=True,

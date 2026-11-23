@@ -1,6 +1,5 @@
 from datetime import datetime
 from html import escape
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import altair as alt
@@ -17,14 +16,9 @@ from views.appointments import (
     _load_calendar_appointments,
 )
 from views.map_utils import (
-    load_map_features,
     location_key as _base_location_key,
-    render_choropleth_svg,
 )
 
-BICOL_MAP_FILE = (
-    Path(__file__).resolve().parents[1] / "data" / "bicol_provinces.geojson"
-)
 BICOL_PROVINCES = (
     "Albay",
     "Camarines Norte",
@@ -62,6 +56,7 @@ def _submit_overview_search(search_page):
     if search_page is not None:
         year = str(datetime.now().year)
         sequence = ""
+        name_query = ""
         parts = query.upper().split("-")
         if (
             len(parts) == 3
@@ -78,15 +73,12 @@ def _submit_overview_search(search_page):
         elif len(query) == 4 and query.isascii() and query.isdigit():
             sequence = query
             st.session_state.pop("manage_search_notice", None)
-        elif query:
-            st.session_state["manage_search_notice"] = (
-                "Enter a full BOC-YYYY-NNNN Patient ID or a four-digit "
-                "sequence number."
-            )
         else:
             st.session_state.pop("manage_search_notice", None)
+            name_query = query
         st.session_state["patient_case_search_year"] = year
         st.session_state["patient_case_search_number"] = sequence
+        st.session_state["patient_name_lookup_query"] = name_query
         st.switch_page(search_page)
 
 
@@ -126,10 +118,12 @@ def _render_overview_toolbar(
                 ):
                     st.text_input(
                         "Search patient records",
-                        placeholder="Patient ID (BOC-2026-0001)...",
+                        placeholder="Patient name or ID (BOC-2026-0001)...",
                         icon=":material/search:",
                         label_visibility="collapsed",
                         key="home_search_query",
+                        type="search",
+                        autocomplete="off",
                         width="stretch",
                     )
                     submitted = st.form_submit_button(
@@ -251,20 +245,6 @@ def _render_province_breakdown(chart_data, total_bicol, dark_mode=False):
     st.caption(
         f"{_format_count(total_bicol)} recognized Bicol patient records"
     )
-
-
-def _render_bicol_map(province_counts):
-    features = load_map_features(BICOL_MAP_FILE)
-    st.html(
-        render_choropleth_svg(
-            province_counts,
-            features,
-            _province_key,
-            "Bicol Region patient records by province",
-            dark_mode=True,
-        )
-    )
-    st.caption("Hover over a province to see its count. The map works offline.")
 
 
 def _render_appointments(appointments, today, appointments_page, error=None):
@@ -522,17 +502,11 @@ def show_home_dashboard_page(
                             ],
                         }
                     )
-                    overview_tab, map_tab = st.tabs(
-                        ["Province Breakdown", "Offline Map"]
+                    _render_province_breakdown(
+                        chart_data,
+                        len(bicol_records),
+                        dark_mode=True,
                     )
-                    with overview_tab:
-                        _render_province_breakdown(
-                            chart_data,
-                            len(bicol_records),
-                            dark_mode=True,
-                        )
-                    with map_tab:
-                        _render_bicol_map(province_counts.to_dict())
 
             with right_column:
                 try:

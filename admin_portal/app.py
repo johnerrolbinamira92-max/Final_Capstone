@@ -610,6 +610,37 @@ st.markdown(
         color: var(--hfrc-teal-bright);
     }
 
+    .st-key-admin-statistics-page [data-testid="stTabs"] [role="tablist"],
+    .st-key-admin-notifications-page [data-testid="stTabs"] [role="tablist"] {
+        gap: 24px;
+        border-bottom: 1px solid rgba(145, 171, 165, .28);
+    }
+
+    .st-key-admin-statistics-page [data-testid="stTabs"] [role="tab"],
+    .st-key-admin-notifications-page [data-testid="stTabs"] [role="tab"] {
+        min-height: 44px;
+        padding: .65rem .35rem .7rem !important;
+        border: 0 !important;
+        border-bottom: 2px solid transparent !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        font-size: 15px !important;
+        font-weight: 600 !important;
+        cursor: pointer;
+    }
+
+    .st-key-admin-statistics-page [data-testid="stTabs"] [role="tab"]:hover,
+    .st-key-admin-notifications-page [data-testid="stTabs"] [role="tab"]:hover {
+        border-bottom-color: rgba(45, 212, 191, .45) !important;
+    }
+
+    .st-key-admin-statistics-page [data-testid="stTabs"] [role="tab"][aria-selected="true"],
+    .st-key-admin-notifications-page [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+        border-bottom-color: #2dd4bf !important;
+        font-weight: 700 !important;
+    }
+
     [data-testid="stDataFrame"] {
         overflow: hidden;
         border: 1px solid var(--hfrc-line);

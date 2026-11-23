@@ -468,7 +468,6 @@ def _render_selected_day(appointments, selected_date):
                     f"Email: {_format_patient_email(appointment.get('patient_email'))}"
                 )
                 if appointment.get("event_source") == "help_request":
-                    st.text("Request type: Patient Help Request")
                     age = appointment.get("patient_age")
                     if age is not None and not pd.isna(age):
                         st.text(f"Age: {age}")

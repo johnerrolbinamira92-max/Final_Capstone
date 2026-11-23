@@ -24,6 +24,32 @@
           <button class="auth-pill" id="auth-open-button" type="button" data-open-auth>Sign In</button>
           <div class="auth-account" id="auth-account" hidden>
             <span class="auth-email" id="auth-email"></span>
+            <div class="notification-menu">
+              <button
+                class="notification-button"
+                id="notification-button"
+                type="button"
+                aria-label="Request notifications"
+                aria-haspopup="dialog"
+                aria-expanded="false"
+                aria-controls="notification-popover"
+                hidden
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+                  <path d="M10 21h4"></path>
+                </svg>
+                <span class="notification-badge" id="notification-badge" aria-hidden="true" hidden></span>
+              </button>
+              <div class="notification-popover" id="notification-popover" role="dialog" aria-label="Request notifications and history" hidden>
+                <section class="notification-latest" id="notification-latest" aria-live="polite"></section>
+                <div class="notification-history-heading">
+                  <h2>Request history</h2>
+                  <span id="notification-request-count"></span>
+                </div>
+                <div class="notification-history" id="notification-history"></div>
+              </div>
+            </div>
             <button class="auth-pill" id="auth-signout" type="button">Sign Out</button>
           </div>
           <button class="theme-button" id="theme-toggle" type="button" aria-label="Switch to light theme" title="Toggle color theme">☼</button>
@@ -32,7 +58,6 @@
     </header>
 
     <main>
-      <div class="appointment-status page-width" id="appointment-status" role="status" aria-live="polite" hidden></div>
       <section class="hero page-width" aria-labelledby="hero-title">
         <div class="hero-copy">
           <span class="eyebrow pill-eyebrow"><span class="status-dot"></span> A private space to be heard</span>
