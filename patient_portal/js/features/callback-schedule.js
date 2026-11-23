@@ -1,8 +1,19 @@
-const CALLBACK_TIMES = [];
-for (let hour = 9; hour <= 16; hour += 1) {
-  CALLBACK_TIMES.push(`${String(hour).padStart(2, "0")}:00`);
-  CALLBACK_TIMES.push(`${String(hour).padStart(2, "0")}:30`);
-}
+const CALLBACK_TIMES = [
+  "08:00",
+  "08:30",
+  "09:00",
+  "09:30",
+  "10:00",
+  "10:30",
+  "11:00",
+  "11:30",
+  "13:00",
+  "13:30",
+  "14:00",
+  "14:30",
+  "15:00",
+  "15:30",
+];
 
 function startOfDay(date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -94,9 +105,10 @@ export function initCallbackSchedule({ onSelection }) {
 
     CALLBACK_TIMES.forEach((time) => {
       const [hour, minute] = time.split(":").map(Number);
-      const label = new Date(2000, 0, 1, hour, minute).toLocaleTimeString(undefined, {
+      const label = new Date(2000, 0, 1, hour, minute).toLocaleTimeString("en-US", {
         hour: "numeric",
-        minute: "2-digit"
+        minute: "2-digit",
+        hour12: true
       });
       const button = document.createElement("button");
       button.type = "button";

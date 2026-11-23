@@ -1,17 +1,33 @@
+import datetime
 import json
+import re
+import sqlite3
 from html import escape
 from pathlib import Path
 
 import altair as alt
+import httpx
 import pandas as pd
 import streamlit as st
+from postgrest.exceptions import APIError as PostgrestAPIError
 
-from database import get_local_connection
+from database import (
+    SUPABASE_KEY,
+    SUPABASE_URL,
+    get_local_connection,
+    get_supabase_client,
+    is_supabase_connection_available,
+    is_supabase_connection_error,
+)
 from views.map_utils import location_key as _base_location_key
 
 BICOL_ADDRESS_FILE = (
     Path(__file__).resolve().parents[1] / "data" / "bicol_address_hierarchy.json"
 )
+PORTAL_ENGAGEMENT_ACTIONS = {
+    "need_help_submitted",
+    "no_help_submitted",
+}
 AGE_GROUPS = (
     "Under 18",
     "18–24",
@@ -37,8 +53,19 @@ STATISTICS_ANALYTICS_STYLES = """
 .st-key-admin-statistics-page .st-key-statistics-gender-summary [data-testid="stMetricValue"] {
     color: #e5efed !important;
 }
+.st-key-admin-statistics-page .st-key-statistics-engagement-kpis [data-testid="stMetric"] {
+    border: 1px solid rgba(255, 255, 255, .08) !important;
+    border-radius: 16px !important;
+    background: #112926 !important;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .12);
+}
+.st-key-admin-statistics-page .st-key-statistics-engagement-kpis [data-testid="stMetricLabel"],
+.st-key-admin-statistics-page .st-key-statistics-engagement-kpis [data-testid="stMetricValue"] {
+    color: #e5efed !important;
+}
 .st-key-admin-statistics-page .st-key-statistics-age-distribution [data-testid="stVerticalBlockBorderWrapper"],
-.st-key-admin-statistics-page .st-key-statistics-gender-distribution [data-testid="stVerticalBlockBorderWrapper"] {
+.st-key-admin-statistics-page .st-key-statistics-gender-distribution [data-testid="stVerticalBlockBorderWrapper"],
+.st-key-admin-statistics-page .st-key-statistics-engagement-breakdown [data-testid="stVerticalBlockBorderWrapper"] {
     border: 1px solid rgba(255, 255, 255, .08) !important;
     border-radius: 16px !important;
     background: #112926 !important;
@@ -170,7 +197,14 @@ def _gender_counts(data):
     return groups.value_counts().reindex(GENDER_GROUPS, fill_value=0)
 
 
-def _render_analytics_table(data, category_label):
+def _render_analytics_table(
+    data,
+    category_label,
+    count_column="Patient Count",
+    count_label="Patient Count",
+    table_label=None,
+):
+    table_label = table_label or f"{category_label} patient counts"
     rows = "".join(
         "<tr>"
         f"<td>{escape(str(category))}</td>"
@@ -178,15 +212,15 @@ def _render_analytics_table(data, category_label):
         "</tr>"
         for category, count in zip(
             data[category_label],
-            data["Patient Count"],
+            data[count_column],
         )
     )
     st.html(
         f'<table class="statistics-analytics-table" '
-        f'aria-label="{escape(category_label)} patient counts">'
+        f'aria-label="{escape(table_label)}">'
         "<thead><tr>"
         f"<th>{escape(category_label)}</th>"
-        "<th>Patient Count</th>"
+        f"<th>{escape(count_label)}</th>"
         "</tr></thead>"
         f"<tbody>{rows}</tbody></table>",
         width="stretch",
@@ -535,6 +569,328 @@ def _load_patient_locations():
         conn.close()
 
 
+def _normalize_portal_engagement_snapshot(snapshot):
+    counts = {}
+    for action_type in PORTAL_ENGAGEMENT_ACTIONS:
+        value = snapshot["counts"][action_type]
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"Invalid portal engagement count for {action_type}.")
+        counts[action_type] = value
+
+    journal_accounts = []
+    for row in snapshot["journal_accounts"]:
+        code_name = row["code_name"]
+        saved_entries = row["saved_entries"]
+        if (
+            not isinstance(code_name, str)
+            or not re.fullmatch(r"User #\d{2,}", code_name)
+            or isinstance(saved_entries, bool)
+            or not isinstance(saved_entries, int)
+            or saved_entries <= 0
+        ):
+            raise ValueError("Invalid anonymized journal statistics.")
+        journal_accounts.append(
+            {"code_name": code_name, "saved_entries": saved_entries}
+        )
+
+    refreshed_at = snapshot["refreshed_at"]
+    if not isinstance(refreshed_at, str) or not refreshed_at:
+        raise ValueError("Portal engagement snapshot has no refresh timestamp.")
+
+    return {
+        "counts": counts,
+        "journal_accounts": journal_accounts,
+        "refreshed_at": refreshed_at,
+    }
+
+
+def _ensure_portal_engagement_cache(conn):
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS portal_engagement_cache (
+            snapshot_id INTEGER PRIMARY KEY CHECK (snapshot_id = 1),
+            need_help_submitted INTEGER NOT NULL CHECK (need_help_submitted >= 0),
+            no_help_submitted INTEGER NOT NULL CHECK (no_help_submitted >= 0),
+            journal_accounts_json TEXT NOT NULL,
+            refreshed_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _read_portal_engagement_cache():
+    conn = get_local_connection()
+    try:
+        _ensure_portal_engagement_cache(conn)
+        conn.commit()
+        row = conn.execute(
+            """
+            SELECT need_help_submitted, no_help_submitted,
+                   journal_accounts_json, refreshed_at
+            FROM portal_engagement_cache
+            WHERE snapshot_id = 1
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if row is None:
+        return None
+    return _normalize_portal_engagement_snapshot(
+        {
+            "counts": {
+                "need_help_submitted": row["need_help_submitted"],
+                "no_help_submitted": row["no_help_submitted"],
+            },
+            "journal_accounts": json.loads(row["journal_accounts_json"]),
+            "refreshed_at": row["refreshed_at"],
+        }
+    )
+
+
+def _save_portal_engagement_cache(snapshot):
+    conn = get_local_connection()
+    try:
+        _ensure_portal_engagement_cache(conn)
+        conn.execute(
+            """
+            INSERT INTO portal_engagement_cache (
+                snapshot_id, need_help_submitted, no_help_submitted,
+                journal_accounts_json, refreshed_at
+            )
+            VALUES (1, ?, ?, ?, ?)
+            ON CONFLICT(snapshot_id) DO UPDATE SET
+                need_help_submitted = excluded.need_help_submitted,
+                no_help_submitted = excluded.no_help_submitted,
+                journal_accounts_json = excluded.journal_accounts_json,
+                refreshed_at = excluded.refreshed_at
+            """,
+            (
+                snapshot["counts"]["need_help_submitted"],
+                snapshot["counts"]["no_help_submitted"],
+                json.dumps(snapshot["journal_accounts"]),
+                snapshot["refreshed_at"],
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _fetch_portal_engagement_snapshot(client):
+    count_response = (
+        client.table("portal_engagement_counts")
+        .select("id,need_help_submitted,no_help_submitted")
+        .eq("id", 1)
+        .limit(1)
+        .execute()
+    )
+    count_rows = count_response.data or []
+    if len(count_rows) != 1:
+        raise ValueError("Supabase returned no portal engagement counter row.")
+
+    count_row = count_rows[0]
+    counter_id = count_row["id"]
+    if isinstance(counter_id, bool) or counter_id != 1:
+        raise ValueError("Supabase returned an invalid portal engagement row.")
+
+    counts = {}
+    for action_type in PORTAL_ENGAGEMENT_ACTIONS:
+        submission_count = count_row[action_type]
+        if (
+            isinstance(submission_count, bool)
+            or not isinstance(submission_count, int)
+            or submission_count < 0
+        ):
+            raise ValueError(
+                f"Supabase returned an invalid count for {action_type}."
+            )
+        counts[action_type] = submission_count
+
+    journal_response = client.rpc("get_anonymized_journal_stats").execute()
+    snapshot = {
+        "counts": counts,
+        "journal_accounts": [
+            {
+                "code_name": row["code_name"],
+                "saved_entries": row["saved_entries"],
+            }
+            for row in journal_response.data or []
+        ],
+        "refreshed_at": datetime.datetime.now(
+            datetime.timezone.utc
+        ).isoformat(timespec="seconds"),
+    }
+    return _normalize_portal_engagement_snapshot(snapshot)
+
+
+def _load_portal_engagement_snapshot():
+    try:
+        cached_snapshot = _read_portal_engagement_cache()
+    except (
+        sqlite3.Error,
+        json.JSONDecodeError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as error:
+        return None, "error", f"Could not read the local engagement snapshot: {error}"
+
+    if not SUPABASE_URL or not SUPABASE_KEY or not is_supabase_connection_available():
+        return cached_snapshot, "cached" if cached_snapshot else "unavailable", None
+
+    client = get_supabase_client()
+    if client is None:
+        return cached_snapshot, "cached" if cached_snapshot else "unavailable", None
+
+    try:
+        snapshot = _fetch_portal_engagement_snapshot(client)
+    except (httpx.RequestError, PostgrestAPIError) as error:
+        if is_supabase_connection_error(error):
+            is_supabase_connection_available.clear()
+            return cached_snapshot, "cached" if cached_snapshot else "unavailable", None
+        return None, "error", f"Could not load portal engagement metrics: {error}"
+    except (KeyError, TypeError, ValueError) as error:
+        return None, "error", f"Could not load portal engagement metrics: {error}"
+
+    try:
+        _save_portal_engagement_cache(snapshot)
+    except sqlite3.Error as error:
+        return (
+            snapshot,
+            "online_uncached",
+            f"Live metrics loaded, but the offline snapshot could not be saved: {error}",
+        )
+    return snapshot, "online", None
+
+
+def _render_portal_engagement(snapshot):
+    counts = snapshot["counts"]
+    journal_accounts = snapshot["journal_accounts"]
+    with st.container(horizontal=True, key="statistics-engagement-kpis"):
+        st.metric(
+            '"I Need Help" Requests Sent',
+            f'{counts["need_help_submitted"]:,}',
+            border=True,
+        )
+        st.metric(
+            '"I Don\'t Need Help" Entries Sent',
+            f'{counts["no_help_submitted"]:,}',
+            border=True,
+        )
+        st.metric(
+            "Signed-In Journal Accounts",
+            f"{len(journal_accounts):,}",
+            border=True,
+        )
+
+    comparison_data = pd.DataFrame(
+        [
+            {
+                "Submission Type": "I Need Help",
+                "Completed Submissions": counts["need_help_submitted"],
+            },
+            {
+                "Submission Type": "I Don't Need Help",
+                "Completed Submissions": counts["no_help_submitted"],
+            },
+        ]
+    )
+    comparison_chart = (
+        alt.Chart(comparison_data)
+        .mark_bar(size=34, cornerRadiusEnd=6)
+        .encode(
+            x=alt.X(
+                "Completed Submissions:Q",
+                axis=alt.Axis(
+                    format=",",
+                    gridColor="#2b403c",
+                    labelColor="#a7bbb7",
+                    title=None,
+                ),
+                scale=alt.Scale(
+                    domain=[
+                        0,
+                        max(
+                            1,
+                            int(comparison_data["Completed Submissions"].max()),
+                        ),
+                    ]
+                ),
+            ),
+            y=alt.Y(
+                "Submission Type:N",
+                sort=["I Need Help", "I Don't Need Help"],
+                axis=alt.Axis(
+                    domain=False,
+                    labelColor="#e5efed",
+                    ticks=False,
+                    title=None,
+                ),
+            ),
+            color=alt.Color(
+                "Submission Type:N",
+                scale=alt.Scale(
+                    domain=["I Need Help", "I Don't Need Help"],
+                    range=["#2dd4bf", "#43c4b5"],
+                ),
+                legend=None,
+            ),
+            tooltip=[
+                alt.Tooltip("Submission Type:N"),
+                alt.Tooltip("Completed Submissions:Q", format=","),
+            ],
+        )
+        .properties(height=150, background="#112926")
+    )
+
+    chart_column, accounts_column = st.columns([1, 1.15])
+    with chart_column:
+        with st.container(border=True, key="statistics-engagement-breakdown"):
+            st.markdown(
+                '<div class="statistics-card-eyebrow">Completed Submissions</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown("### I Need Help vs. I Don't Need Help")
+            st.altair_chart(
+                comparison_chart,
+                width="stretch",
+                theme=None,
+                alt="Completed I Need Help and I Don't Need Help submissions",
+            )
+    with accounts_column:
+        with st.container(border=True, key="statistics-engagement-accounts"):
+            st.markdown(
+                '<div class="statistics-card-eyebrow">Anonymized Accounts</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown("### Signed-In Journal Accounts")
+            if journal_accounts:
+                _render_analytics_table(
+                    pd.DataFrame(
+                        [
+                            {
+                                "Code Name": row["code_name"],
+                                "Saved Entries": row["saved_entries"],
+                            }
+                            for row in journal_accounts
+                        ]
+                    ),
+                    "Code Name",
+                    count_column="Saved Entries",
+                    count_label="Saved Entries",
+                    table_label="Anonymized signed-in journal account counts",
+                )
+            else:
+                st.info("No signed-in journal entries have been saved yet.")
+            st.caption(
+                "RA 10173 privacy note: signed-in accounts are shown only as "
+                "sequential code names and saved-entry counts. Guest submissions "
+                "are included only in the aggregate totals above; guest identities "
+                "and entries are not listed."
+            )
+
+
 def show_dashboard_page():
     try:
         df = _load_patient_locations()
@@ -557,6 +913,15 @@ def show_dashboard_page():
                 unsafe_allow_html=True,
             )
 
+        geographical_tab, age_tab, gender_tab, engagement_tab = st.tabs(
+            ["Geographical", "Age", "Gender", "Portal Engagement"],
+            key="patient_statistics_sections",
+            on_change="rerun",
+        )
+        show_location_filters = (
+            geographical_tab.open or age_tab.open or gender_tab.open
+        )
+
         for column in ("province", "city_municipality", "barangay", "purok"):
             df[column] = df[column].map(_normalize_location)
         df["province_key"] = df["province"].map(_location_key)
@@ -565,66 +930,95 @@ def show_dashboard_page():
         df["status"] = df["status"].fillna("Alive").str.strip().str.title()
 
         province_options = list(address_hierarchy)
+        province = st.session_state.get("geo_province")
+        city = st.session_state.get("geo_city")
+        barangay = st.session_state.get("geo_barangay")
+        province_record = address_hierarchy.get(province)
+        municipality_options = (
+            [item["name"] for item in province_record["municipalities"]]
+            if province_record
+            else []
+        )
+        municipality = next(
+            (
+                item
+                for item in province_record["municipalities"]
+                if item["name"] == city
+            ),
+            None,
+        ) if province_record and city else None
+        barangay_options = (
+            [item["name"] for item in municipality["barangays"]]
+            if municipality
+            else []
+        )
 
-        with st.container(border=True, key="statistics-filters"):
-            province_column, city_column, barangay_column = st.columns(3)
-            with province_column:
-                province = st.selectbox(
-                    "Province",
-                    province_options,
-                    index=None,
-                    placeholder="Choose a Bicol province",
-                    key="geo_province",
-                    on_change=_reset_city_selection,
-                )
-
-            province_record = address_hierarchy.get(province)
-            municipality_options = (
-                [item["name"] for item in province_record["municipalities"]]
-                if province_record
-                else []
+        if show_location_filters:
+            active_location_tab = next(
+                tab
+                for tab in (geographical_tab, age_tab, gender_tab)
+                if tab.open
             )
-            with city_column:
-                city = st.selectbox(
-                    "Municipality / City",
-                    municipality_options,
-                    index=None,
-                    placeholder=(
-                        "Choose a province first"
-                        if province is None
-                        else "Choose a municipality or city"
-                    ),
-                    key="geo_city",
-                    disabled=province is None,
-                    on_change=_reset_barangay_selection,
-                )
+            with active_location_tab:
+                with st.container(border=True, key="statistics-filters"):
+                    province_column, city_column, barangay_column = st.columns(3)
+                    with province_column:
+                        province = st.selectbox(
+                            "Province",
+                            province_options,
+                            index=None,
+                            placeholder="Choose a Bicol province",
+                            key="geo_province",
+                            on_change=_reset_city_selection,
+                        )
 
-            municipality = next(
-                (
-                    item
-                    for item in province_record["municipalities"]
-                    if item["name"] == city
-                ),
-                None,
-            ) if province_record and city else None
-            barangay_options = (
-                [item["name"] for item in municipality["barangays"]]
-                if municipality
-                else []
-            )
-            with barangay_column:
-                barangay = st.selectbox(
-                    "Barangay",
-                    barangay_options,
-                    index=None,
-                    placeholder=(
-                        "Choose a municipality or city first"
-                        if city is None
-                        else "Choose a barangay"
-                    ),
-                    key="geo_barangay",
-                    disabled=city is None,
-                )
+                    province_record = address_hierarchy.get(province)
+                    municipality_options = (
+                        [item["name"] for item in province_record["municipalities"]]
+                        if province_record
+                        else []
+                    )
+                    with city_column:
+                        city = st.selectbox(
+                            "Municipality / City",
+                            municipality_options,
+                            index=None,
+                            placeholder=(
+                                "Choose a province first"
+                                if province is None
+                                else "Choose a municipality or city"
+                            ),
+                            key="geo_city",
+                            disabled=province is None,
+                            on_change=_reset_barangay_selection,
+                        )
+
+                    municipality = next(
+                        (
+                            item
+                            for item in province_record["municipalities"]
+                            if item["name"] == city
+                        ),
+                        None,
+                    ) if province_record and city else None
+                    barangay_options = (
+                        [item["name"] for item in municipality["barangays"]]
+                        if municipality
+                        else []
+                    )
+                    with barangay_column:
+                        barangay = st.selectbox(
+                            "Barangay",
+                            barangay_options,
+                            index=None,
+                            placeholder=(
+                                "Choose a municipality or city first"
+                                if city is None
+                                else "Choose a barangay"
+                            ),
+                            key="geo_barangay",
+                            disabled=city is None,
+                        )
 
         selected_data = df
         province_data = df.iloc[0:0]
@@ -648,9 +1042,6 @@ def show_dashboard_page():
             selected_data = barangay_data
             location_label = barangay
 
-        geographical_tab, age_tab, gender_tab = st.tabs(
-            ["Geographical", "Age", "Gender"]
-        )
         with geographical_tab:
             with st.container(horizontal=True, key="statistics-kpis"):
                 st.metric(
@@ -843,6 +1234,30 @@ def show_dashboard_page():
                         }
                     )
                     _render_analytics_table(gender_table, "Gender")
+
+        with engagement_tab:
+            if engagement_tab.open:
+                snapshot, source, error_message = _load_portal_engagement_snapshot()
+                if source == "cached" and snapshot:
+                    st.caption(
+                        "Showing cached offline snapshot · Last refreshed "
+                        f"{snapshot['refreshed_at']}"
+                    )
+                elif source == "unavailable":
+                    st.warning(
+                        "Supabase is unavailable and no cached engagement snapshot "
+                        "is available yet. Open this tab while connected to create one."
+                    )
+                elif source in {"online", "online_uncached"}:
+                    st.caption(f"Last refreshed {snapshot['refreshed_at']}")
+
+                if error_message:
+                    if source == "online_uncached":
+                        st.warning(error_message)
+                    else:
+                        st.error(error_message)
+                if snapshot:
+                    _render_portal_engagement(snapshot)
 
 
 if __name__ == "__main__":

@@ -183,9 +183,24 @@ alter table public.patient_help_requests
     add column if not exists patient_user_id uuid
     references auth.users (id) on delete set null;
 
+alter table public.patient_help_requests
+    add column if not exists patient_email text;
+
+alter table public.patient_help_requests
+    add column if not exists guest_token text;
+
 create index if not exists patient_help_requests_patient_user_id_idx
     on public.patient_help_requests (patient_user_id, created_at desc);
 
+create unique index if not exists patient_help_requests_guest_token_uidx
+    on public.patient_help_requests (guest_token)
+    where guest_token is not null;
+
+create index if not exists patient_help_requests_legacy_email_idx
+    on public.patient_help_requests (lower(btrim(patient_email)), created_at desc)
+    where patient_user_id is null;
+
+alter table public.patient_help_requests enable row level security;
 revoke all on public.patient_help_requests from public, anon, authenticated;
 grant insert on public.patient_help_requests to anon, authenticated;
 grant select, update on public.patient_help_requests to authenticated;
@@ -198,11 +213,17 @@ create policy "Anyone can submit a consented help request"
     for insert to anon
     with check (
         patient_user_id is null
+        and patient_email is null
+        and (guest_token is null or char_length(btrim(guest_token)) >= 24)
         and consent_given is true
         and requested_date >= (now() at time zone 'Asia/Manila')::date
         and extract(isodow from requested_date) between 1 and 5
-        and requested_time_slot >= time '09:00'
-        and requested_time_slot <= time '16:30'
+        and requested_time_slot >= time '08:00'
+        and requested_time_slot <= time '15:30'
+        and (
+            requested_time_slot < time '12:00'
+            or requested_time_slot >= time '13:00'
+        )
         and extract(minute from requested_time_slot) in (0, 30)
         and extract(second from requested_time_slot) = 0
     );
@@ -217,8 +238,12 @@ create policy "Signed-in patients can submit their own help requests"
         and consent_given is true
         and requested_date >= (now() at time zone 'Asia/Manila')::date
         and extract(isodow from requested_date) between 1 and 5
-        and requested_time_slot >= time '09:00'
-        and requested_time_slot <= time '16:30'
+        and requested_time_slot >= time '08:00'
+        and requested_time_slot <= time '15:30'
+        and (
+            requested_time_slot < time '12:00'
+            or requested_time_slot >= time '13:00'
+        )
         and extract(minute from requested_time_slot) in (0, 30)
         and extract(second from requested_time_slot) = 0
     );
@@ -228,7 +253,15 @@ drop policy if exists "Patients can read their own help requests"
 create policy "Patients can read their own help requests"
     on public.patient_help_requests
     for select to authenticated
-    using (patient_user_id = auth.uid());
+    using (
+        patient_user_id = (select auth.uid())
+        or (
+            patient_user_id is null
+            and nullif(btrim((select auth.jwt() ->> 'email')), '') is not null
+            and lower(btrim(patient_email)) =
+                lower(btrim((select auth.jwt() ->> 'email')))
+        )
+    );
 
 alter table public.appointments
     add column if not exists patient_user_id uuid

@@ -171,7 +171,7 @@ Deno.serve(async (request) => {
   }
 
   const supportReminder =
-    "Compassionate support and confidential callbacks are available at 0920-691-5015 (Weekdays, 8:00 AM–5:00 PM) or anytime through the Patient Portal. For 24/7 urgent support, you may also call the National Center for Mental Health Crisis Hotline at 1553 (landline) or 0919-057-1553 (Smart/TNT) / 0917-899-8727 (Globe/TM).";
+    "Compassionate support and confidential callbacks are available at 0920-691-5015 (Monday–Friday, 8:00 AM–4:00 PM) or anytime through the Patient Portal. For 24/7 urgent support, you may also call the National Center for Mental Health Crisis Hotline at 1553 (landline) or 0919-057-1553 (Smart/TNT) / 0917-899-8727 (Globe/TM).";
   const safeMessage = escapeHtml(wellnessMessage).replace(/\r?\n/g, "<br>");
   const emailText = `Hello,\n\n${wellnessMessage}\n\n${supportReminder}\n\nHoly Face Center for Mental Health`;
   const emailHtml = [

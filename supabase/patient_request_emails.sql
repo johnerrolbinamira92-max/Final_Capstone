@@ -24,7 +24,15 @@ set search_path = ''
 as $$
 begin
     if new.patient_user_id is null then
-        new.patient_email := null;
+        if tg_op = 'UPDATE' then
+            if old.patient_user_id is null then
+                new.patient_email := old.patient_email;
+            else
+                new.patient_email := null;
+            end if;
+        else
+            new.patient_email := null;
+        end if;
     else
         select nullif(btrim(patient.email), '')
         into new.patient_email

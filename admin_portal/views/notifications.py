@@ -1,3 +1,5 @@
+import json
+import sqlite3
 from datetime import date, datetime, time, timedelta
 from html import escape
 from zoneinfo import ZoneInfo
@@ -22,7 +24,8 @@ from views.appointments import (
 MANILA_TZ = ZoneInfo("Asia/Manila")
 CALLBACK_TIME_SLOTS = [
     time(hour, minute).strftime("%I:%M%p").lstrip("0").lower()
-    for hour in range(9, 17)
+    for hour in range(8, 16)
+    if hour != 12
     for minute in (0, 30)
 ]
 NOTIFICATION_STYLES = """
@@ -421,12 +424,95 @@ def _load_notifications(client):
             )
 
     items.sort(key=lambda item: item.get("created_at") or "", reverse=True)
+    if not errors:
+        try:
+            _save_notification_snapshot(items)
+        except sqlite3.Error as error:
+            errors.append(("local notification snapshot", error))
     return items, errors
 
 
-def _render_notification_list(
-    items, read_ids, tab_key, appointments_page, client
-):
+def _ensure_notification_snapshot_table(conn):
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS notification_snapshot_cache (
+            snapshot_id INTEGER PRIMARY KEY CHECK (snapshot_id = 1),
+            snapshot_json TEXT NOT NULL,
+            synced_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _save_notification_snapshot(items):
+    cached_items = [
+        {**item, "categories": sorted(item["categories"])}
+        for item in items
+    ]
+    synced_at = datetime.now(MANILA_TZ).isoformat(timespec="seconds")
+    conn = get_local_connection()
+    try:
+        _ensure_notification_snapshot_table(conn)
+        conn.execute(
+            """
+            INSERT INTO notification_snapshot_cache (
+                snapshot_id, snapshot_json, synced_at
+            )
+            VALUES (1, ?, ?)
+            ON CONFLICT(snapshot_id) DO UPDATE SET
+                snapshot_json = excluded.snapshot_json,
+                synced_at = excluded.synced_at
+            """,
+            (json.dumps(cached_items), synced_at),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return synced_at
+
+
+def _load_notification_snapshot():
+    conn = get_local_connection()
+    try:
+        _ensure_notification_snapshot_table(conn)
+        conn.commit()
+        row = conn.execute(
+            """
+            SELECT snapshot_json, synced_at
+            FROM notification_snapshot_cache
+            WHERE snapshot_id = 1
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if row is None:
+        return None
+
+    try:
+        items = json.loads(row["snapshot_json"])
+        if not isinstance(items, list) or not isinstance(row["synced_at"], str):
+            raise ValueError("The cached notification snapshot is incomplete.")
+        for item in items:
+            if (
+                not isinstance(item, dict)
+                or not isinstance(item.get("id"), str)
+                or not isinstance(item.get("title"), str)
+                or not isinstance(item.get("status"), str)
+                or not isinstance(item.get("categories"), list)
+                or not all(
+                    isinstance(category, str)
+                    for category in item["categories"]
+                )
+            ):
+                raise ValueError("The cached notification snapshot is invalid.")
+            item["categories"] = set(item["categories"])
+        return items, row["synced_at"]
+    except (json.JSONDecodeError, TypeError, ValueError) as error:
+        raise ValueError("The cached notification snapshot is invalid.") from error
+
+
+def _render_notification_list(items, read_ids, tab_key, client):
     st.markdown("#### Patient Requests")
     if not items:
         st.info("There are no notifications in this category.")
@@ -504,7 +590,7 @@ def _render_notification_list(
                 f"{read_error}"
             )
         _render_notification_detail(
-            selected_item, appointments_page, client, tab_key
+            selected_item, client, tab_key
         )
 
 
@@ -610,33 +696,28 @@ def _update_notification(client, item, updates):
             f"could not be written: {error}"
         )
 
-    if new_status in ("Scheduled", "Rescheduled"):
-        scheduled_date_value = date.fromisoformat(updates["requested_date"])
-        st.session_state["appointment_selected_date"] = scheduled_date_value
-        st.session_state["appointment_form_date"] = scheduled_date_value
-        st.session_state["appointment_calendar_month"] = scheduled_date_value.replace(day=1)
-        st.session_state["appointment_flash"] = (
-            f"Appointment for {item['title']} scheduled successfully."
-        )
-    else:
-        st.session_state["notification_flash"] = (
-            f"Appointment for {item['title']} cancelled."
-        )
+    confirmation = {
+        "Scheduled": "Request confirmed",
+        "Rescheduled": "Appointment rescheduled",
+        "Cancelled": "Appointment cancelled",
+    }.get(new_status, f"Appointment status updated to {new_status}")
+    st.session_state["notification_flash"] = (
+        f"{confirmation}: {item['title']}."
+    )
     return True
 
 
-def _open_scheduled_day(appointments_page):
-    if appointments_page is not None:
-        st.switch_page(appointments_page)
-    st.rerun()
-
-
-def _render_notification_actions(client, item, appointments_page, tab_key):
+def _render_notification_actions(client, item, tab_key):
     status = item["status"]
     if status not in ("Pending", "Scheduled", "Rescheduled", "Cancelled"):
         return
 
     st.markdown("#### Appointment Response")
+    if client is None:
+        st.caption(
+            "Actions are unavailable while showing the cached offline snapshot."
+        )
+        return
     try:
         requested_date = date.fromisoformat(item["requested_date"])
     except (TypeError, ValueError):
@@ -687,7 +768,7 @@ def _render_notification_actions(client, item, appointments_page, tab_key):
                         "approval_status": "Scheduled",
                     },
                 ):
-                    _open_scheduled_day(appointments_page)
+                    st.rerun()
 
     with reschedule_column:
         if st.button(
@@ -791,7 +872,7 @@ def _render_notification_actions(client, item, appointments_page, tab_key):
                 },
             ):
                 st.session_state.pop(rescheduling_key, None)
-                _open_scheduled_day(appointments_page)
+                st.rerun()
 
     if st.session_state.get("confirm_cancel_notification_id") == item["id"]:
         st.warning("Cancel this appointment request?")
@@ -811,7 +892,7 @@ def _render_notification_actions(client, item, appointments_page, tab_key):
                 st.rerun()
 
 
-def _render_notification_detail(item, appointments_page, client, tab_key):
+def _render_notification_detail(item, client, tab_key):
     email = item.get("email")
     metadata = [
         ("Email", email),
@@ -898,38 +979,17 @@ def _render_notification_detail(item, appointments_page, client, tab_key):
             )
 
         with st.container(key=f"notification-actions-{tab_key}"):
-            _render_notification_actions(
-                client, item, appointments_page, tab_key
-            )
+            _render_notification_actions(client, item, tab_key)
 
 
-def _render_notification_tab(items, category, appointments_page, read_ids, tab_key, client):
+def _render_notification_tab(items, category, read_ids, tab_key, client):
     filtered_items = [
         item for item in items if category is None or category in item["categories"]
     ]
-    _render_notification_list(
-        filtered_items, read_ids, tab_key, appointments_page, client
-    )
+    _render_notification_list(filtered_items, read_ids, tab_key, client)
 
 
-@st.fragment(run_every="5s")
-def _render_live_notification_feed(client, appointments_page):
-    items, errors = _load_notifications(client)
-    if any(is_supabase_connection_error(error) for _, error in errors):
-        is_supabase_connection_available.clear()
-        st.info(
-            "Notifications are temporarily unavailable because Supabase cannot "
-            "be reached. Reconnect and retry to restore live updates."
-        )
-        if st.button(
-            "Retry connection",
-            icon=":material/refresh:",
-            key="notification_feed_retry_connection",
-        ):
-            is_supabase_connection_available.clear()
-            st.rerun()
-        return
-
+def _render_notification_items(items, client):
     try:
         read_ids = _load_notification_read_ids()
     except Exception as error:
@@ -937,14 +997,6 @@ def _render_live_notification_feed(client, appointments_page):
         with st.expander("Technical details"):
             st.code(str(error))
         return
-
-    for source, error in errors:
-        st.error(f"Unable to load {source}.")
-        with st.expander("Technical details"):
-            st.code(str(error))
-
-    if errors:
-        st.warning("Some notification sources could not be loaded.")
 
     not_responded = [item for item in items if item["status"] == "Pending"]
     responded = [item for item in items if item["status"] != "Pending"]
@@ -958,7 +1010,6 @@ def _render_live_notification_feed(client, appointments_page):
         _render_notification_tab(
             not_responded,
             None,
-            appointments_page,
             read_ids,
             "not-responded",
             client,
@@ -967,11 +1018,66 @@ def _render_live_notification_feed(client, appointments_page):
         _render_notification_tab(
             responded,
             None,
-            appointments_page,
             read_ids,
             "responded",
             client,
         )
+
+
+def _render_cached_notification_feed():
+    try:
+        cached_snapshot = _load_notification_snapshot()
+    except (sqlite3.Error, ValueError) as error:
+        st.error(f"Unable to read the offline notification snapshot: {error}")
+        return
+
+    if cached_snapshot is None:
+        st.info(
+            "Supabase is unavailable and no offline notification snapshot "
+            "is available yet."
+        )
+        return
+
+    items, synced_at = cached_snapshot
+    st.badge(
+        f"Showing cached offline snapshot (last synced {synced_at})",
+        icon=":material/wifi_off:",
+        color="gray",
+    )
+    _render_notification_items(items, client=None)
+
+
+@st.fragment(run_every="5s")
+def _render_live_notification_feed(client):
+    if (
+        not SUPABASE_URL
+        or not SUPABASE_KEY
+        or not is_supabase_connection_available()
+    ):
+        _render_cached_notification_feed()
+        return
+
+    if client is None:
+        client = get_supabase_client()
+    if client is None:
+        _render_cached_notification_feed()
+        return
+
+    items, errors = _load_notifications(client)
+    if any(is_supabase_connection_error(error) for _, error in errors):
+        is_supabase_connection_available.clear()
+        _render_cached_notification_feed()
+        return
+
+    for source, error in errors:
+        st.error(f"Unable to load {source}.")
+        with st.expander("Technical details"):
+            st.code(str(error))
+
+    if errors:
+        st.warning("Some notification sources could not be loaded.")
+
+    _render_notification_items(items, client)
 
 
 @st.fragment(run_every="5s")
@@ -1072,29 +1178,9 @@ def show_notifications_page(*, appointments_page=None):
         if "notification_flash" in st.session_state:
             st.success(st.session_state.pop("notification_flash"))
 
-        if not SUPABASE_URL or not SUPABASE_KEY:
-            st.info(
-                "Notifications require Supabase configuration in the private "
-                ".env file. Local records remain available offline."
-            )
-            return
-        if not is_supabase_connection_available():
-            st.info(
-                "Notifications require a Supabase connection. Reconnect to load "
-                "online appointment and patient activity updates."
-            )
-            if st.button(
-                "Retry connection",
-                icon=":material/refresh:",
-                key="notifications_retry_connection",
-            ):
-                is_supabase_connection_available.clear()
-                st.rerun()
-            return
-
-        client = get_supabase_client()
-        if client is None:
-            st.info("Notifications are unavailable until Supabase is configured.")
-            return
-
-        _render_live_notification_feed(client, appointments_page)
+        client = (
+            get_supabase_client()
+            if SUPABASE_URL and SUPABASE_KEY
+            else None
+        )
+        _render_live_notification_feed(client)

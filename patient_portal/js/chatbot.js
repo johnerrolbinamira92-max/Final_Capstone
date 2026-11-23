@@ -7,6 +7,7 @@ const STARTER_PROMPTS = [
 ];
 
 const messages = [];
+let conversationVersion = 0;
 const config = window.PATIENT_PORTAL_CONFIG || {};
 
 document.body.insertAdjacentHTML("beforeend", `
@@ -86,6 +87,20 @@ function renderMessage(role, text) {
   return message;
 }
 
+function clearConversation() {
+  conversationVersion += 1;
+  messages.length = 0;
+  messageList.replaceChildren();
+  input.value = "";
+  sendButton.disabled = false;
+  starterButtons.forEach((button) => {
+    button.disabled = false;
+  });
+  input.disabled = false;
+}
+
+window.addEventListener("patient-portal:session-cleared", clearConversation);
+
 function trimConversation() {
   if (messages.length > MAX_MESSAGES) {
     messages.splice(0, messages.length - MAX_MESSAGES);
@@ -96,6 +111,7 @@ async function sendMessage(value) {
   const text = value.trim();
   if (!text || text.length > MAX_USER_MESSAGE_LENGTH || sendButton.disabled) return;
 
+  const requestVersion = conversationVersion;
   messages.push({ role: "user", text });
   trimConversation();
   renderMessage("user", text);
@@ -123,6 +139,7 @@ async function sendMessage(value) {
         body: JSON.stringify({ messages: messages.slice(-MAX_MESSAGES) })
       }
     );
+    if (requestVersion !== conversationVersion) return;
     const result = await response.json().catch(() => null);
     if (!response.ok) {
       throw new Error(result?.error || `Care Assistant request failed (${response.status}).`);
@@ -137,19 +154,22 @@ async function sendMessage(value) {
     thinkingMessage.remove();
     renderMessage("assistant", reply);
   } catch (error) {
+    if (requestVersion !== conversationVersion) return;
     console.error("Care Assistant request failed.", error);
     thinkingMessage.remove();
     renderMessage(
       "error",
-      "I couldn’t connect just now. Please try again, or call the center at 0920-691-5015 on weekdays, 8:00 AM–5:00 PM."
+      "I couldn’t connect just now. Please try again, or call the center at 0920-691-5015 during Monday–Friday, 8:00 AM–4:00 PM."
     );
   } finally {
-    sendButton.disabled = false;
-    starterButtons.forEach((button) => {
-      button.disabled = false;
-    });
-    input.disabled = false;
-    input.focus();
+    if (requestVersion === conversationVersion) {
+      sendButton.disabled = false;
+      starterButtons.forEach((button) => {
+        button.disabled = false;
+      });
+      input.disabled = false;
+      input.focus();
+    }
   }
 }
 

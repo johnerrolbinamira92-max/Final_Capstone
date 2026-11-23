@@ -1,5 +1,8 @@
 import calendar
+import json
+import sqlite3
 from datetime import date, datetime, time
+from html import escape
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -45,6 +48,284 @@ APPOINTMENT_COLUMNS = [
     "reason",
 ]
 PAGE_SIZE = 1000
+APPOINTMENT_STYLES = """
+<style>
+.stTooltipContent,
+[role="tooltip"],
+[role="tooltip"] * {
+    white-space: pre-line !important;
+}
+.st-key-admin-calendar-page {
+    color: #e5efed;
+}
+.st-key-admin-calendar-page h1,
+.st-key-admin-calendar-page h2,
+.st-key-admin-calendar-page h3,
+.st-key-admin-calendar-page h4 {
+    color: #f5f1e7;
+}
+.st-key-admin-calendar-page [data-testid="stCaption"],
+.st-key-admin-calendar-page [data-testid="stMarkdownContainer"] p {
+    color: #a7bbb7;
+}
+.st-key-admin-calendar-page .st-key-appointment-calendar-panel [data-testid="stVerticalBlockBorderWrapper"],
+.st-key-admin-calendar-page .st-key-appointment-selected-day-panel [data-testid="stVerticalBlockBorderWrapper"],
+.st-key-admin-calendar-page .st-key-appointment-outcome-queue [data-testid="stVerticalBlockBorderWrapper"],
+.st-key-admin-calendar-page .st-key-appointment-setting [data-testid="stVerticalBlockBorderWrapper"] {
+    border: 1px solid rgba(255, 255, 255, .08) !important;
+    border-radius: 16px !important;
+    background: #112926 !important;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, .2);
+}
+.st-key-admin-calendar-page .st-key-appointment-selected-day-panel [data-testid="stVerticalBlockBorderWrapper"] {
+    padding: 24px 28px !important;
+    min-height: 590px !important;
+    box-sizing: border-box;
+}
+.st-key-admin-calendar-page [data-testid="stMetric"] {
+    min-height: 5.25rem;
+    border: 1px solid rgba(255, 255, 255, .08) !important;
+    border-radius: 14px !important;
+    background: #112926 !important;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .12);
+}
+.st-key-admin-calendar-page [data-testid="stMetricLabel"],
+.st-key-admin-calendar-page [data-testid="stMetricValue"],
+.st-key-admin-calendar-page [data-testid="stMetricDelta"] {
+    color: #e5efed !important;
+}
+.st-key-admin-calendar-page .st-key-appointment-calendar-panel [class*="st-key-appointment_day_"] button {
+    position: relative;
+    display: flex;
+    width: 100%;
+    min-height: 0 !important;
+    height: auto !important;
+    aspect-ratio: 1 / 1;
+    align-items: center;
+    justify-content: center;
+    padding: .35rem !important;
+    border: 1px solid transparent !important;
+    border-radius: 10px !important;
+    background: rgba(255, 255, 255, .03) !important;
+    box-shadow: none !important;
+    color: #e5efed !important;
+    font-size: .94rem;
+    font-weight: 600;
+    text-align: center;
+    transition: background 140ms ease, border-color 140ms ease;
+}
+.st-key-admin-calendar-page .st-key-appointment-calendar-panel [class*="st-key-appointment_day_"] button:hover {
+    border-color: transparent !important;
+    background: rgba(45, 212, 191, .12) !important;
+    color: #f5f1e7 !important;
+    transform: none !important;
+}
+.st-key-admin-calendar-page .st-key-appointment-calendar-panel [class*="st-key-appointment_day_"] button[kind="primary"] {
+    border-color: #2dd4bf !important;
+    background: #145349 !important;
+    color: #ffffff !important;
+}
+.st-key-admin-calendar-page .st-key-appointment-calendar-panel [class*="st-key-appointment_day_"] button[kind="primary"]:hover {
+    background: #145349 !important;
+}
+.st-key-admin-calendar-page .st-key-appointment-calendar-panel [class*="st-key-appointment_day_"] button:focus-visible {
+    outline: 2px solid #2dd4bf !important;
+    outline-offset: 2px;
+}
+.st-key-admin-calendar-page .st-key-appointment-calendar-header [data-testid="stHorizontalBlock"] {
+    flex-wrap: nowrap !important;
+}
+.st-key-admin-calendar-page .appointment-calendar-empty-day {
+    width: 100%;
+    min-height: 0;
+    aspect-ratio: 1 / 1;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+}
+.st-key-admin-calendar-page .st-key-appointment-calendar-weekdays [data-testid="stHorizontalBlock"],
+.st-key-admin-calendar-page [class*="st-key-appointment-calendar-week-"] [data-testid="stHorizontalBlock"] {
+    flex-wrap: nowrap !important;
+}
+.st-key-admin-calendar-page .st-key-appointment-calendar-panel [class*="st-key-appointment_previous_month"] button,
+.st-key-admin-calendar-page .st-key-appointment-calendar-panel [class*="st-key-appointment_next_month"] button {
+    width: 2.5rem;
+    min-height: 2.5rem;
+    height: 2.5rem;
+    padding: 0 !important;
+    border: 1px solid rgba(255, 255, 255, .1) !important;
+    border-radius: 10px !important;
+    background: rgba(255, 255, 255, .04) !important;
+    color: #e5efed !important;
+}
+.st-key-admin-calendar-page .st-key-appointment-calendar-panel [class*="st-key-appointment_previous_month"] button:hover,
+.st-key-admin-calendar-page .st-key-appointment-calendar-panel [class*="st-key-appointment_next_month"] button:hover {
+    border-color: rgba(45, 212, 191, .35) !important;
+    background: rgba(45, 212, 191, .12) !important;
+}
+.st-key-admin-calendar-page [class*="st-key-appointment-outcome-"] {
+    margin: .55rem 0;
+    padding: .7rem .8rem;
+    border: 1px solid rgba(255, 255, 255, .07);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .025);
+}
+.st-key-admin-calendar-page [class*="st-key-appointment-outcome-"] button {
+    min-height: 2.25rem !important;
+    padding: .3rem .55rem !important;
+    border-radius: 999px !important;
+    font-size: .78rem;
+}
+.st-key-admin-calendar-page .st-key-appointment-setting [data-testid="stTextInput"] input,
+.st-key-admin-calendar-page .st-key-appointment-setting [data-testid="stTextArea"] textarea,
+.st-key-admin-calendar-page .st-key-appointment-setting [data-testid="stDateInput"] input,
+.st-key-admin-calendar-page .st-key-appointment-setting [data-testid="stTimeInput"] input {
+    border-color: rgba(255, 255, 255, .14) !important;
+    background: #0c201d !important;
+    color: #f5f1e7 !important;
+}
+.st-key-admin-calendar-page .st-key-appointment-setting [data-testid="stForm"] {
+    border: 0;
+    padding: 0;
+}
+.st-key-admin-calendar-page .appointment-panel-eyebrow,
+.st-key-admin-calendar-page .appointment-detail-label {
+    color: #91aba5;
+    font-size: .67rem;
+    font-weight: 700;
+    letter-spacing: .12em;
+    line-height: 1.4;
+    text-transform: uppercase;
+}
+.st-key-admin-calendar-page .appointment-selected-date {
+    margin: .15rem 0 .75rem;
+    color: #f5f1e7;
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1.3;
+}
+.st-key-admin-calendar-page .appointment-selected-entry {
+    margin-top: 1rem;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, .07);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .025);
+}
+.st-key-admin-calendar-page .appointment-selected-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .75rem;
+    margin-bottom: .9rem;
+}
+.st-key-admin-calendar-page .appointment-selected-name {
+    margin: .15rem 0 0;
+    color: #f5f1e7;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+.st-key-admin-calendar-page .appointment-metadata-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .85rem 1rem;
+}
+.st-key-admin-calendar-page .appointment-detail-value {
+    margin-top: .2rem;
+    color: #e5efed;
+    font-size: .85rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+.st-key-admin-calendar-page .appointment-status-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: .22rem .62rem;
+    border-radius: 999px;
+    font-size: .68rem;
+    font-weight: 700;
+    line-height: 1.35;
+    white-space: nowrap;
+}
+.st-key-admin-calendar-page .appointment-status-scheduled {
+    background: #1b4d46;
+    color: #6ee7b7;
+}
+.st-key-admin-calendar-page .appointment-status-pending {
+    background: rgba(217, 164, 79, .16);
+    color: #e8c98d;
+}
+.st-key-admin-calendar-page .appointment-status-cancelled {
+    background: rgba(229, 139, 125, .16);
+    color: #efb0a5;
+}
+.st-key-admin-calendar-page .appointment-status-declined {
+    background: rgba(229, 139, 125, .16);
+    color: #efb0a5;
+}
+.st-key-admin-calendar-page .appointment-status-no-show {
+    background: rgba(229, 139, 125, .16);
+    color: #efb0a5;
+}
+.st-key-admin-calendar-page .appointment-detail-quote {
+    margin-top: 1rem;
+    padding: .8rem .9rem;
+    border: 1px solid rgba(255, 255, 255, .04);
+    border-radius: 10px;
+    background: #0c201d;
+}
+.st-key-admin-calendar-page .appointment-detail-quote p {
+    margin: .35rem 0 0;
+    color: #d7e5e1;
+    font-size: .86rem;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+.st-key-admin-calendar-page .appointment-history-scroll {
+    overflow-x: auto;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 12px;
+    background: #0c201d;
+}
+.st-key-admin-calendar-page .appointment-history-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: #e5efed;
+    font-size: .85rem;
+}
+.st-key-admin-calendar-page .appointment-history-table th,
+.st-key-admin-calendar-page .appointment-history-table td {
+    padding: .8rem .9rem;
+    border-bottom: 1px solid rgba(255, 255, 255, .07);
+    text-align: left;
+    vertical-align: middle;
+}
+.st-key-admin-calendar-page .appointment-history-table th {
+    color: #91aba5;
+    font-size: .67rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.st-key-admin-calendar-page .appointment-history-table td {
+    color: #d7e5e1;
+}
+.st-key-admin-calendar-page .appointment-history-table tr:last-child td {
+    border-bottom: 0;
+}
+.st-key-admin-calendar-page .appointment-history-table tbody tr:hover {
+    background: rgba(45, 212, 191, .04);
+}
+@media (max-width: 700px) {
+    .st-key-admin-calendar-page .appointment-metadata-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+</style>
+"""
 
 
 def _month_offset(value, offset):
@@ -100,6 +381,39 @@ def _calendar_appointment_status_label(appointment):
             else "Scheduled by admin"
         )
     return status
+
+
+def _appointment_status_class(status):
+    normalized_status = str(status).strip().casefold()
+    if normalized_status in {
+        "completed",
+        "attended",
+        "scheduled",
+        "rescheduled",
+        "confirmed",
+        "scheduled by admin",
+    }:
+        return "scheduled"
+    if normalized_status == "cancelled":
+        return "cancelled"
+    if normalized_status == "declined":
+        return "declined"
+    if normalized_status in {"no-show", "did not attend"}:
+        return "no-show"
+    return "pending"
+
+
+def _appointment_status_badge(status):
+    label = (
+        "Pending"
+        if status is None or pd.isna(status) or not str(status).strip()
+        else str(status)
+    )
+    status_class = _appointment_status_class(label)
+    return (
+        f'<span class="appointment-status-pill appointment-status-{status_class}">'
+        f"{escape(label)}</span>"
+    )
 
 
 def _appointment_datetime(appointment, *, now=None):
@@ -227,6 +541,85 @@ def _load_calendar_appointments(client, appointments=None):
     )
 
 
+def _ensure_appointment_snapshot_table(conn):
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS appointment_snapshot_cache (
+            snapshot_id INTEGER PRIMARY KEY CHECK (snapshot_id = 1),
+            snapshot_json TEXT NOT NULL,
+            synced_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _save_appointment_snapshot(appointments):
+    payload = {
+        "columns": list(appointments.columns),
+        "records": json.loads(
+            appointments.to_json(orient="records", date_format="iso")
+        ),
+    }
+    synced_at = datetime.now(ZoneInfo("Asia/Manila")).isoformat(
+        timespec="seconds"
+    )
+    conn = get_local_connection()
+    try:
+        _ensure_appointment_snapshot_table(conn)
+        conn.execute(
+            """
+            INSERT INTO appointment_snapshot_cache (
+                snapshot_id, snapshot_json, synced_at
+            )
+            VALUES (1, ?, ?)
+            ON CONFLICT(snapshot_id) DO UPDATE SET
+                snapshot_json = excluded.snapshot_json,
+                synced_at = excluded.synced_at
+            """,
+            (json.dumps(payload), synced_at),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return synced_at
+
+
+def _load_appointment_snapshot():
+    conn = get_local_connection()
+    try:
+        _ensure_appointment_snapshot_table(conn)
+        conn.commit()
+        row = conn.execute(
+            """
+            SELECT snapshot_json, synced_at
+            FROM appointment_snapshot_cache
+            WHERE snapshot_id = 1
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if row is None:
+        return None
+
+    try:
+        payload = json.loads(row["snapshot_json"])
+        columns = payload["columns"]
+        records = payload["records"]
+        if (
+            not isinstance(columns, list)
+            or not all(isinstance(column, str) for column in columns)
+            or not set(APPOINTMENT_COLUMNS).issubset(columns)
+            or "event_source" not in columns
+            or not isinstance(records, list)
+            or not isinstance(row["synced_at"], str)
+        ):
+            raise ValueError("The cached appointment snapshot is incomplete.")
+        return pd.DataFrame.from_records(records, columns=columns), row["synced_at"]
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
+        raise ValueError("The cached appointment snapshot is invalid.") from error
+
+
 def _appointment_summary_counts(appointments, today):
     if appointments.empty:
         return {
@@ -290,17 +683,23 @@ def _render_appointment_metrics(
     initial_appointments,
     today,
 ):
-    if not st.session_state.get("appointment_metrics_initialized"):
+    if client is None or not st.session_state.get(
+        "appointment_metrics_initialized"
+    ):
         counts = _appointment_summary_counts(initial_appointments, today)
         st.session_state["appointment_metrics_initialized"] = True
     else:
         try:
             counts = _load_appointment_summary_counts(client, today)
         except Exception as error:
-            st.error("Unable to refresh appointment counts from Supabase.")
-            with st.expander("Technical details"):
-                st.code(str(error))
-            return
+            if is_supabase_connection_error(error):
+                is_supabase_connection_available.clear()
+                counts = _appointment_summary_counts(initial_appointments, today)
+            else:
+                st.error("Unable to refresh appointment counts from Supabase.")
+                with st.expander("Technical details"):
+                    st.code(str(error))
+                return
 
     metrics = st.columns(3)
     metrics[0].metric("Visits today", counts["today"], border=True)
@@ -318,36 +717,47 @@ def _render_calendar(appointments, selected_date):
         st.session_state[month_state_key] = selected_date.replace(day=1)
 
     month_start = st.session_state[month_state_key]
-    today_col, previous_col, title_col, next_col = st.columns([1.3, 1, 4, 1])
-    with today_col:
-        if st.button("Today", key="appointment_today"):
-            today = datetime.now(ZoneInfo("Asia/Manila")).date()
-            st.session_state[month_state_key] = today.replace(day=1)
-            st.session_state["appointment_selected_date"] = today
-            st.session_state["appointment_form_date"] = today
-            st.rerun()
-    with previous_col:
-        if st.button(
-            " ",
-            icon=":material/chevron_left:",
-            key="appointment_previous_month",
-            help="Show the previous month",
-        ):
-            st.session_state[month_state_key] = _month_offset(month_start, -1)
-            st.rerun()
-    with title_col:
-        st.markdown(f"### {month_start.strftime('%B %Y')}")
-    with next_col:
-        if st.button(
-            " ",
-            icon=":material/chevron_right:",
-            key="appointment_next_month",
-            help="Show the next month",
-        ):
-            st.session_state[month_state_key] = _month_offset(month_start, 1)
-            st.rerun()
+    today = datetime.now(ZoneInfo("Asia/Manila")).date()
+    with st.container(key="appointment-calendar-header"):
+        left_controls, title_col, right_control = st.columns(
+            [2, 5, 2],
+            vertical_alignment="center",
+        )
+        with left_controls:
+            today_col, previous_col = st.columns([1.35, 0.65], gap="small")
+            with today_col:
+                if st.button("Today", key="appointment_today"):
+                    today = datetime.now(ZoneInfo("Asia/Manila")).date()
+                    st.session_state[month_state_key] = today.replace(day=1)
+                    st.session_state["appointment_selected_date"] = today
+                    st.session_state["appointment_form_date"] = today
+                    st.rerun()
+            with previous_col:
+                if st.button(
+                    " ",
+                    icon=":material/chevron_left:",
+                    key="appointment_previous_month",
+                    help="Show the previous month",
+                ):
+                    st.session_state[month_state_key] = _month_offset(month_start, -1)
+                    st.rerun()
+        with title_col:
+            st.markdown(
+                f"### {month_start.strftime('%B %Y')}",
+                text_alignment="center",
+            )
+        with right_control:
+            with st.container(horizontal=True, horizontal_alignment="right"):
+                if st.button(
+                    " ",
+                    icon=":material/chevron_right:",
+                    key="appointment_next_month",
+                    help="Show the next month",
+                ):
+                    st.session_state[month_state_key] = _month_offset(month_start, 1)
+                    st.rerun()
 
-    active_by_date = {}
+    confirmed_by_date = {}
     if not appointments.empty:
         confirmed_appointments = appointments[
             appointments["approval_status"].isin(CALENDAR_STATUSES)
@@ -359,64 +769,112 @@ def _render_calendar(appointments, selected_date):
             )
         }
 
-    weekday_columns = st.columns(7)
-    for column, label in zip(weekday_columns, WEEKDAY_LABELS):
-        with column:
-            st.caption(f"**{label}**")
+    dot_day_keys = set()
+    for requested_date in confirmed_by_date:
+        try:
+            appointment_date = date.fromisoformat(str(requested_date))
+        except (TypeError, ValueError):
+            continue
+        if (
+            appointment_date.year == month_start.year
+            and appointment_date.month == month_start.month
+        ):
+            dot_day_keys.add(appointment_date.isoformat())
+    dot_styles = "\n".join(
+        f"""
+        .st-key-admin-calendar-page .st-key-appointment-calendar-panel
+        [class*="st-key-appointment_day_{day_key}"] button::after {{
+            content: "•";
+            position: absolute;
+            bottom: .28rem;
+            color: #2dd4bf;
+            font-size: 1.05rem;
+            line-height: 1;
+        }}
+        """
+        for day_key in sorted(dot_day_keys)
+    )
+    st.html(
+        f"""
+        <style>
+        .st-key-admin-calendar-page .st-key-appointment-calendar-panel
+        [class*="st-key-appointment_day_{today.isoformat()}"] button:not([kind="primary"]) {{
+            border-color: rgba(45, 212, 191, .58) !important;
+            box-shadow: inset 0 0 0 1px rgba(45, 212, 191, .22) !important;
+        }}
+        {dot_styles}
+        </style>
+        """
+    )
+
+    with st.container(key="appointment-calendar-weekdays"):
+        weekday_columns = st.columns(7, gap="small")
+        for column, label in zip(weekday_columns, WEEKDAY_LABELS):
+            with column:
+                st.caption(f"**{label}**")
 
     month_rows = calendar.Calendar(firstweekday=calendar.SUNDAY).monthdayscalendar(
         month_start.year, month_start.month
     )
     for week_index, week in enumerate(month_rows):
-        day_columns = st.columns(7)
-        for day_index, (column, day_number) in enumerate(zip(day_columns, week)):
-            with column:
-                if not day_number:
-                    st.markdown(
-                        '<div class="appointment-calendar-empty-day"></div>',
-                        unsafe_allow_html=True,
-                    )
-                    continue
+        with st.container(key=f"appointment-calendar-week-{week_index}"):
+            day_columns = st.columns(7, gap="small")
+            for day_index, (column, day_number) in enumerate(zip(day_columns, week)):
+                with column:
+                    if not day_number:
+                        st.markdown(
+                            '<div class="appointment-calendar-empty-day"></div>',
+                            unsafe_allow_html=True,
+                        )
+                        continue
 
-                day_date = date(month_start.year, month_start.month, day_number)
-                day_key = day_date.isoformat()
-                day_appointments = confirmed_by_date.get(day_key)
-                appointment_count = (
-                    len(day_appointments) if day_appointments is not None else 0
-                )
-                label = (
-                    f"{day_number}\n● {appointment_count} visit(s)"
-                    if appointment_count
-                    else str(day_number)
-                )
-                tooltip = (
-                    f"{appointment_count} confirmed or rescheduled appointment(s)"
-                )
-                if appointment_count:
-                    patient_names = day_appointments["patient_name"].fillna(
-                        "Patient"
+                    day_date = date(month_start.year, month_start.month, day_number)
+                    day_key = day_date.isoformat()
+                    day_appointments = confirmed_by_date.get(day_key)
+                    appointment_count = (
+                        len(day_appointments) if day_appointments is not None else 0
                     )
-                    tooltip += ":\n" + "\n".join(
-                        f"- {name}" for name in patient_names
-                    )
-                else:
-                    tooltip = (
-                        f"Select {day_date.strftime('%B')} {day_number}, "
-                        f"{day_date.year}"
-                    )
-                if st.button(
-                    label,
-                    key=f"appointment_day_{day_key}",
-                    type="primary" if day_date == selected_date else "secondary",
-                    width="stretch",
-                    help=tooltip,
-                ):
-                    st.session_state["appointment_selected_date"] = day_date
-                    st.session_state["appointment_form_date"] = day_date
-                    st.rerun()
+                    label = str(day_number)
+                    button_options = {
+                        "label": label,
+                        "key": f"appointment_day_{day_key}",
+                        "type": (
+                            "primary"
+                            if day_date == selected_date
+                            else "secondary"
+                        ),
+                        "width": "stretch",
+                    }
+                    if day_appointments is not None and not day_appointments.empty:
+                        names_and_times = []
+                        for appointment in day_appointments.to_dict(
+                            orient="records"
+                        ):
+                            name = appointment.get("patient_name")
+                            if (
+                                name is None
+                                or pd.isna(name)
+                                or not str(name).strip()
+                            ):
+                                name = "Patient"
+                            names_and_times.append(
+                                f"{name} "
+                                f"({_format_time(appointment.get('requested_time_slot'))})"
+                            )
+                        button_options["help"] = (
+                            f"{day_date:%b} {day_date.day}:\n"
+                            + "\n".join(
+                                f"• {name_and_time}"
+                                for name_and_time in names_and_times
+                            )
+                        )
+                    if st.button(**button_options):
+                        st.session_state["appointment_selected_date"] = day_date
+                        st.session_state["appointment_form_date"] = day_date
+                        st.rerun()
 
     st.caption(
-        "● indicates one or more confirmed or rescheduled visits. "
+        "A teal dot marks one or more confirmed or rescheduled visits. "
         "Select a date to schedule a visit."
     )
 
@@ -432,8 +890,11 @@ def _render_selected_day(appointments, selected_date):
     display_date = (
         f"{selected_date.strftime('%A, %B')} {selected_date.day}, {selected_date.year}"
     )
-    st.markdown("#### Selected Day")
-    st.markdown(f"### {display_date}")
+    st.markdown(
+        '<div class="appointment-panel-eyebrow">Selected day</div>'
+        f'<div class="appointment-selected-date">{escape(display_date)}</div>',
+        unsafe_allow_html=True,
+    )
     if day_appointments.empty:
         st.info("No appointments are recorded for this date yet.")
     else:
@@ -450,60 +911,93 @@ def _render_selected_day(appointments, selected_date):
             return
         for index, appointment in enumerate(day_appointments.to_dict(orient="records")):
             patient_name = str(appointment.get("patient_name") or "Patient")
-            with st.expander(
-                patient_name,
-                key=f"appointment-selected-details-{index}",
-            ):
-                st.caption(
-                    f"{_format_time(appointment.get('requested_time_slot'))}"
-                )
-                st.badge(
-                    _calendar_appointment_status_label(appointment),
-                    color="blue",
-                )
-                st.text(
-                    f"Contact: {_format_optional(appointment.get('contact_number'))}"
-                )
-                st.text(
-                    f"Email: {_format_patient_email(appointment.get('patient_email'))}"
-                )
-                if appointment.get("event_source") == "help_request":
-                    age = appointment.get("patient_age")
-                    if age is not None and not pd.isna(age):
-                        st.text(f"Age: {age}")
-                    message = appointment.get("message")
-                    if message and not pd.isna(message):
-                        st.text(f"Message: {message}")
-                    received_at = appointment.get("created_at")
-                    if received_at is not None and not pd.isna(received_at):
-                        st.text(
-                            f"Received: {_format_received_at(received_at)}"
-                        )
-                else:
-                    st.text(
-                        f"Patient app ID: "
-                        f"{_format_optional(appointment.get('patient_id'))}"
+            status_label = _calendar_appointment_status_label(appointment)
+            metadata = [
+                ("Time", _format_time(appointment.get("requested_time_slot"))),
+                ("Status", _appointment_status_badge(status_label)),
+                ("Contact", _format_optional(appointment.get("contact_number"))),
+                (
+                    "Email",
+                    _format_patient_email(appointment.get("patient_email")),
+                ),
+            ]
+            quote_label = None
+            quote_text = None
+            if appointment.get("event_source") == "help_request":
+                age = appointment.get("patient_age")
+                if age is not None and not pd.isna(age):
+                    metadata.append(("Age", str(age)))
+                message = appointment.get("message")
+                if message and not pd.isna(message):
+                    quote_label = "Message"
+                    quote_text = str(message)
+                received_at = appointment.get("created_at")
+                if received_at is not None and not pd.isna(received_at):
+                    metadata.append(
+                        ("Received", _format_received_at(received_at))
                     )
-                    reason = _format_optional(appointment.get("reason"))
-                    if reason != "Not provided":
-                        st.text(f"Reason: {reason}")
+            else:
+                metadata.append(
+                    (
+                        "Patient app ID",
+                        _format_optional(appointment.get("patient_id")),
+                    )
+                )
+                reason = _format_optional(appointment.get("reason"))
+                if reason != "Not provided":
+                    quote_label = "Reason"
+                    quote_text = reason
+
+            metadata_markup = "".join(
+                '<div class="appointment-detail-item">'
+                f'<div class="appointment-detail-label">{escape(label)}</div>'
+                '<div class="appointment-detail-value">'
+                f'{value if label == "Status" else escape(value)}'
+                "</div></div>"
+                for label, value in metadata
+            )
+            quote_markup = (
+                '<div class="appointment-detail-quote">'
+                f'<div class="appointment-detail-label">{escape(quote_label)}</div>'
+                f"<p>{escape(quote_text)}</p></div>"
+                if quote_label is not None
+                else ""
+            )
+            st.markdown(
+                f"""
+                <article class="appointment-selected-entry">
+                  <div class="appointment-selected-header">
+                    <div>
+                      <div class="appointment-detail-label">Patient</div>
+                      <div class="appointment-selected-name">{escape(patient_name)}</div>
+                    </div>
+                  </div>
+                  <div class="appointment-metadata-grid">{metadata_markup}</div>
+                  {quote_markup}
+                </article>
+                """,
+                unsafe_allow_html=True,
+            )
 
 
-def _render_appointment_history(appointments, today):
+def _render_appointment_history(appointments):
     st.markdown("#### Appointment History")
-    st.caption(
-        "Completed means the patient attended; No-show means they did not attend. "
-        "Past appointments without an outcome remain visible until updated."
-    )
+    st.caption("Only finalized appointments are shown here.")
     if appointments.empty:
         st.info("There is no appointment history yet.")
         return
 
-    past_dates = appointments["requested_date"].astype(str) < today.isoformat()
-    final_statuses = appointments["approval_status"].isin(
-        ("Completed", "No-show", "Cancelled")
-    )
-    history = appointments[past_dates | final_statuses].copy()
+    status_labels = {
+        "Completed": "Attended",
+        "Attended": "Attended",
+        "Cancelled": "Cancelled",
+        "No-show": "Did not attend",
+        "Did not attend": "Did not attend",
+        "Declined": "Declined",
+    }
+    history = appointments[
+        appointments["approval_status"].isin(status_labels)
+    ].copy()
     if history.empty:
         st.info("There is no appointment history yet.")
         return
@@ -515,7 +1009,7 @@ def _render_appointment_history(appointments, today):
     )
     history["Time"] = history["requested_time_slot"].map(_format_time)
     history["Attendance / status"] = history["approval_status"].replace(
-        {"Completed": "Attended", "No-show": "Did not attend"}
+        status_labels
     )
     history["Reason"] = history["reason"].fillna("")
     history = history.sort_values(
@@ -524,25 +1018,48 @@ def _render_appointment_history(appointments, today):
         kind="stable",
         na_position="last",
     )
-    st.dataframe(
-        history[
-            [
-                "Date",
-                "Time",
-                "patient_name",
-                "contact_number",
-                "Reason",
-                "Attendance / status",
-            ]
-        ].rename(
-            columns={
-                "patient_name": "Patient",
-                "contact_number": "Contact",
-            }
-        ),
-        hide_index=True,
-        width="stretch",
-        alt="Past appointments and attendance outcomes",
+    table_rows = []
+    for row in history.to_dict(orient="records"):
+        cells = (
+            row["Date"],
+            row["Time"],
+            row.get("patient_name"),
+            row.get("contact_number"),
+            row["Reason"],
+        )
+        cell_markup = "".join(
+            f"<td>{'' if value is None or pd.isna(value) else escape(str(value))}</td>"
+            for value in cells
+        )
+        status = row["Attendance / status"]
+        table_rows.append(
+            f"<tr>{cell_markup}"
+            f"<td>{_appointment_status_badge(status)}</td></tr>"
+        )
+    st.markdown(
+        """
+        <div class="appointment-history-scroll">
+          <table class="appointment-history-table"
+                 aria-label="Past appointments and attendance outcomes">
+            <thead>
+              <tr>
+                <th scope="col">Date</th>
+                <th scope="col">Time</th>
+                <th scope="col">Patient</th>
+                <th scope="col">Contact</th>
+                <th scope="col">Reason</th>
+                <th scope="col">Attendance / status</th>
+              </tr>
+            </thead>
+            <tbody>
+        """
+        + "".join(table_rows)
+        + """
+            </tbody>
+          </table>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
 
@@ -621,6 +1138,9 @@ def _render_awaiting_outcomes(appointments, client, *, now=None):
         st.info("There are no past scheduled visits awaiting an outcome.")
         return
 
+    if client is None:
+        st.caption("Outcome actions are unavailable while showing an offline snapshot.")
+
     for scheduled_at, appointment in waiting:
         patient_name = appointment.get("patient_name") or "Patient"
         identity = appointment.get("appointment_id")
@@ -639,6 +1159,7 @@ def _render_awaiting_outcomes(appointments, client, *, now=None):
                 key=f"appointment-outcome-done-{row_key}",
                 icon=":material/check_circle:",
                 width="stretch",
+                disabled=client is None,
             ):
                 _update_appointment_outcome(client, appointment, "Completed")
             if cancel_column.button(
@@ -646,6 +1167,7 @@ def _render_awaiting_outcomes(appointments, client, *, now=None):
                 key=f"appointment-outcome-cancel-{row_key}",
                 icon=":material/event_busy:",
                 width="stretch",
+                disabled=client is None,
             ):
                 _update_appointment_outcome(client, appointment, "Cancelled")
             if no_show_column.button(
@@ -653,6 +1175,7 @@ def _render_awaiting_outcomes(appointments, client, *, now=None):
                 key=f"appointment-outcome-no-show-{row_key}",
                 icon=":material/person_off:",
                 width="stretch",
+                disabled=client is None,
             ):
                 _update_appointment_outcome(client, appointment, "No-show")
 
@@ -679,31 +1202,31 @@ def _render_schedule_form(client):
         patient_column, schedule_column = st.columns(2)
         with patient_column:
             patient_name = st.text_input(
-                "Patient name",
+                "Patient Name",
                 key="appointment_form_patient_name",
             ).strip()
             patient_id = st.text_input(
-                "Patient app ID (optional)",
+                "Patient App ID (Optional)",
                 key="appointment_form_patient_id",
                 help="Use the patient ID from the connected patient app when available.",
             ).strip()
             contact_number = st.text_input(
-                "Contact number",
+                "Contact Number",
                 key="appointment_form_contact",
             ).strip()
         with schedule_column:
             visit_date = st.date_input(
-                "Visit date",
+                "Visit Date",
                 key="appointment_form_date",
                 format="MM/DD/YYYY",
             )
             visit_time = st.time_input(
-                "Visit time (Philippine time)",
+                "Visit Time (Philippine Time)",
                 key="appointment_form_time",
                 format="12h",
             )
         reason = st.text_area(
-            "Notes / reason for visit (optional)",
+            "Notes / Reason for Visit (Optional)",
             key="appointment_form_reason",
             max_chars=500,
             help="Keep this brief. Do not include sensitive clinical details.",
@@ -1040,8 +1563,23 @@ def _render_help_requests(client):
                     st.rerun()
 
 
+@st.fragment(run_every="15s")
+def _monitor_appointment_connectivity():
+    is_online = bool(SUPABASE_KEY) and is_supabase_connection_available()
+    state_key = "appointment_supabase_connection_online"
+    previous_state = st.session_state.get(state_key)
+    if previous_state is None:
+        st.session_state[state_key] = is_online
+    elif previous_state != is_online:
+        st.session_state[state_key] = is_online
+        st.rerun()
+    st.empty()
+
+
 def show_appointments_page():
     with st.container(key="admin-calendar-page"):
+        st.html(APPOINTMENT_STYLES)
+        _monitor_appointment_connectivity()
         st.markdown(
             '<div class="calendar-eyebrow">Appointment Management</div>',
             unsafe_allow_html=True,
@@ -1075,48 +1613,58 @@ def show_appointments_page():
                 st.query_params["focus"] = "schedule"
                 st.rerun()
 
-        if not SUPABASE_KEY:
-            st.info(
-                "Appointments need the Supabase service key in the private .env "
-                "file. Local records remain available offline."
-            )
-            return
-        if not is_supabase_connection_available():
-            st.info(
-                "Appointments require a Supabase connection. Reconnect to load "
-                "online schedules; local records remain available offline."
-            )
-            return
+        client = None
+        if SUPABASE_KEY and is_supabase_connection_available():
+            client = get_supabase_client()
 
-        client = get_supabase_client()
-        if client is None:
-            st.info(
-                "Appointments are unavailable until the Supabase connection is "
-                "configured."
-            )
-            return
+        calendar_appointments = None
+        if client is not None:
+            try:
+                appointments = _load_appointments(client)
+                calendar_appointments = _load_calendar_appointments(
+                    client, appointments
+                )
+            except Exception as error:
+                if is_supabase_connection_error(error):
+                    is_supabase_connection_available.clear()
+                    client = None
+                else:
+                    st.error(
+                        "Unable to load the appointment calendar from Supabase. "
+                        "Check the project API URL, run the appointment and "
+                        "patient-help-request SQL setup scripts, and verify "
+                        "SELECT permissions."
+                    )
+                    with st.expander("Technical details"):
+                        st.code(str(error))
+                    return
 
-        try:
-            appointments = _load_appointments(client)
-            calendar_appointments = _load_calendar_appointments(
-                client, appointments
-            )
-        except Exception as error:
-            if is_supabase_connection_error(error):
-                is_supabase_connection_available.clear()
+        if client is not None and calendar_appointments is not None:
+            try:
+                _save_appointment_snapshot(calendar_appointments)
+            except sqlite3.Error as error:
+                st.warning(
+                    "Appointments loaded from Supabase, but the offline snapshot "
+                    f"could not be saved: {error}"
+                )
+        else:
+            try:
+                cached_snapshot = _load_appointment_snapshot()
+            except (sqlite3.Error, ValueError) as error:
+                st.error(f"Unable to read the offline appointment snapshot: {error}")
+                return
+            if cached_snapshot is None:
                 st.info(
-                    "Appointments are temporarily unavailable because Supabase "
-                    "cannot be reached. Reconnect and refresh to try again."
+                    "Supabase is unavailable and no offline appointment snapshot "
+                    "is available yet."
                 )
                 return
-            st.error(
-                "Unable to load the appointment calendar from Supabase. Check the "
-                "project API URL, run the appointment and patient-help-request SQL "
-                "setup scripts, and verify SELECT permissions."
+            calendar_appointments, synced_at = cached_snapshot
+            st.badge(
+                f"Showing cached offline snapshot (last synced {synced_at})",
+                icon=":material/wifi_off:",
+                color="gray",
             )
-            with st.expander("Technical details"):
-                st.code(str(error))
-            return
 
         today = datetime.now(ZoneInfo("Asia/Manila")).date()
         if "appointment_selected_date" not in st.session_state:
@@ -1146,34 +1694,63 @@ def show_appointments_page():
         if "appointment_flash" in st.session_state:
             st.success(st.session_state.pop("appointment_flash"))
 
-        _render_appointment_metrics(client, calendar_appointments, today)
+        focus = st.query_params.get("focus")
+        focused_tab = {
+            "schedule": "Set an Appointment",
+            "history": "Appointment History",
+        }.get(focus)
+        if focused_tab is not None:
+            st.session_state["appointment_sections"] = focused_tab
 
-        with st.container(key="appointment-calendar-content"):
-            selected_date = st.session_state["appointment_selected_date"]
-            with st.container(key="appointment-calendar-layout"):
-                calendar_column, selected_day_column = st.columns(
-                    [1.8, 0.9], gap="medium"
-                )
-                with calendar_column:
-                    with st.container(
-                        border=True, key="appointment-calendar-panel"
-                    ):
-                        _render_calendar(calendar_appointments, selected_date)
-                with selected_day_column:
-                    with st.container(
-                        border=True, key="appointment-selected-day-panel"
-                    ):
-                        _render_selected_day(calendar_appointments, selected_date)
+        calendar_tab, schedule_tab, history_tab = st.tabs(
+            ["Calendar", "Set an Appointment", "Appointment History"],
+            default=focused_tab,
+            key="appointment_sections",
+            on_change="rerun",
+        )
+        with calendar_tab:
+            _render_appointment_metrics(client, calendar_appointments, today)
+            with st.container(key="appointment-calendar-content"):
+                with st.container(key="appointment-calendar-layout"):
+                    calendar_column, selected_day_column = st.columns(
+                        [1.8, 0.9], gap="medium"
+                    )
+                    with calendar_column:
+                        with st.container(
+                            border=True, key="appointment-calendar-panel"
+                        ):
+                            selected_date = st.session_state[
+                                "appointment_selected_date"
+                            ]
+                            _render_calendar(calendar_appointments, selected_date)
+                    with selected_day_column:
+                        with st.container(
+                            border=True,
+                            height=590,
+                            key="appointment-selected-day-panel",
+                        ):
+                            _render_selected_day(
+                                calendar_appointments,
+                                st.session_state["appointment_selected_date"],
+                            )
 
             with st.container(border=True, key="appointment-outcome-queue"):
                 _render_awaiting_outcomes(calendar_appointments, client)
 
+        with schedule_tab:
             with st.container(border=True, key="appointment-setting"):
-                _render_schedule_form(client)
-            with st.container(border=True, key="appointment-history"):
-                _render_appointment_history(calendar_appointments, today)
+                if client is None:
+                    st.info(
+                        "Appointment scheduling requires an active Supabase "
+                        "connection."
+                    )
+                else:
+                    _render_schedule_form(client)
 
-        focus = st.query_params.get("focus")
+        with history_tab:
+            with st.container(border=True, key="appointment-history"):
+                _render_appointment_history(calendar_appointments)
+
         if focus == "schedule":
             target_selector = ".st-key-appointment-setting"
         elif focus == "history":

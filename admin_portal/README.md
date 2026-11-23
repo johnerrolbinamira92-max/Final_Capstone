@@ -94,7 +94,12 @@ the scheduling form.
 
 The **Patient statistics** page keeps the location filters for exploring records by
 province, city / municipality, barangay, and purok, with patient counts and
-distribution charts.
+distribution charts. Its **Portal Engagement** tab reads anonymous completed
+submission totals and anonymized signed-in journal counts from Supabase; it
+caches that aggregate snapshot in `hfrc_local_archive.db` for offline viewing.
+Apply [`../supabase/portal_engagement.sql`](../supabase/portal_engagement.sql)
+after [`../supabase/patient_portal_auth.sql`](../supabase/patient_portal_auth.sql)
+to enable the tab. Guest submissions appear only in aggregate totals.
 
 **Search Records** combines searching and record management. Search by patient
 name, ID, or location, or filter by province, municipality / city, barangay,
@@ -119,6 +124,11 @@ Notifications shows all recent requests in one selectable list, with each
 request's status beside the name. Selecting a request opens its details; unread
 indicators appear in the list, overview bell, and sidebar, and read state
 persists in the local database per admin account.
+Appointments and Notifications cache their latest complete snapshots in
+`hfrc_local_archive.db`. When Supabase is unreachable, each page displays the
+last synced snapshot read-only with its sync time, then resumes live data
+automatically after connectivity returns. Calendar hover tooltips list the
+scheduled patients and times for that date.
 
 **Activity History** records completed changes to patient records and
 appointments: records added, edited, or deleted; appointments scheduled,

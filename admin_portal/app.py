@@ -611,34 +611,53 @@ st.markdown(
     }
 
     .st-key-admin-statistics-page [data-testid="stTabs"] [role="tablist"],
-    .st-key-admin-notifications-page [data-testid="stTabs"] [role="tablist"] {
-        gap: 24px;
+    .st-key-admin-notifications-page [data-testid="stTabs"] [role="tablist"],
+    .st-key-admin-calendar-page [data-testid="stTabs"] [role="tablist"],
+    .st-key-selected-patient-details [data-testid="stTabs"] [role="tablist"] {
+        gap: 12px;
         border-bottom: 1px solid rgba(145, 171, 165, .28);
     }
 
     .st-key-admin-statistics-page [data-testid="stTabs"] [role="tab"],
-    .st-key-admin-notifications-page [data-testid="stTabs"] [role="tab"] {
+    .st-key-admin-notifications-page [data-testid="stTabs"] [role="tab"],
+    .st-key-admin-calendar-page [data-testid="stTabs"] [role="tab"],
+    .st-key-selected-patient-details [data-testid="stTabs"] [role="tab"] {
         min-height: 44px;
-        padding: .65rem .35rem .7rem !important;
-        border: 0 !important;
-        border-bottom: 2px solid transparent !important;
-        border-radius: 0 !important;
-        background: transparent !important;
+        padding: 10px 20px !important;
+        border: 1px solid rgba(255, 255, 255, .14) !important;
+        border-radius: 10px !important;
+        background: rgba(255, 255, 255, .05) !important;
         box-shadow: none !important;
         font-size: 15px !important;
-        font-weight: 600 !important;
+        font-weight: 700 !important;
         cursor: pointer;
     }
 
     .st-key-admin-statistics-page [data-testid="stTabs"] [role="tab"]:hover,
-    .st-key-admin-notifications-page [data-testid="stTabs"] [role="tab"]:hover {
-        border-bottom-color: rgba(45, 212, 191, .45) !important;
+    .st-key-admin-notifications-page [data-testid="stTabs"] [role="tab"]:hover,
+    .st-key-admin-calendar-page [data-testid="stTabs"] [role="tab"]:hover,
+    .st-key-selected-patient-details [data-testid="stTabs"] [role="tab"]:hover {
+        border-color: rgba(45, 212, 191, .6) !important;
+        background: rgba(45, 212, 191, .08) !important;
     }
 
     .st-key-admin-statistics-page [data-testid="stTabs"] [role="tab"][aria-selected="true"],
-    .st-key-admin-notifications-page [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
-        border-bottom-color: #2dd4bf !important;
+    .st-key-admin-notifications-page [data-testid="stTabs"] [role="tab"][aria-selected="true"],
+    .st-key-admin-calendar-page [data-testid="stTabs"] [role="tab"][aria-selected="true"],
+    .st-key-selected-patient-details [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+        border: 1.5px solid #2dd4bf !important;
+        border-bottom: 3px solid #2dd4bf !important;
+        border-radius: 10px !important;
+        background: #145349 !important;
+        color: #ffffff !important;
         font-weight: 700 !important;
+    }
+
+    .st-key-admin-statistics-page [data-testid="stTabs"] [role="tab"] > [data-rac],
+    .st-key-admin-notifications-page [data-testid="stTabs"] [role="tab"] > [data-rac],
+    .st-key-admin-calendar-page [data-testid="stTabs"] [role="tab"] > [data-rac],
+    .st-key-selected-patient-details [data-testid="stTabs"] [role="tab"] > [data-rac] {
+        display: none !important;
     }
 
     [data-testid="stDataFrame"] {
@@ -709,7 +728,7 @@ st.markdown(
         margin: 0;
         color: var(--hfrc-text);
         font-family: "Roboto", "Segoe UI", sans-serif;
-        font-size: 1.25rem;
+        font-size: 26px;
         font-weight: 700;
     }
 
@@ -1225,6 +1244,10 @@ st.markdown(
             color: var(--hfrc-text);
         }
 
+        .st-key-admin-search-page {
+            padding-bottom: .75rem;
+        }
+
         .st-key-admin-search-results {
             max-width: 1440px;
             margin-inline: auto;
@@ -1334,6 +1357,59 @@ st.markdown(
             color: var(--hfrc-teal-bright) !important;
         }
 
+        .st-key-patient-results-table [data-testid="stVerticalBlockBorderWrapper"] {
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, .12) !important;
+            border-radius: 12px !important;
+            background: #112926;
+            padding: 0 !important;
+        }
+
+        .st-key-patient-results-table [data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+        }
+
+        .st-key-patient-results-table-header {
+            display: flex;
+            align-items: center;
+            min-height: 44px;
+            box-sizing: border-box;
+            border-bottom: 1px solid rgba(45, 212, 191, .25);
+            background: #0c201d;
+            padding: 12px 16px;
+            color: #99f6e4;
+        }
+
+        .st-key-patient-results-table-header [data-testid="stHorizontalBlock"] {
+            width: 100%;
+        }
+
+        .st-key-patient-results-table-header .patient-results-table-header-label {
+            display: flex;
+            min-height: 44px;
+            align-items: center;
+        }
+
+        .st-key-patient-results-table-header [data-testid="stMarkdownContainer"],
+        .st-key-patient-results-table-header [data-testid="stMarkdownContainer"] p,
+        .st-key-patient-results-table-header strong {
+            color: #99f6e4 !important;
+        }
+
+        [class*="st-key-patient-result-row-"] {
+            border-bottom: 1px solid rgba(255, 255, 255, .08);
+            padding: .35rem .75rem .15rem;
+        }
+
+        .st-key-patient-results-table [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] + [data-testid="stColumn"] {
+            border-left: 1px solid rgba(255, 255, 255, .08);
+            padding-left: .65rem;
+        }
+
+        .st-key-patient-results-table [data-testid="stMarkdownContainer"] p {
+            margin: 0;
+        }
+
         [class*="st-key-patient-result-"] [data-testid="stExpander"],
         [class*="st-key-patient-result-"][data-testid="stExpander"] {
             margin-top: .4rem !important;
@@ -1369,8 +1445,8 @@ st.markdown(
             display: block;
             margin-bottom: .35rem;
             color: #94b8b3 !important;
-            font-size: .78rem !important;
-            font-weight: 600;
+            font-size: 12.5px !important;
+            font-weight: 700;
             letter-spacing: .04em;
             line-height: 1.35;
             text-transform: uppercase;
@@ -1378,8 +1454,9 @@ st.markdown(
 
         .st-key-selected-patient-details .patient-not-recorded {
             color: #6b8e89 !important;
-            font-size: .82rem;
+            font-size: 15.5px;
             font-style: italic;
+            line-height: 1.5;
         }
 
         .st-key-selected-patient-details .patient-field-value {
@@ -1390,9 +1467,9 @@ st.markdown(
             border-radius: 8px;
             background: #0b2e2b;
             color: #ffffff !important;
-            font-size: 1rem !important;
+            font-size: 15.5px !important;
             font-weight: 500;
-            line-height: 1.55;
+            line-height: 1.5;
             white-space: pre-wrap;
             overflow-wrap: anywhere;
         }

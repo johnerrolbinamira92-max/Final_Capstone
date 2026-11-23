@@ -27,6 +27,7 @@ export async function sendHelpRequest({
   form,
   messageField,
   session,
+  guestToken,
   showFeedback,
   hideFeedback,
   onSuccess
@@ -52,6 +53,7 @@ export async function sendHelpRequest({
     contact_number: document.querySelector("#patient-contact").value.trim(),
     message: messageField.value.trim(),
     patient_user_id: session ? session.user.id : null,
+    ...(guestToken ? { guest_token: guestToken } : {}),
     requested_date: document.querySelector("#requested-date").value,
     requested_time_slot: document.querySelector("#requested-time").value,
     consent_given: true

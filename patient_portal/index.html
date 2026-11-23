@@ -9,50 +9,74 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=3">
     <link rel="stylesheet" href="css/chatbot.css">
   </head>
   <body>
     <header class="site-header">
       <div class="header-inner">
         <a class="brand" href="#" aria-label="Holy Face Center home">
-          <span class="brand-mark" aria-hidden="true"><span>✦</span><span>♡</span></span>
+          <img class="brand-logo" src="assets/boc_logo.png" alt="Brothers of Charity logo">
           <span class="brand-copy"><span class="brand-kicker">Brothers of Charity</span><strong>Holy Face Center</strong></span>
         </a>
         <div class="header-actions">
-          <a class="phone-pill" href="tel:09206915015"><span aria-hidden="true">☎</span> 0920-691-5015</a>
-          <button class="auth-pill" id="auth-open-button" type="button" data-open-auth>Sign In</button>
+          <div class="notification-menu">
+            <button
+              class="notification-button"
+              id="notification-button"
+              type="button"
+              aria-label="Request notifications"
+              aria-haspopup="dialog"
+              aria-expanded="false"
+              aria-controls="notification-popover"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+                <path d="M10 21h4"></path>
+              </svg>
+              <span class="notification-badge" id="notification-badge" aria-hidden="true" hidden></span>
+            </button>
+            <div class="notification-popover" id="notification-popover" role="dialog" aria-label="Request notifications and history" hidden>
+              <section class="notification-latest" id="notification-latest" aria-live="polite"></section>
+              <div class="notification-history-heading">
+                <h2>Request history</h2>
+                <span id="notification-request-count"></span>
+              </div>
+              <div class="notification-history" id="notification-history"></div>
+            </div>
+          </div>
+          <button class="account-icon-button" id="auth-open-button" type="button" data-open-auth aria-label="Sign in" title="Sign in">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="8" r="3.5"></circle>
+              <path d="M5 20v-1a7 7 0 0 1 14 0v1"></path>
+            </svg>
+          </button>
           <div class="auth-account" id="auth-account" hidden>
-            <span class="auth-email" id="auth-email"></span>
-            <div class="notification-menu">
+            <div class="account-menu">
               <button
-                class="notification-button"
-                id="notification-button"
+                class="account-icon-button"
+                id="account-menu-button"
                 type="button"
-                aria-label="Request notifications"
+                aria-label="Account profile"
+                title="Account profile"
                 aria-haspopup="dialog"
                 aria-expanded="false"
-                aria-controls="notification-popover"
-                hidden
+                aria-controls="account-popover"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                  <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
-                  <path d="M10 21h4"></path>
+                  <circle cx="12" cy="8" r="3.5"></circle>
+                  <path d="M5 20v-1a7 7 0 0 1 14 0v1"></path>
                 </svg>
-                <span class="notification-badge" id="notification-badge" aria-hidden="true" hidden></span>
               </button>
-              <div class="notification-popover" id="notification-popover" role="dialog" aria-label="Request notifications and history" hidden>
-                <section class="notification-latest" id="notification-latest" aria-live="polite"></section>
-                <div class="notification-history-heading">
-                  <h2>Request history</h2>
-                  <span id="notification-request-count"></span>
+              <div class="account-popover" id="account-popover" role="dialog" aria-label="Account profile" hidden>
+                <div>
+                  <p class="account-popover-label">Signed in as</p>
+                  <p class="account-email" id="auth-email"></p>
                 </div>
-                <div class="notification-history" id="notification-history"></div>
+                <button class="account-signout" id="auth-signout" type="button">Sign Out</button>
               </div>
             </div>
-            <button class="auth-pill" id="auth-signout" type="button">Sign Out</button>
           </div>
-          <button class="theme-button" id="theme-toggle" type="button" aria-label="Switch to light theme" title="Toggle color theme">☼</button>
         </div>
       </div>
     </header>
@@ -74,6 +98,17 @@
           </ul>
         </div>
       </section>
+
+      <div class="page-width">
+        <div class="guest-import-banner" id="guest-import-banner" role="status" hidden>
+          <p id="guest-import-copy"></p>
+          <div class="guest-import-actions">
+            <button class="button button-primary" id="guest-import-button" type="button">Import to my account</button>
+            <button class="guest-import-dismiss" id="guest-import-dismiss" type="button">Dismiss</button>
+          </div>
+          <p class="guest-import-status" id="guest-import-status" aria-live="polite"></p>
+        </div>
+      </div>
 
       <nav class="view-switcher" role="tablist" aria-label="Choose a view">
         <button
@@ -105,6 +140,19 @@
               <p>Write freely. Only authorized center staff can read submissions when you ask for help.</p>
             </div>
           </div>
+          <aside class="guest-wellness-banner" id="guest-wellness-banner" aria-live="polite" hidden>
+            <div>
+              <p class="eyebrow">A gentle check-in</p>
+              <p id="guest-wellness-message"></p>
+              <p class="guest-wellness-reminder">Sign in with an email anytime for permanent cross-device backup and appointment email updates.</p>
+            </div>
+            <div class="guest-wellness-actions">
+              <button class="button button-outline" id="guest-wellness-assistant" type="button">Open Care Assistant</button>
+              <button class="button button-primary" id="guest-wellness-callback" type="button">Request a callback</button>
+              <button class="button button-outline" id="guest-wellness-signin" type="button" data-open-auth>Sign in</button>
+              <button class="button button-outline guest-wellness-dismiss" id="guest-wellness-dismiss" type="button">Dismiss</button>
+            </div>
+          </aside>
 
           <form id="entry-form" novalidate>
             <div class="form-grid">
@@ -139,6 +187,7 @@
                   <div class="panel-icon" aria-hidden="true">♧</div>
                   <h3 id="callback-title">Request a confidential callback</h3>
                   <p class="panel-intro">These details and your message are visible only to authorized administrators.</p>
+                  <p class="email-signup-note">Creating an account with an email address is optional. It’s recommended if you’d like to receive appointment confirmation and status updates by email.</p>
                   <div class="callback-fields">
                     <label>Name (optional)
                       <input id="patient-name" name="patient-name" type="text" autocomplete="name" maxlength="160" placeholder="e.g., Juan, a nickname, or leave blank">
@@ -152,7 +201,7 @@
                   </div>
                   <div class="schedule-section">
                     <div class="schedule-heading">
-                      <div><h4>Choose a callback schedule</h4><p>Preferred time · Philippine time · Weekdays, 9:00 AM–5:00 PM. Staff will confirm your callback by phone.</p></div>
+                      <div><h4>Choose a callback schedule</h4><p>Preferred time · Philippine time. Center hours: Monday–Friday, 8:00 AM–4:00 PM. Staff will confirm your callback by phone.</p></div>
                     </div>
                     <div class="calendar">
                       <div class="calendar-header">
@@ -167,7 +216,7 @@
                     </div>
                     <input id="requested-date" name="requested-date" type="hidden" required>
                     <div class="times-heading"><h4>Available times</h4><span id="selected-date-label">Choose a weekday</span></div>
-                    <div class="time-grid" id="time-slots" role="group" aria-label="Available callback times"></div>
+                    <div class="time-grid" id="time-slots" role="group" aria-label="Available callback times, excluding the 12:00 PM–1:00 PM lunch break"></div>
                     <input id="requested-time" name="requested-time" type="hidden" required>
                   </div>
                   <label class="consent-row">
@@ -219,7 +268,7 @@
       <div class="page-width footer-inner">
         <div class="footer-brand">
           <span class="brand-mark" aria-hidden="true"><span>✦</span><span>♡</span></span>
-          <div><h2>Holy Face Center for Mental Health</h2><p>Nazareth Complex, Zone 6, Tabiguian, Tabaco City · Brothers of Charity Philippine Jurisdiction, Inc.</p></div>
+          <div><h2>Holy Face Center for Mental Health</h2><p>Nazareth Complex, Zone 6, Tabiguian, Tabaco City, Albay · Brothers of Charity Philippine Jurisdiction, Inc.</p></div>
         </div>
         <div class="footer-contact"><a href="tel:09206915015">0920-691-5015</a><a href="mailto:holyfacecenter@gmail.com">holyfacecenter@gmail.com</a><a href="tel:09206915015">Need support? Call the center</a></div>
       </div>
@@ -244,7 +293,7 @@
         </section>
         <section class="contact-detail" aria-labelledby="contact-hours-title">
           <h3 id="contact-hours-title">Clinic Hours</h3>
-          <p>Weekdays, 8:00 AM – 5:00 PM</p>
+          <p>Monday–Friday, 8:00 AM–4:00 PM</p>
         </section>
         <a class="contact-link" href="https://www.facebook.com/HFCMHOfficial/" target="_blank" rel="noopener noreferrer">
           Official Facebook Page <span aria-hidden="true">↗</span>
@@ -304,7 +353,7 @@
     </div>
 
     <script src="config.js"></script>
-    <script type="module" src="js/app.js"></script>
-    <script type="module" src="js/chatbot.js"></script>
+    <script type="module" src="js/app.js?v=5"></script>
+    <script type="module" src="js/chatbot.js?v=2"></script>
   </body>
 </html>
