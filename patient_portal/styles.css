@@ -93,7 +93,7 @@ a { color: inherit; }
   display: block;
   padding: 2px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 50%;
   background: #f5f1e7;
   object-fit: contain;
 }
@@ -707,7 +707,8 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; }
 @media (max-width: 650px) {
   .page-width, .header-inner { width: min(100% - 32px, 520px); }
   .header-inner { height: 64px; }
-  .brand-mark, .brand-logo { width: 42px; height: 42px; border-radius: 8px; }
+  .brand-mark { width: 42px; height: 42px; border-radius: 8px; }
+  .brand-logo { width: 42px; height: 42px; }
   .brand-logo { flex-basis: 42px; }
   .brand { gap: 8px; }
   .brand-kicker { font-size: 9px; }
