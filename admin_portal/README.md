@@ -6,6 +6,11 @@ Run the Streamlit admin app from the repository root:
 streamlit run admin_portal/app.py
 ```
 
+On Windows, double-click [`../Launch_Admin_Portal.bat`](../Launch_Admin_Portal.bat)
+to start the app and open it in Edge or Chrome app mode when available. The
+Brothers of Charity logo icon is available at `assets/boc_logo.ico` for use in a
+Windows shortcut.
+
 ## Supabase credentials
 
 The admin app reads its configuration from `.env` in the repository root,

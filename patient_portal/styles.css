@@ -441,6 +441,7 @@ h1 em { color: var(--teal-bright); font-weight: 500; }
 .share-section { border-top: 1px solid var(--line); padding: 76px 0 86px; }
 .section-heading { margin-bottom: 34px; }
 .section-heading, .history-heading { scroll-margin-top: 104px; }
+.callback-panel, .private-note-panel { scroll-margin-top: 104px; }
 .section-heading h2, .history-heading h2 { margin: 0 0 8px; font-size: clamp(32px, 4vw, 42px); line-height: 1.2; }
 .section-heading > div > p:last-child { margin-bottom: 0; color: var(--muted); }
 .form-grid { display: grid; grid-template-columns: 1fr .95fr; align-items: start; gap: 20px; }

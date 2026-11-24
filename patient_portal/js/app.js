@@ -1215,6 +1215,19 @@ function setFlow(value) {
 
 document.querySelectorAll('input[name="next-step"]').forEach((input) => {
   input.addEventListener("change", () => setFlow(input.value));
+  input.addEventListener("click", (event) => {
+    if (!event.isTrusted) return;
+    const targetSelector = input.dataset.scrollTarget;
+    if (!targetSelector) return;
+    requestAnimationFrame(() => {
+      if (input.checked) {
+        document.querySelector(targetSelector)?.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      }
+    });
+  });
 });
 
 messageField.addEventListener("input", () => {
