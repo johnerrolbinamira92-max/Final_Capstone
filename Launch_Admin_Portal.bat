@@ -1,5 +1,12 @@
 @echo off
 setlocal
+
+if /i not "%~1"=="--hfrc-hidden" (
+  set "HFRC_LAUNCHER=%~f0"
+  powershell.exe -NoProfile -WindowStyle Hidden -Command "Start-Process -FilePath $env:ComSpec -ArgumentList ('/c call ' + [char]34 + $env:HFRC_LAUNCHER + [char]34 + ' --hfrc-hidden') -WindowStyle Hidden"
+  exit /b
+)
+
 cd /d "%~dp0"
 
 netstat -ano -p tcp | findstr /R /C:":8501 .*LISTENING" >nul
@@ -21,14 +28,23 @@ if not defined FOUND_PYTHON (
 )
 
 if not defined FOUND_PYTHON (
-  echo No Python interpreter with Streamlit installed was found.
-  echo Checked the project, virtualenv, Conda, PATH, and py environments.
-  pause
+  >"%TEMP%\hfrc_admin_portal.log" echo No Python interpreter with Streamlit installed was found.
+  >>"%TEMP%\hfrc_admin_portal.log" echo Checked the project, virtualenv, Conda, PATH, and py environments.
+  start "" notepad.exe "%TEMP%\hfrc_admin_portal.log"
   exit /b 1
 )
 
 echo Starting the Holy Face Center Admin Portal...
-start "HFRC_Streamlit_Server" /min "%FOUND_PYTHON%" -m streamlit run admin_portal/app.py --server.port 8501 --server.headless true > "%TEMP%\hfrc_admin_portal.log" 2>&1
+set "HFRC_ADMIN_LOG=%TEMP%\hfrc_admin_portal.log"
+set "HFRC_ADMIN_ERROR_LOG=%TEMP%\hfrc_admin_portal_error.log"
+powershell.exe -NoProfile -Command "$ErrorActionPreference = 'Stop'; Start-Process -FilePath $env:FOUND_PYTHON -ArgumentList @('-m','streamlit','run','admin_portal/app.py','--server.port','8501','--server.headless','true') -WindowStyle Hidden -RedirectStandardOutput $env:HFRC_ADMIN_LOG -RedirectStandardError $env:HFRC_ADMIN_ERROR_LOG"
+if errorlevel 1 (
+  echo Failed to start the Admin Portal background server.
+  if exist "%HFRC_ADMIN_LOG%" type "%HFRC_ADMIN_LOG%"
+  if exist "%HFRC_ADMIN_ERROR_LOG%" type "%HFRC_ADMIN_ERROR_LOG%"
+  start "" notepad.exe "%HFRC_ADMIN_ERROR_LOG%"
+  exit /b 1
+)
 
 :wait_for_port
 echo Waiting for the Admin Portal to become available...
@@ -41,7 +57,10 @@ if errorlevel 1 (
   ) else (
     echo No startup log was created at "%TEMP%\hfrc_admin_portal.log".
   )
-  pause
+  if exist "%TEMP%\hfrc_admin_portal_error.log" (
+    type "%TEMP%\hfrc_admin_portal_error.log"
+    start "" notepad.exe "%TEMP%\hfrc_admin_portal_error.log"
+  )
   exit /b 1
 )
 
