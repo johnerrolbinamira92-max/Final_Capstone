@@ -64,13 +64,13 @@ if errorlevel 1 (
   exit /b 1
 )
 
-start "" msedge --app=http://127.0.0.1:8501
+start "" msedge --user-data-dir="%LOCALAPPDATA%\HFRC_AdminPortal_Profile" --app=http://localhost:8501
 if not errorlevel 1 exit /b 0
 
-start "" chrome --app=http://127.0.0.1:8501
+start "" chrome --user-data-dir="%LOCALAPPDATA%\HFRC_AdminPortal_Profile" --app=http://localhost:8501
 if not errorlevel 1 exit /b 0
 
-start "" http://127.0.0.1:8501
+start "" http://localhost:8501
 exit /b 0
 
 :tryPython

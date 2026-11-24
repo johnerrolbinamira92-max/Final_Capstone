@@ -65,7 +65,7 @@ def _brand_mark_markup(class_name):
 
 st.set_page_config(
     page_title="Brothers of Charity - HFRC Records",
-    page_icon="🏥",
+    page_icon=str(BOC_LOGO_PATH),
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -458,10 +458,19 @@ st.markdown(
         display: flex;
         flex: 1;
         flex-direction: column;
-        justify-content: center;
+        justify-content: flex-start;
         min-height: 100vh;
         box-sizing: border-box;
-        padding: 1.25rem .75rem;
+        padding: 24px 0;
+    }
+
+    .st-key-hfrc-sidebar-layout,
+    .st-key-hfrc-sidebar-layout > [data-testid="stVerticalBlock"] {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: calc(100vh - 48px);
     }
 
     .hfrc-sidebar-brand {
@@ -908,6 +917,17 @@ st.markdown(
         line-height: 1.2;
     }
 
+    .st-key-admin-home-page .home-kpi-label {
+        color: #526b66;
+        font-size: .75rem;
+        font-weight: 600;
+    }
+
+    .st-key-admin-home-page .home-kpi-detail {
+        color: #526a65;
+        font-size: .72rem;
+    }
+
     .st-key-home-regional-card,
     .st-key-home-appointments-card {
         margin-top: 1rem;
@@ -990,7 +1010,7 @@ st.markdown(
             --hfrc-surface-raised: #202f2d;
             --hfrc-line: #344945;
             --hfrc-text: #e5efed;
-            --hfrc-muted: #a7bbb7;
+            --hfrc-muted: #94a3b8;
             --hfrc-teal: #008f83;
             --hfrc-teal-bright: #43c4b5;
         }
@@ -1119,6 +1139,14 @@ st.markdown(
         .st-key-admin-home-page .home-province-row strong,
         .st-key-admin-home-page .home-kpi-value {
             color: var(--hfrc-text) !important;
+        }
+
+        .st-key-admin-home-page .home-kpi-label {
+            color: #cbd5e1 !important;
+        }
+
+        .st-key-admin-home-page .home-kpi-detail {
+            color: #94a3b8 !important;
         }
 
         .st-key-admin-home-page .home-province-percent,
@@ -1971,56 +1999,59 @@ else:
     st.session_state["notifications_page_active"] = False
 
 with st.sidebar:
-    sidebar_brand_mark = _brand_mark_markup("hfrc-sidebar-brand-mark")
-    st.markdown(
-        f"""
-        <div class="hfrc-sidebar-brand">
-          {sidebar_brand_mark}
-          <span>Brothers of Charity<br><strong>Holy Face Center</strong>
-          <small>for Mental Health</small></span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    render_offline_status_badge()
-    with st.container(key="hfrc-sidebar-navigation"):
-        for page, label, icon in (
-            (home_page, "Home", ":material/home:"),
-            (dashboard_page, "Patient Statistics", ":material/analytics:"),
-            (search_page, "Record Management", ":material/manage_search:"),
-            (appointments_page, "Appointments", ":material/calendar_month:"),
-            (
-                notifications_page,
-                "Notification",
-                ":material/notifications:",
-            ),
-            (audit_page, "Activity History", ":material/history:"),
-        ):
-            if page is notifications_page:
-                with st.container(key="hfrc-sidebar-notification-link"):
+    with st.container(key="hfrc-sidebar-layout"):
+        with st.container(key="hfrc-sidebar-header"):
+            sidebar_brand_mark = _brand_mark_markup("hfrc-sidebar-brand-mark")
+            st.markdown(
+                f"""
+                <div class="hfrc-sidebar-brand">
+                  {sidebar_brand_mark}
+                  <span>Brothers of Charity<br><strong>Holy Face Center</strong>
+                  <small>for Mental Health</small></span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            render_offline_status_badge()
+        with st.container(key="hfrc-sidebar-navigation"):
+            for page, label, icon in (
+                (home_page, "Home", ":material/home:"),
+                (dashboard_page, "Patient Statistics", ":material/analytics:"),
+                (search_page, "Record Management", ":material/manage_search:"),
+                (appointments_page, "Appointments", ":material/calendar_month:"),
+                (
+                    notifications_page,
+                    "Notification",
+                    ":material/notifications:",
+                ),
+                (audit_page, "Activity History", ":material/history:"),
+            ):
+                if page is notifications_page:
+                    with st.container(key="hfrc-sidebar-notification-link"):
+                        st.page_link(page, label=label, icon=icon, width="stretch")
+                else:
                     st.page_link(page, label=label, icon=icon, width="stretch")
-            else:
-                st.page_link(page, label=label, icon=icon, width="stretch")
-        if supabase_connection_online and SUPABASE_URL and SUPABASE_KEY:
-            render_notification_alerts()
-        for source, error in notification_load_errors:
-            st.warning(f"Unread notifications could not be checked for {source}.")
-            with st.expander("Notification status details"):
-                st.code(str(error))
-        if notification_read_state_error is not None:
-            st.error("Unable to load saved notification read status.")
-            with st.expander("Notification read status details"):
-                st.code(str(notification_read_state_error))
-        if notification_mark_read_error is not None:
-            st.error("Unable to mark notifications as read.")
-            with st.expander("Notification read status details"):
-                st.code(str(notification_mark_read_error))
+            if supabase_connection_online and SUPABASE_URL and SUPABASE_KEY:
+                render_notification_alerts()
+            for source, error in notification_load_errors:
+                st.warning(
+                    f"Unread notifications could not be checked for {source}."
+                )
+                with st.expander("Notification status details"):
+                    st.code(str(error))
+            if notification_read_state_error is not None:
+                st.error("Unable to load saved notification read status.")
+                with st.expander("Notification read status details"):
+                    st.code(str(notification_read_state_error))
+            if notification_mark_read_error is not None:
+                st.error("Unable to mark notifications as read.")
+                with st.expander("Notification read status details"):
+                    st.code(str(notification_mark_read_error))
 
-    st.space("medium")
-    if st.button("Log out"):
-        st.session_state["admin_authenticated"] = False
-        st.session_state.pop("admin_auth_mode", None)
-        st.session_state.pop("admin_profile", None)
-        st.rerun()
+        if st.button("Log out"):
+            st.session_state["admin_authenticated"] = False
+            st.session_state.pop("admin_auth_mode", None)
+            st.session_state.pop("admin_profile", None)
+            st.rerun()
 
 pg.run()

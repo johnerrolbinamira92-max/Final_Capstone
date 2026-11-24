@@ -466,12 +466,18 @@ def show_home_dashboard_page(
                                 unsafe_allow_html=True,
                             )
                         with metric_column:
-                            st.caption(label)
+                            st.markdown(
+                                f'<div class="home-kpi-label">{escape(label)}</div>',
+                                unsafe_allow_html=True,
+                            )
                             st.markdown(
                                 f'<div class="home-kpi-value">{value}</div>',
                                 unsafe_allow_html=True,
                             )
-                            st.caption(detail)
+                            st.markdown(
+                                f'<div class="home-kpi-detail">{escape(detail)}</div>',
+                                unsafe_allow_html=True,
+                            )
 
             left_column, right_column = st.columns([1.55, 1.05])
             with left_column:
