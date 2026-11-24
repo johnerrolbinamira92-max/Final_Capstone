@@ -104,6 +104,20 @@ a { color: inherit; }
 
 .header-actions { display: flex; align-items: center; gap: 10px; }
 .auth-account { display: flex; align-items: center; gap: 8px; }
+.account-settings-trigger {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--teal-bright);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.account-settings-trigger:hover { background: var(--teal); }
+.account-settings-trigger:focus-visible { outline: 2px solid #2dd4bf; outline-offset: 3px; }
+.account-settings-trigger[hidden] { display: none; }
 .notification-menu, .account-menu { position: relative; }
 .account-icon-button {
   width: 38px;
@@ -364,7 +378,77 @@ h1 em { color: var(--teal-bright); font-weight: 500; }
   box-shadow: 0 22px 65px rgb(3 14 13 / 32%);
 }
 .auth-dialog::backdrop { background: rgb(3 14 13 / 76%); backdrop-filter: blur(4px); }
+.account-settings-dialog {
+  width: min(520px, calc(100% - 32px));
+  max-width: none;
+  max-height: min(90vh, 760px);
+  overflow-y: auto;
+  padding: clamp(20px, 4vw, 30px);
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  background: #f8fafc;
+  color: #111827;
+  box-shadow: 0 22px 65px rgb(3 14 13 / 32%);
+}
+.account-settings-dialog::backdrop { background: rgb(3 14 13 / 76%); backdrop-filter: blur(4px); }
+.account-settings-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.account-settings-header .auth-clinic-badge { margin-top: 2px; }
+.account-settings-header h2 { margin: 8px 0 0; color: #111827; font-family: "DM Sans", sans-serif; font-size: clamp(22px, 5vw, 27px); font-weight: 700; letter-spacing: -.025em; line-height: 1.25; }
+.account-settings-intro { margin: 10px 0 16px; color: #475569; font-size: 13px; line-height: 1.55; }
+.account-settings-section,
+.account-settings-danger {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 14px;
+  border: 1px solid #dbe3eb;
+  border-radius: 12px;
+  background: #fff;
+}
+.account-settings-section h3,
+.account-settings-danger h3 { margin: 0 0 2px; color: #123f3a; font-size: 13px; font-weight: 700; }
+.account-settings-dialog input:not([type="checkbox"]) {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #111827;
+  font-size: 13px;
+}
+.account-settings-action,
+.account-settings-danger-button,
+.account-settings-signout {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid #123f3a;
+  border-radius: 8px;
+  background: #123f3a;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.account-settings-action { justify-self: start; margin-top: 2px; }
+.account-settings-action:hover,
+.account-settings-signout:hover { background: #0e332f; }
+.account-settings-check { display: flex; align-items: flex-start; gap: 9px; color: #475569; font-size: 12px; line-height: 1.5; cursor: pointer; }
+.account-settings-check input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 auto; margin: 1px 0 0; accent-color: #14534d; }
+.account-settings-status { margin: 0; color: #475569; font-size: 11px; line-height: 1.45; }
+.account-settings-status:empty { display: none; }
+.account-settings-status.error { color: #991b1b; }
+.account-settings-danger { border-color: #fecaca; background: #fffafa; }
+.account-settings-danger h3 { color: #991b1b; }
+.account-settings-danger > p:not(.account-settings-status) { margin: 0; color: #64748b; font-size: 11px; line-height: 1.5; }
+.account-settings-danger-button { justify-self: start; border-color: #b91c1c; background: #b91c1c; }
+.account-settings-danger-button:hover { background: #991b1b; }
+.account-settings-footer { display: flex; justify-content: flex-end; margin-top: 14px; }
+.account-settings-signout { border-color: #cbd5e1; background: #fff; color: #334155; }
+.account-settings-signout:hover { background: #f1f5f9; color: #123f3a; }
+.account-settings-dialog button:focus-visible { outline: 3px solid #367a75; outline-offset: 2px; }
 .auth-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.account-settings-dialog button:disabled { opacity: .6; cursor: wait; }
 .auth-clinic-badge { max-width: 340px; margin: 5px 0 0; color: #14534d; font-size: 10px; font-weight: 700; letter-spacing: .08em; line-height: 1.55; }
 .auth-dialog .contact-dialog-close { border-color: #cbd5e1; background: #f1f5f9; color: #334155; }
 .auth-dialog h2 { margin: 20px 0 7px; color: #111827; font-family: "DM Sans", sans-serif; font-size: clamp(22px, 5vw, 27px); font-weight: 700; letter-spacing: -.025em; line-height: 1.25; }
@@ -714,6 +798,7 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; }
   .brand-kicker { font-size: 9px; }
   .brand-copy strong { font-size: 14px; }
   .auth-account { gap: 5px; }
+  .account-settings-trigger { min-height: 34px; padding-inline: 9px; font-size: 10px; }
   .account-icon-button { width: 34px; height: 34px; }
   .notification-button { width: 34px; height: 34px; }
   .notification-popover { width: min(360px, calc(100vw - 32px)); padding: 15px; }
@@ -750,6 +835,7 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; }
   .brand-copy strong { font-size: 13px; }
   .header-actions { gap: 4px; }
   .auth-account { gap: 4px; }
+  .account-settings-trigger { padding-inline: 7px; font-size: 9px; }
   .notification-popover, .account-popover { position: fixed; top: 72px; right: 16px; }
 }
 

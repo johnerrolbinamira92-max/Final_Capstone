@@ -458,10 +458,10 @@ st.markdown(
         display: flex;
         flex: 1;
         flex-direction: column;
-        justify-content: flex-start;
+        justify-content: center;
         min-height: 100vh;
         box-sizing: border-box;
-        padding: 24px 0;
+        padding: 36px 0 24px;
     }
 
     .st-key-hfrc-sidebar-layout,
@@ -469,15 +469,27 @@ st.markdown(
         display: flex;
         flex: 1;
         flex-direction: column;
-        justify-content: space-between;
+        justify-content: center;
         min-height: calc(100vh - 48px);
+        gap: 14px;
+    }
+
+    .st-key-hfrc-sidebar-navigation,
+    .st-key-hfrc-sidebar-navigation > [data-testid="stVerticalBlock"] {
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+    }
+
+    .st-key-hfrc-sidebar-logout {
+        margin-top: 12px;
     }
 
     .hfrc-sidebar-brand {
         display: flex;
         align-items: center;
         gap: .8rem;
-        margin: .2rem 0 .65rem;
+        margin: 18px 0 24px;
         padding: .25rem .2rem .9rem;
         border-bottom: 1px solid rgba(220, 244, 238, .16);
         color: #ffffff;
@@ -515,6 +527,15 @@ st.markdown(
         color: #a9d0c8;
         font-size: .75rem;
         font-weight: 400;
+    }
+
+    body:not(:has(.st-key-admin-login-page)) [data-testid="stSidebarCollapseButton"],
+    body:not(:has(.st-key-admin-login-page)) [data-testid="collapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        z-index: 1001 !important;
     }
 
     [data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
@@ -877,8 +898,18 @@ st.markdown(
     }
 
     .st-key-admin-home-page [class*="st-key-home-kpi-"] [data-testid="stVerticalBlockBorderWrapper"] {
-        min-height: 112px;
-        padding: .9rem;
+        display: flex;
+        align-items: center;
+        min-height: 108px;
+        padding: 24px 22px;
+    }
+
+    .st-key-admin-home-page [class*="st-key-home-kpi-"] [data-testid="stVerticalBlockBorderWrapper"] > [data-testid="stVerticalBlock"] {
+        width: 100%;
+    }
+
+    .st-key-admin-home-page [class*="st-key-home-kpi-"] [data-testid="stHorizontalBlock"] {
+        gap: 14px !important;
     }
 
     .st-key-admin-home-page .home-kpi-icon {
@@ -923,14 +954,23 @@ st.markdown(
         font-weight: 600;
     }
 
-    .st-key-admin-home-page .home-kpi-detail {
-        color: #526a65;
-        font-size: .72rem;
-    }
-
     .st-key-home-regional-card,
     .st-key-home-appointments-card {
         margin-top: 1rem;
+        height: 440px;
+        box-sizing: border-box;
+    }
+
+    .st-key-home-appointments-card {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .st-key-home-appointments-card > [data-testid="stVerticalBlock"] {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 0;
     }
 
     .st-key-admin-home-page .home-province-row {
@@ -1145,10 +1185,6 @@ st.markdown(
             color: #cbd5e1 !important;
         }
 
-        .st-key-admin-home-page .home-kpi-detail {
-            color: #94a3b8 !important;
-        }
-
         .st-key-admin-home-page .home-province-percent,
         .st-key-admin-home-page .home-appointment-detail {
             color: var(--hfrc-muted) !important;
@@ -1214,7 +1250,8 @@ st.markdown(
         }
 
         .st-key-admin-statistics-page .statistics-eyebrow,
-        .st-key-admin-statistics-page .statistics-card-eyebrow {
+        .st-key-admin-statistics-page .statistics-card-eyebrow,
+        .st-key-admin-home-page .statistics-eyebrow {
             color: #43c4b5;
             font-size: .72rem;
             font-weight: 800;
@@ -1222,11 +1259,13 @@ st.markdown(
             text-transform: uppercase;
         }
 
-        .st-key-admin-statistics-page .statistics-eyebrow {
+        .st-key-admin-statistics-page .statistics-eyebrow,
+        .st-key-admin-home-page .statistics-eyebrow {
             margin-bottom: .55rem;
         }
 
-        .st-key-admin-statistics-page .statistics-title {
+        .st-key-admin-statistics-page .statistics-title,
+        .st-key-admin-home-page .statistics-title {
             margin: 0 0 .4rem;
             color: var(--hfrc-text);
             font-family: "Roboto", "Segoe UI", sans-serif;
@@ -1235,12 +1274,14 @@ st.markdown(
             letter-spacing: -.04em;
         }
 
-        .st-key-admin-statistics-page .statistics-description {
+        .st-key-admin-statistics-page .statistics-description,
+        .st-key-admin-home-page .statistics-description {
             margin: 0;
             color: var(--hfrc-muted);
         }
 
-        .st-key-admin-statistics-page .st-key-statistics-intro {
+        .st-key-admin-statistics-page .st-key-statistics-intro,
+        .st-key-admin-home-page .st-key-home-page-intro {
             margin: .25rem 0 1.25rem;
         }
 
@@ -2048,7 +2089,7 @@ with st.sidebar:
                 with st.expander("Notification read status details"):
                     st.code(str(notification_mark_read_error))
 
-        if st.button("Log out"):
+        if st.button("Log out", key="hfrc-sidebar-logout"):
             st.session_state["admin_authenticated"] = False
             st.session_state.pop("admin_auth_mode", None)
             st.session_state.pop("admin_profile", None)

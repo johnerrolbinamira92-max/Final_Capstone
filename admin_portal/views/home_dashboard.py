@@ -106,8 +106,17 @@ def _render_overview_toolbar(
             [1.35, 0.85, 0.08], vertical_alignment="center"
         )
         with title_column:
-            st.markdown("## Overview")
-            st.caption("Regional patient care, organized in one place.")
+            with st.container(key="home-page-intro"):
+                st.markdown(
+                    """
+                    <div class="statistics-eyebrow">Clinic Overview</div>
+                    <h1 class="statistics-title">Home</h1>
+                    <p class="statistics-description">
+                      Regional patient care, organized in one place.
+                    </p>
+                    """,
+                    unsafe_allow_html=True,
+                )
         with search_column:
             with st.form(key="overview-search-form", border=False):
                 with st.container(
@@ -265,6 +274,7 @@ def _render_appointments(appointments, today, appointments_page, error=None):
                     width="content",
                 )
 
+        upcoming = None
         if error is not None:
             st.warning("Upcoming appointments could not be loaded.")
             with st.expander("Technical details"):
@@ -276,7 +286,7 @@ def _render_appointments(appointments, today, appointments_page, error=None):
                 appointments["approval_status"].isin(CALENDAR_STATUSES)
             ].copy()
             dates = pd.to_datetime(active["requested_date"], errors="coerce")
-            active = active[dates.dt.date >= today]
+            active = active[dates.dt.date == today]
             active["_sort_date"] = pd.to_datetime(
                 active["requested_date"], errors="coerce"
             )
@@ -284,10 +294,13 @@ def _render_appointments(appointments, today, appointments_page, error=None):
                 ["_sort_date", "requested_time_slot"],
                 kind="stable",
                 na_position="last",
-            ).head(3)
+            )
 
-            if upcoming.empty:
-                st.caption("No upcoming appointments are scheduled.")
+        with st.container(height=240, key="home-upcoming-appointment-rows"):
+            if upcoming is None:
+                pass
+            elif upcoming.empty:
+                st.caption("No appointments scheduled for today.")
             else:
                 for index, appointment in enumerate(
                     upcoming.to_dict(orient="records")
@@ -305,7 +318,10 @@ def _render_appointments(appointments, today, appointments_page, error=None):
                     )
                     with st.container(key=f"home-appointment-row-{index}"):
                         time_column, icon_column, detail_column, arrow_column = (
-                            st.columns([1.05, 0.45, 2.4, 0.25], vertical_alignment="center")
+                            st.columns(
+                                [1.05, 0.45, 2.4, 0.25],
+                                vertical_alignment="center",
+                            )
                         )
                         time_column.markdown(
                             f'<span class="home-appointment-date">'
@@ -318,8 +334,8 @@ def _render_appointments(appointments, today, appointments_page, error=None):
                         )
                         detail_column.markdown(
                             f"**{escape(str(appointment['patient_name']))}**  \n"
-                            f"<span class=\"home-appointment-detail\">{escape(time_label)} · "
-                            f"{escape(status_label)}</span>",
+                            f"<span class=\"home-appointment-detail\">"
+                            f"{escape(time_label)} · {escape(status_label)}</span>",
                             unsafe_allow_html=True,
                         )
                         if appointments_page is not None:
@@ -329,6 +345,7 @@ def _render_appointments(appointments, today, appointments_page, error=None):
                                 help="Open appointment schedule",
                             )
 
+        st.space("stretch")
         if appointments_page is not None:
             st.page_link(
                 appointments_page,
@@ -424,34 +441,30 @@ def show_home_dashboard_page(
                 (
                     "Total Patient Records",
                     _format_count(len(records)),
-                    "All Archived Records",
                     "♙",
                     "teal",
                 ),
                 (
                     "Alive Patients",
                     _format_count(int((records["status"] == "Alive").sum())),
-                    "Current Administrative Status",
                     "♡",
                     "blue",
                 ),
                 (
                     "Appointments Today",
                     _format_count(today_count) if appointments is not None else "—",
-                    "Scheduled for Today",
                     "▦",
                     "coral",
                 ),
                 (
                     "Pending Requests",
                     _format_count(pending_count) if appointments is not None else "—",
-                    "Awaiting Staff Review",
                     "♧",
                     "purple",
                 ),
             ]
             kpi_columns = st.columns(4)
-            for column, (label, value, detail, icon, color) in zip(
+            for column, (label, value, icon, color) in zip(
                 kpi_columns, kpi_data
             ):
                 with column:
@@ -472,10 +485,6 @@ def show_home_dashboard_page(
                             )
                             st.markdown(
                                 f'<div class="home-kpi-value">{value}</div>',
-                                unsafe_allow_html=True,
-                            )
-                            st.markdown(
-                                f'<div class="home-kpi-detail">{escape(detail)}</div>',
                                 unsafe_allow_html=True,
                             )
 

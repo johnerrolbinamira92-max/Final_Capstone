@@ -1,13 +1,41 @@
 import { sendHelpRequest } from "./features/callback-request.js?v=3";
 import { initCallbackSchedule } from "./features/callback-schedule.js?v=2";
-import { createPrivateEntries } from "./features/private-entries.js?v=4";
+import { createPrivateEntries } from "./features/private-entries.js?v=5";
 import { hideFeedback, showFeedback } from "./ui/feedback.js";
 
-const GUEST_REQUEST_TOKENS_KEY = "hfrc_guest_request_tokens";
-const GUEST_REQUEST_SEEN_KEY = "hfrc_guest_request_seen";
-const GUEST_WELLNESS_ITEMS_KEY = "hfrc_guest_wellness_checkins";
-const USER_WELLNESS_ITEMS_PREFIX = "hfrc_user_checkins_";
+const GUEST_REQUEST_TOKENS_KEY = "hfrc_request_tokens:guest";
+const GUEST_REQUEST_SEEN_KEY = "hfrc_notifications:guest:seen";
+const GUEST_WELLNESS_ITEMS_KEY = "hfrc_notifications:guest:wellness";
+const LEGACY_GUEST_REQUEST_TOKENS_KEY = "hfrc_guest_request_tokens";
+const LEGACY_GUEST_REQUEST_SEEN_KEY = "hfrc_guest_request_seen";
+const LEGACY_GUEST_WELLNESS_ITEMS_KEY = "hfrc_guest_wellness_checkins";
+const LEGACY_USER_WELLNESS_ITEMS_PREFIX = "hfrc_user_checkins_";
+const LEGACY_USER_REQUEST_SEEN_PREFIX = "patient-request-seen:";
 const WELLNESS_CHECKIN_MESSAGE = "You've checked in 5 times in your Vent-Out Space. Taking time to reflect matters—if you'd ever like someone to talk to, our Care Assistant or callback team at Holy Face Center is here for you.";
+
+function userNotificationStorageKey(userId, kind) {
+  return `hfrc_notifications:${userId}:${kind}`;
+}
+
+function readNamespacedJson(key, legacyKey, fallback, isValid) {
+  let sourceKey = key;
+  let serialized = localStorage.getItem(key);
+  if (serialized === null && legacyKey) {
+    sourceKey = legacyKey;
+    serialized = localStorage.getItem(legacyKey);
+  }
+  if (serialized === null) return fallback;
+
+  const parsed = JSON.parse(serialized);
+  if (!isValid(parsed)) {
+    throw new TypeError("Saved notification data has an invalid format.");
+  }
+  if (sourceKey !== key) {
+    localStorage.setItem(key, JSON.stringify(parsed));
+    localStorage.removeItem(sourceKey);
+  }
+  return parsed;
+}
 
 const form = document.querySelector("#entry-form");
 const messageField = document.querySelector("#message");
@@ -35,6 +63,21 @@ const authEmail = document.querySelector("#auth-email");
 const accountMenu = document.querySelector(".account-menu");
 const accountButton = document.querySelector("#account-menu-button");
 const accountPopover = document.querySelector("#account-popover");
+const accountSettingsButton = document.querySelector("#account-settings-open");
+const accountSettingsDialog = document.querySelector("#account-settings-dialog");
+const accountSettingsEmailForm = document.querySelector("#account-settings-email-form");
+const accountSettingsEmailInput = document.querySelector("#account-settings-email");
+const accountSettingsEmailSubmit = document.querySelector("#account-settings-email-submit");
+const accountSettingsEmailStatus = document.querySelector("#account-settings-email-status");
+const accountSettingsPasswordForm = document.querySelector("#account-settings-password-form");
+const accountSettingsPasswordInput = document.querySelector("#account-settings-password");
+const accountSettingsPasswordConfirm = document.querySelector("#account-settings-password-confirm");
+const accountSettingsPasswordSubmit = document.querySelector("#account-settings-password-submit");
+const accountSettingsPasswordStatus = document.querySelector("#account-settings-password-status");
+const accountSettingsWellnessOptIn = document.querySelector("#account-settings-wellness-opt-in");
+const accountSettingsWellnessStatus = document.querySelector("#account-settings-wellness-status");
+const accountSettingsClearEntries = document.querySelector("#account-settings-clear-entries");
+const accountSettingsClearStatus = document.querySelector("#account-settings-clear-status");
 const notificationMenu = document.querySelector(".notification-menu");
 const notificationButton = document.querySelector("#notification-button");
 const notificationBadge = document.querySelector("#notification-badge");
@@ -192,6 +235,30 @@ function openAuthDialog() {
   authError.hidden = !authUnavailable;
   authError.textContent = authUnavailable ? "Sign-in is temporarily unavailable. You can continue using the portal as a guest." : "";
   document.querySelector("#auth-input-email").focus();
+}
+
+function openAccountSettings() {
+  if (!currentSession || !supabase) return;
+  setAccountPopoverOpen(false);
+  setNotificationPopoverOpen(false);
+  accountSettingsEmailInput.value = currentSession.user.email || "";
+  accountSettingsPasswordForm.reset();
+  accountSettingsEmailSubmit.disabled = false;
+  accountSettingsPasswordSubmit.disabled = false;
+  accountSettingsClearEntries.disabled = false;
+  accountSettingsEmailStatus.textContent = "";
+  accountSettingsPasswordStatus.textContent = "";
+  accountSettingsWellnessStatus.textContent = "";
+  accountSettingsClearStatus.textContent = "";
+  accountSettingsEmailStatus.classList.remove("error");
+  accountSettingsPasswordStatus.classList.remove("error");
+  accountSettingsWellnessStatus.classList.remove("error");
+  accountSettingsClearStatus.classList.remove("error");
+  accountSettingsWellnessOptIn.checked = Boolean(
+    currentSession.user.user_metadata?.wellness_email_opt_in === true
+  );
+  accountSettingsDialog.showModal();
+  accountSettingsEmailInput.focus();
 }
 
 function setAuthMode(mode) {
@@ -411,7 +478,7 @@ function renderRequestHistory(rows) {
 function markRequestStatesSeen() {
   seenRequestStates = new Map(requestRows.map((row) => [row.request_id, requestSignature(row)]));
   const storageKey = currentSession
-    ? `patient-request-seen:${currentSession.user.id}`
+    ? userNotificationStorageKey(currentSession.user.id, "seen")
     : GUEST_REQUEST_SEEN_KEY;
   currentWellnessItems().forEach((item) => {
     seenRequestStates.set(`wellness:${item.id}`, item.created_at);
@@ -441,7 +508,12 @@ function setAccountPopoverOpen(isOpen) {
 function loadSeenRequestStates(userId) {
   seenRequestStates = new Map();
   try {
-    const stored = JSON.parse(localStorage.getItem(`patient-request-seen:${userId}`) || "{}");
+    const stored = readNamespacedJson(
+      userNotificationStorageKey(userId, "seen"),
+      `${LEGACY_USER_REQUEST_SEEN_PREFIX}${userId}`,
+      {},
+      (value) => value && typeof value === "object" && !Array.isArray(value)
+    );
     if (stored && typeof stored === "object" && !Array.isArray(stored)) {
       seenRequestStates = new Map(Object.entries(stored).map(([id, signature]) => [id, String(signature)]));
     }
@@ -452,10 +524,12 @@ function loadSeenRequestStates(userId) {
 
 function readGuestRequestTokens() {
   try {
-    const saved = JSON.parse(localStorage.getItem(GUEST_REQUEST_TOKENS_KEY) || "[]");
-    if (!Array.isArray(saved)) {
-      throw new TypeError("Guest request tokens are not a list.");
-    }
+    const saved = readNamespacedJson(
+      GUEST_REQUEST_TOKENS_KEY,
+      LEGACY_GUEST_REQUEST_TOKENS_KEY,
+      [],
+      Array.isArray
+    );
     return [...new Set(saved.filter(
       (token) => typeof token === "string" && token.length >= 24
     ))];
@@ -488,10 +562,12 @@ function clearGuestRequestTokens() {
 
 function readGuestWellnessItems() {
   try {
-    const saved = JSON.parse(localStorage.getItem(GUEST_WELLNESS_ITEMS_KEY) || "[]");
-    if (!Array.isArray(saved)) {
-      throw new TypeError("Guest wellness check-ins are not a list.");
-    }
+    const saved = readNamespacedJson(
+      GUEST_WELLNESS_ITEMS_KEY,
+      LEGACY_GUEST_WELLNESS_ITEMS_KEY,
+      [],
+      Array.isArray
+    );
     return saved.filter((item) =>
       item &&
       typeof item.id === "string" &&
@@ -506,12 +582,12 @@ function readGuestWellnessItems() {
 
 function readUserWellnessItems(userId) {
   try {
-    const saved = JSON.parse(
-      localStorage.getItem(`${USER_WELLNESS_ITEMS_PREFIX}${userId}`) || "[]"
+    const saved = readNamespacedJson(
+      userNotificationStorageKey(userId, "wellness"),
+      `${LEGACY_USER_WELLNESS_ITEMS_PREFIX}${userId}`,
+      [],
+      Array.isArray
     );
-    if (!Array.isArray(saved)) {
-      throw new TypeError("User wellness check-ins are not a list.");
-    }
     return saved.filter((item) =>
       item &&
       typeof item.id === "string" &&
@@ -527,7 +603,12 @@ function readUserWellnessItems(userId) {
 function loadGuestSeenRequestStates() {
   seenRequestStates = new Map();
   try {
-    const saved = JSON.parse(localStorage.getItem(GUEST_REQUEST_SEEN_KEY) || "{}");
+    const saved = readNamespacedJson(
+      GUEST_REQUEST_SEEN_KEY,
+      LEGACY_GUEST_REQUEST_SEEN_KEY,
+      {},
+      (value) => value && typeof value === "object" && !Array.isArray(value)
+    );
     if (saved && typeof saved === "object" && !Array.isArray(saved)) {
       seenRequestStates = new Map(
         Object.entries(saved).map(([id, signature]) => [id, String(signature)])
@@ -712,7 +793,14 @@ function updateAccountCopy() {
     ? "Backed-up entries remain in your account until removed. This device copy may be cleared with browser data."
     : "Entries saved as a guest remain on this device for 30 days. Clearing browser data removes them sooner.";
   wellnessEmailSetting.hidden = isGuest;
-  wellnessEmailOptIn.checked = Boolean(userMetadata && userMetadata.wellness_email_opt_in === true);
+  const wellnessOptIn = Boolean(
+    userMetadata && userMetadata.wellness_email_opt_in === true
+  );
+  wellnessEmailOptIn.checked = wellnessOptIn;
+  accountSettingsWellnessOptIn.checked = wellnessOptIn;
+  accountSettingsButton.hidden = isGuest;
+  authEmail.textContent = currentSession?.user?.email || "";
+  authEmail.title = currentSession?.user?.email || "";
 }
 
 function refreshGuestImportBanner() {
@@ -767,7 +855,7 @@ function handleWellnessMilestone(count, userId) {
   }
   try {
     const storageKey = userId
-      ? `${USER_WELLNESS_ITEMS_PREFIX}${userId}`
+      ? userNotificationStorageKey(userId, "wellness")
       : GUEST_WELLNESS_ITEMS_KEY;
     localStorage.setItem(storageKey, JSON.stringify(currentWellnessItems()));
   } catch (error) {
@@ -850,11 +938,16 @@ guestWellnessDismiss.addEventListener("click", () => {
 
 function clearSignedInUiState(showGuestEntries = true) {
   currentSession = null;
+  authReady = false;
+  requestRows = [];
+  seenRequestStates = new Map();
+  guestWellnessItems = [];
+  userWellnessItems = [];
+  privateEntries.clearForAccountChange();
   updateAccountProfileButton();
   stopRequestPolling();
   setAccountPopoverOpen(false);
-  privateEntries.setUser(null);
-  if (!showGuestEntries) privateEntries.clearDisplay();
+  if (showGuestEntries) privateEntries.setUser(null);
   privateEntries.clearLegacyStorage();
 
   form.reset();
@@ -871,74 +964,73 @@ function clearSignedInUiState(showGuestEntries = true) {
   authError.textContent = "";
   authEmail.textContent = "";
   authEmail.title = "";
+  accountSettingsEmailForm.reset();
+  accountSettingsPasswordForm.reset();
+  accountSettingsEmailSubmit.disabled = false;
+  accountSettingsPasswordSubmit.disabled = false;
+  accountSettingsClearEntries.disabled = false;
+  accountSettingsEmailStatus.textContent = "";
+  accountSettingsPasswordStatus.textContent = "";
+  accountSettingsWellnessStatus.textContent = "";
+  accountSettingsClearStatus.textContent = "";
+  accountSettingsEmailStatus.classList.remove("error");
+  accountSettingsPasswordStatus.classList.remove("error");
+  accountSettingsWellnessStatus.classList.remove("error");
+  accountSettingsClearStatus.classList.remove("error");
+  accountSettingsWellnessOptIn.checked = false;
+  accountSettingsWellnessOptIn.disabled = false;
   wellnessEmailStatus.textContent = "";
   wellnessEmailStatus.classList.remove("error");
   wellnessEmailOptIn.checked = false;
   wellnessEmailOptIn.disabled = false;
   authOpenButton.hidden = false;
   authAccount.hidden = true;
+  accountSettingsButton.hidden = true;
   notificationButton.hidden = false;
   historySigninBanner.hidden = false;
-  guestWellnessItems = [];
-  userWellnessItems = [];
   guestWellnessBanner.hidden = true;
   guestImportBanner.hidden = true;
   guestImportStatus.textContent = "";
   guestImportDismissed = false;
   if (authDialog.open) authDialog.close();
+  if (accountSettingsDialog.open) accountSettingsDialog.close();
   window.dispatchEvent(new Event("patient-portal:session-cleared"));
-  authReady = true;
+  authReady = showGuestEntries;
   if (showGuestEntries) {
     loadGuestRequestHistory();
     if (supabase && readGuestRequestTokens().length) startGuestRequestPolling();
   }
 }
 
-function escapeLikePattern(value) {
-  return value.replace(/[\\%_]/g, "\\$&");
-}
-
 async function loadRequestHistory(session) {
   const userId = session.user.id;
   const loadId = ++requestLoadSequence;
-  const email = typeof session.user.email === "string"
-    ? session.user.email.trim()
-    : "";
   const linkedRequestQuery = supabase
       .from("patient_help_requests")
-      .select("request_id, requested_date, requested_time_slot, approval_status, created_at, updated_at")
+      .select("request_id, patient_user_id, requested_date, requested_time_slot, approval_status, created_at, updated_at")
       .eq("patient_user_id", userId)
       .order("created_at", { ascending: false });
-  const legacyRequestQuery = email
-    ? supabase
-      .from("patient_help_requests")
-      .select("request_id, requested_date, requested_time_slot, approval_status, created_at, updated_at")
-      .is("patient_user_id", null)
-      .ilike("patient_email", escapeLikePattern(email))
-      .order("created_at", { ascending: false })
-    : Promise.resolve({ data: [], error: null });
   const appointmentQuery = supabase
       .from("appointments")
-      .select("appointment_id, requested_date, requested_time_slot, approval_status, created_at, updated_at")
+      .select("appointment_id, patient_user_id, requested_date, requested_time_slot, approval_status, created_at, updated_at")
       .eq("patient_user_id", userId)
       .order("created_at", { ascending: false });
-  const [requestResult, legacyRequestResult, appointmentResult] = await Promise.all([
+  const [requestResult, appointmentResult] = await Promise.all([
     linkedRequestQuery,
-    legacyRequestQuery,
     appointmentQuery
   ]);
   if (requestResult.error) throw requestResult.error;
-  if (legacyRequestResult.error) throw legacyRequestResult.error;
   if (appointmentResult.error) throw appointmentResult.error;
   if (currentSession && currentSession.user.id === userId && loadId === requestLoadSequence) {
-    const uniqueRequests = new Map();
-    [
-      ...(requestResult.data || []),
-      ...(legacyRequestResult.data || [])
-    ].forEach((row) => uniqueRequests.set(row.request_id, row));
+    const ownRequests = (requestResult.data || []).filter(
+      (row) => row.patient_user_id === userId
+    );
+    const ownAppointments = (appointmentResult.data || []).filter(
+      (row) => row.patient_user_id === userId
+    );
     requestRows = [
-      ...uniqueRequests.values(),
-      ...(appointmentResult.data || []).map((row) => ({
+      ...ownRequests,
+      ...ownAppointments.map((row) => ({
         ...row,
         request_id: `appointment:${row.appointment_id}`
       }))
@@ -1067,32 +1159,186 @@ contactDialog.addEventListener("click", (event) => {
 document.querySelectorAll("[data-open-auth]").forEach((button) => {
   button.addEventListener("click", openAuthDialog);
 });
+accountSettingsButton.addEventListener("click", openAccountSettings);
+document.querySelector("#account-settings-close").addEventListener("click", () => {
+  accountSettingsDialog.close();
+});
+accountSettingsDialog.addEventListener("click", (event) => {
+  if (event.target === accountSettingsDialog) accountSettingsDialog.close();
+});
 document.querySelector("#auth-dialog-close").addEventListener("click", () => authDialog.close());
 authDialog.addEventListener("click", (event) => {
   if (event.target === authDialog) authDialog.close();
 });
-document.querySelector("#wellness-email-opt-in").addEventListener("change", async () => {
+function setWellnessPreferenceStatus(message, isError = false) {
+  [wellnessEmailStatus, accountSettingsWellnessStatus].forEach((status) => {
+    status.textContent = message;
+    status.classList.toggle("error", isError);
+  });
+}
+
+async function saveWellnessEmailPreference(requestedOptIn) {
   if (!supabase || !currentSession) return;
-  const requestedOptIn = wellnessEmailOptIn.checked;
-  wellnessEmailOptIn.disabled = true;
-  wellnessEmailStatus.classList.remove("error");
-  wellnessEmailStatus.textContent = "Saving your preference…";
+  const userId = currentSession.user.id;
+  const previousOptIn = Boolean(
+    currentSession.user.user_metadata?.wellness_email_opt_in === true
+  );
+  const controls = [wellnessEmailOptIn, accountSettingsWellnessOptIn];
+  controls.forEach((control) => {
+    control.checked = requestedOptIn;
+    control.disabled = true;
+  });
+  setWellnessPreferenceStatus("Saving your preference…");
   try {
     const { data, error } = await supabase.auth.updateUser({
       data: { wellness_email_opt_in: requestedOptIn }
     });
     if (error) throw error;
-    if (data.user) currentSession = { ...currentSession, user: data.user };
-    wellnessEmailStatus.textContent = requestedOptIn
-      ? "Wellness check-in emails are enabled."
-      : "Wellness check-in emails are turned off.";
+    if (!currentSession || currentSession.user.id !== userId) return;
+    if (!data.user) throw new Error("Supabase did not return the updated account.");
+    currentSession = { ...currentSession, user: data.user };
+    controls.forEach((control) => {
+      control.checked = requestedOptIn;
+    });
+    setWellnessPreferenceStatus(
+      requestedOptIn
+        ? "Wellness check-in emails are enabled."
+        : "Wellness check-in emails are turned off."
+    );
   } catch (error) {
     console.error("Could not update the wellness email preference.", error);
-    wellnessEmailOptIn.checked = !requestedOptIn;
-    wellnessEmailStatus.textContent = "Could not save your preference. Please try again.";
-    wellnessEmailStatus.classList.add("error");
+    if (currentSession && currentSession.user.id === userId) {
+      controls.forEach((control) => {
+        control.checked = previousOptIn;
+      });
+      setWellnessPreferenceStatus(
+        "Could not save your preference. Please try again.",
+        true
+      );
+    }
   } finally {
-    wellnessEmailOptIn.disabled = false;
+    if (currentSession && currentSession.user.id === userId) {
+      controls.forEach((control) => {
+        control.disabled = false;
+      });
+    }
+  }
+}
+
+wellnessEmailOptIn.addEventListener("change", () => {
+  saveWellnessEmailPreference(wellnessEmailOptIn.checked);
+});
+accountSettingsWellnessOptIn.addEventListener("change", () => {
+  saveWellnessEmailPreference(accountSettingsWellnessOptIn.checked);
+});
+
+accountSettingsEmailForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!supabase || !currentSession) return;
+  const sessionUserId = currentSession.user.id;
+  const email = accountSettingsEmailInput.value.trim();
+  if (email.toLowerCase() === (currentSession.user.email || "").toLowerCase()) {
+    accountSettingsEmailStatus.textContent = "This is already the email on your account.";
+    accountSettingsEmailStatus.classList.remove("error");
+    return;
+  }
+  accountSettingsEmailSubmit.disabled = true;
+  accountSettingsEmailStatus.textContent = "Updating your email…";
+  accountSettingsEmailStatus.classList.remove("error");
+  try {
+    const { data, error } = await supabase.auth.updateUser({ email });
+    if (error) throw error;
+    if (!currentSession || currentSession.user.id !== sessionUserId) return;
+    if (!data.user) throw new Error("Supabase did not return the updated account.");
+    currentSession = { ...currentSession, user: data.user };
+    updateAccountCopy();
+    accountSettingsEmailInput.value = email;
+    accountSettingsEmailStatus.textContent =
+      "Email update submitted. Check your new inbox if confirmation is requested. Your account and entries keep the same ID.";
+  } catch (error) {
+    console.error("Could not update the account email.", error);
+    if (currentSession && currentSession.user.id === sessionUserId) {
+      accountSettingsEmailStatus.textContent =
+        error.message || "Could not update your email. Please try again.";
+      accountSettingsEmailStatus.classList.add("error");
+    }
+  } finally {
+    if (currentSession && currentSession.user.id === sessionUserId) {
+      accountSettingsEmailSubmit.disabled = false;
+    }
+  }
+});
+
+accountSettingsPasswordForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!supabase || !currentSession) return;
+  const sessionUserId = currentSession.user.id;
+  const password = accountSettingsPasswordInput.value;
+  if (password !== accountSettingsPasswordConfirm.value) {
+    accountSettingsPasswordStatus.textContent = "The passwords do not match.";
+    accountSettingsPasswordStatus.classList.add("error");
+    accountSettingsPasswordConfirm.focus();
+    return;
+  }
+  accountSettingsPasswordSubmit.disabled = true;
+  accountSettingsPasswordStatus.textContent = "Updating your password…";
+  accountSettingsPasswordStatus.classList.remove("error");
+  try {
+    const { data, error } = await supabase.auth.updateUser({ password });
+    if (error) throw error;
+    if (!currentSession || currentSession.user.id !== sessionUserId) return;
+    if (!data.user) throw new Error("Supabase did not return the updated account.");
+    currentSession = { ...currentSession, user: data.user };
+    accountSettingsPasswordForm.reset();
+    accountSettingsPasswordStatus.textContent = "Your password was updated.";
+  } catch (error) {
+    console.error("Could not update the account password.", error);
+    if (currentSession && currentSession.user.id === sessionUserId) {
+      accountSettingsPasswordStatus.textContent =
+        error.message || "Could not update your password. Please try again.";
+      accountSettingsPasswordStatus.classList.add("error");
+    }
+  } finally {
+    if (currentSession && currentSession.user.id === sessionUserId) {
+      accountSettingsPasswordSubmit.disabled = false;
+    }
+  }
+});
+
+accountSettingsClearEntries.addEventListener("click", async () => {
+  if (!supabase || !currentSession) return;
+  const sessionUserId = currentSession.user.id;
+  if (!window.confirm("Permanently delete all journal entries backed up to this account? This cannot be undone.")) {
+    return;
+  }
+
+  accountSettingsClearEntries.disabled = true;
+  accountSettingsClearStatus.textContent = "Clearing your cloud journal entries…";
+  accountSettingsClearStatus.classList.remove("error");
+  let cloudEntriesCleared = false;
+  try {
+    const { error } = await supabase
+      .from("patient_journal_entries")
+      .delete()
+      .eq("user_id", sessionUserId);
+    if (error) throw error;
+    cloudEntriesCleared = true;
+    privateEntries.clearUserEntries(sessionUserId);
+    if (currentSession && currentSession.user.id === sessionUserId) {
+      accountSettingsClearStatus.textContent = "Your cloud journal entries and this device’s account copy were cleared.";
+    }
+  } catch (error) {
+    console.error("Could not clear the account journal entries.", error);
+    if (currentSession && currentSession.user.id === sessionUserId) {
+      accountSettingsClearStatus.textContent = cloudEntriesCleared
+        ? "Cloud entries were deleted, but this browser could not clear its saved copy. Please check browser storage."
+        : "Could not clear your cloud journal entries. Please try again.";
+      accountSettingsClearStatus.classList.add("error");
+    }
+  } finally {
+    if (currentSession && currentSession.user.id === sessionUserId) {
+      accountSettingsClearEntries.disabled = false;
+    }
   }
 });
 authModeTabs.forEach(({ element, mode }, index) => {
@@ -1123,9 +1369,11 @@ authPasswordToggle.addEventListener("click", () => {
 document.querySelector("#auth-signout").addEventListener("click", async () => {
   if (!supabase) return;
   clearSignedInUiState();
+  authReady = false;
   try {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+    authReady = true;
   } catch (error) {
     console.error("Could not sign out.", error);
     try {
@@ -1136,7 +1384,13 @@ document.querySelector("#auth-signout").addEventListener("click", async () => {
       console.error("Could not restore the signed-in session.", restoreError);
     }
     showFeedback("You could not be signed out. Please try again.", "error");
+  } finally {
+    if (!currentSession) authReady = true;
   }
+});
+document.querySelector("#account-settings-signout").addEventListener("click", () => {
+  accountSettingsDialog.close();
+  document.querySelector("#auth-signout").click();
 });
 document.querySelector("#toast-close").addEventListener("click", () => {
   window.clearTimeout(toastTimeout);
@@ -1355,8 +1609,7 @@ async function initializeAuth() {
       }
       if (
         session &&
-        currentSession &&
-        currentSession.user.id !== session.user.id
+        (!currentSession || currentSession.user.id !== session.user.id)
       ) {
         authReady = false;
         clearSignedInUiState(false);

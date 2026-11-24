@@ -41,7 +41,7 @@ RESCHEDULE_TIME_SLOTS = tuple(
     for start_hour, end_hour in ((8, 11), (13, 15))
     for hour in range(start_hour, end_hour + 1)
     for minute in (0, 30)
-)
+) + (time(16, 0),)
 WEEKDAY_LABELS = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 APPOINTMENT_COLUMNS = [
     "appointment_id",
@@ -1048,8 +1048,9 @@ def _render_selected_day(appointments, selected_date, client):
                     ):
                         st.warning(f"Cancel appointment for {patient_name}?")
                         confirm_column, keep_column = st.columns([1, 1])
+                        confirm_cancel = False
                         with confirm_column:
-                            if st.button(
+                            confirm_cancel = st.button(
                                 "Confirm Cancel",
                                 key=f"appointment-confirm-cancel-{row_key}",
                                 type="primary",
@@ -1060,14 +1061,7 @@ def _render_selected_day(appointments, selected_date, client):
                                     else None
                                 ),
                                 width="stretch",
-                            ):
-                                st.session_state.pop(cancel_key, None)
-                                if not _update_appointment_outcome(
-                                    client,
-                                    appointment,
-                                    cancel_status,
-                                ):
-                                    st.session_state[cancel_key] = True
+                            )
                         with keep_column:
                             if st.button(
                                 "Keep",
@@ -1076,6 +1070,14 @@ def _render_selected_day(appointments, selected_date, client):
                             ):
                                 st.session_state.pop(cancel_key, None)
                                 st.rerun()
+                        if confirm_cancel:
+                            st.session_state.pop(cancel_key, None)
+                            if not _update_appointment_outcome(
+                                client,
+                                appointment,
+                                cancel_status,
+                            ):
+                                st.session_state[cancel_key] = True
 
                 if st.session_state.get(reschedule_key):
                     with st.container(
@@ -1118,8 +1120,9 @@ def _render_selected_day(appointments, selected_date, client):
                                 key=f"appointment-reschedule-time-{row_key}",
                             )
                         confirm_column, close_column = st.columns([1, 1])
+                        confirm_reschedule = False
                         with confirm_column:
-                            if st.button(
+                            confirm_reschedule = st.button(
                                 "Confirm",
                                 key=f"appointment-confirm-reschedule-{row_key}",
                                 type="primary",
@@ -1130,15 +1133,7 @@ def _render_selected_day(appointments, selected_date, client):
                                     else None
                                 ),
                                 width="stretch",
-                            ):
-                                st.session_state.pop(reschedule_key, None)
-                                if not _reschedule_appointment(
-                                    client,
-                                    appointment,
-                                    new_date,
-                                    new_time,
-                                ):
-                                    st.session_state[reschedule_key] = True
+                            )
                         with close_column:
                             if st.button(
                                 "Cancel",
@@ -1147,6 +1142,15 @@ def _render_selected_day(appointments, selected_date, client):
                             ):
                                 st.session_state.pop(reschedule_key, None)
                                 st.rerun()
+                        if confirm_reschedule:
+                            st.session_state.pop(reschedule_key, None)
+                            if not _reschedule_appointment(
+                                client,
+                                appointment,
+                                new_date,
+                                new_time,
+                            ):
+                                st.session_state[reschedule_key] = True
 
 
 def _render_appointment_history(appointments):
@@ -1278,6 +1282,10 @@ def _update_appointment_outcome(client, appointment, status):
 
 
 def _reschedule_appointment(client, appointment, new_date, new_time):
+    if new_time < time(8, 0) or new_time > time(16, 0):
+        st.error("Choose an appointment time between 8:00am and 4:00pm.")
+        return False
+
     help_request = appointment.get("event_source") == "help_request"
     table_name = "patient_help_requests" if help_request else "appointments"
     id_column = "request_id" if help_request else "appointment_id"
@@ -1469,6 +1477,9 @@ def _render_schedule_form(client):
         return
     if visit_date is None or visit_time is None:
         st.error("Choose both a visit date and time.")
+        return
+    if visit_time < time(8, 0) or visit_time > time(16, 0):
+        st.error("Choose a visit time between 8:00am and 4:00pm.")
         return
 
     appointment_time = visit_time.strftime("%H:%M:%S")

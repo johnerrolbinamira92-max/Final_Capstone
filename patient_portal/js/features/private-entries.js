@@ -1,7 +1,9 @@
 const RETENTION_DAYS = 30;
 const LEGACY_STORAGE_KEY = "hfrc-private-entries-v1";
-const GUEST_STORAGE_KEY = "hfrc_guest_journal_entries";
-const USER_STORAGE_PREFIX = "hfrc_user_journal_";
+const LEGACY_GUEST_STORAGE_KEY = "hfrc_guest_journal_entries";
+const LEGACY_USER_STORAGE_PREFIX = "hfrc_user_journal_";
+const STORAGE_PREFIX = "hfrc_journal_entries:";
+const GUEST_STORAGE_KEY = `${STORAGE_PREFIX}guest`;
 
 function escapeHtml(value) {
   return value.replace(/[&<>"']/g, (character) => ({
@@ -14,7 +16,7 @@ function escapeHtml(value) {
 }
 
 function storageKey(userId) {
-  return userId ? `${USER_STORAGE_PREFIX}${userId}` : GUEST_STORAGE_KEY;
+  return userId ? `${STORAGE_PREFIX}${userId}` : GUEST_STORAGE_KEY;
 }
 
 function isBackedUp(entry) {
@@ -136,6 +138,42 @@ export function createPrivateEntries({
     }
   }
 
+  function migrateScopedEntries() {
+    try {
+      const migrateKey = (sourceKey, userId) => {
+        const serialized = localStorage.getItem(sourceKey);
+        if (serialized === null) return;
+        const saved = JSON.parse(serialized);
+        if (!Array.isArray(saved)) {
+          throw new TypeError("The saved journal data is not a list.");
+        }
+        const destinationKey = storageKey(userId);
+        const existing = readScopedEntries(destinationKey, userId);
+        const migrated = normalizeEntries(saved, userId);
+        localStorage.setItem(
+          destinationKey,
+          JSON.stringify(mergeEntries(existing, migrated))
+        );
+        localStorage.removeItem(sourceKey);
+      };
+
+      migrateKey(LEGACY_GUEST_STORAGE_KEY, null);
+      const legacyUserKeys = [];
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (key && key.startsWith(LEGACY_USER_STORAGE_PREFIX)) {
+          legacyUserKeys.push(key);
+        }
+      }
+      legacyUserKeys.forEach((key) => {
+        const userId = key.slice(LEGACY_USER_STORAGE_PREFIX.length);
+        if (userId) migrateKey(key, userId);
+      });
+    } catch (error) {
+      reportStorageError("Could not migrate scoped journal data.", error);
+    }
+  }
+
   function loadEntries(userId) {
     try {
       return readScopedEntries(storageKey(userId), userId);
@@ -214,6 +252,7 @@ export function createPrivateEntries({
   });
 
   migrateLegacyEntries();
+  migrateScopedEntries();
   entries = loadEntries(null);
 
   function setUser(user) {
@@ -225,7 +264,11 @@ export function createPrivateEntries({
     const nextUserId = typeof userId === "string" && userId.trim()
       ? userId
       : null;
-    if (currentUserId !== nextUserId) scopeVersion += 1;
+    if (currentUserId !== nextUserId) {
+      scopeVersion += 1;
+      entries = [];
+      render();
+    }
     currentUserId = nextUserId;
     entries = loadEntries(currentUserId);
     render();
@@ -332,6 +375,19 @@ export function createPrivateEntries({
         render();
       }
     },
+    clearUserEntries(userId) {
+      if (!userId) throw new Error("An account ID is required to clear journal entries.");
+      if (currentUserId === userId) {
+        entries = [];
+        render();
+      }
+      try {
+        localStorage.removeItem(storageKey(userId));
+      } catch (error) {
+        reportStorageError("Could not clear this account's local journal copy.", error);
+        throw error;
+      }
+    },
     importGuestEntries,
     clearLegacyStorage() {
       try {
@@ -341,6 +397,11 @@ export function createPrivateEntries({
       }
     },
     clearDisplay() {
+      historyElement.replaceChildren();
+    },
+    clearForAccountChange() {
+      scopeVersion += 1;
+      entries = [];
       historyElement.replaceChildren();
     },
     save(text) {

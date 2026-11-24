@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=5">
+    <link rel="stylesheet" href="styles.css?v=6">
     <link rel="stylesheet" href="css/chatbot.css">
   </head>
   <body>
@@ -77,6 +77,14 @@
                 <button class="account-signout" id="auth-signout" type="button">Sign Out</button>
               </div>
             </div>
+            <button
+              class="account-settings-trigger"
+              id="account-settings-open"
+              type="button"
+              aria-haspopup="dialog"
+              aria-controls="account-settings-dialog"
+              hidden
+            >Account Settings</button>
           </div>
         </div>
       </div>
@@ -347,6 +355,55 @@
       </p>
     </dialog>
 
+    <dialog class="account-settings-dialog" id="account-settings-dialog" aria-labelledby="account-settings-title" aria-describedby="account-settings-intro">
+      <div class="account-settings-header">
+        <div>
+          <p class="auth-clinic-badge">YOUR ACCOUNT</p>
+          <h2 id="account-settings-title">Account Settings</h2>
+        </div>
+        <button class="contact-dialog-close" id="account-settings-close" type="button" aria-label="Close account settings">×</button>
+      </div>
+      <p class="account-settings-intro" id="account-settings-intro">Update your sign-in details and private journal preferences.</p>
+
+      <form class="account-settings-section" id="account-settings-email-form">
+        <h3>Email address</h3>
+        <label class="auth-field-label" for="account-settings-email">Account email</label>
+        <input id="account-settings-email" name="email" type="email" autocomplete="email" maxlength="254" required>
+        <button class="account-settings-action" id="account-settings-email-submit" type="submit">Update email</button>
+        <p class="account-settings-status" id="account-settings-email-status" role="status" aria-live="polite"></p>
+      </form>
+
+      <form class="account-settings-section" id="account-settings-password-form">
+        <h3>Change password</h3>
+        <label class="auth-field-label" for="account-settings-password">New password</label>
+        <input id="account-settings-password" name="password" type="password" autocomplete="new-password" minlength="6" required>
+        <label class="auth-field-label" for="account-settings-password-confirm">Confirm new password</label>
+        <input id="account-settings-password-confirm" name="password-confirm" type="password" autocomplete="new-password" minlength="6" required>
+        <button class="account-settings-action" id="account-settings-password-submit" type="submit">Update password</button>
+        <p class="account-settings-status" id="account-settings-password-status" role="status" aria-live="polite"></p>
+      </form>
+
+      <section class="account-settings-section">
+        <h3>5-Entry Email Check-In</h3>
+        <label class="account-settings-check">
+          <input id="account-settings-wellness-opt-in" type="checkbox">
+          <span>Email me an optional, non-clinical wellness check-in after every five saved entries.</span>
+        </label>
+        <p class="account-settings-status" id="account-settings-wellness-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="account-settings-danger">
+        <h3>Private journal entries</h3>
+        <p>Permanently delete all journal entries backed up to this account and their local copies.</p>
+        <button class="account-settings-danger-button" id="account-settings-clear-entries" type="button">Clear cloud journal entries</button>
+        <p class="account-settings-status" id="account-settings-clear-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <div class="account-settings-footer">
+        <button class="account-settings-signout" id="account-settings-signout" type="button">Sign out</button>
+      </div>
+    </dialog>
+
     <div class="entry-toast" id="entry-toast" role="status" aria-live="polite" hidden>
       <span>You already get in-app notification updates for requests and a wellness check-in every five entries on this device. Sign in with email for permanent cross-device cloud backup and direct email alerts.</span>
       <button class="toast-signin" id="toast-signin" type="button" data-open-auth>Sign In</button>
@@ -354,7 +411,7 @@
     </div>
 
     <script src="config.js"></script>
-    <script type="module" src="js/app.js?v=7"></script>
+    <script type="module" src="js/app.js?v=8"></script>
     <script type="module" src="js/chatbot.js?v=3"></script>
   </body>
 </html>

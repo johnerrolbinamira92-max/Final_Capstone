@@ -24,9 +24,10 @@ from views.appointments import (
 MANILA_TZ = ZoneInfo("Asia/Manila")
 CALLBACK_TIME_SLOTS = [
     time(hour, minute).strftime("%I:%M%p").lstrip("0").lower()
-    for hour in range(8, 16)
+    for hour in range(8, 17)
     if hour != 12
     for minute in (0, 30)
+    if hour < 16 or minute == 0
 ]
 NOTIFICATION_STYLES = """
 <style>
@@ -600,10 +601,8 @@ def _validate_schedule_choice(requested_date, requested_time, *, help_request):
         return "Choose today or a future date."
     if help_request and requested_date.weekday() > 4:
         return "Callback appointments are available Monday through Friday."
-    if help_request and (
-        requested_time < time(9, 0) or requested_time > time(16, 30)
-    ):
-        return "Choose a callback time between 9:00am and 4:30pm."
+    if requested_time < time(8, 0) or requested_time > time(16, 0):
+        return "Choose an appointment time between 8:00am and 4:00pm."
     if help_request and (
         requested_time.minute not in (0, 30) or requested_time.second
     ):
@@ -739,36 +738,16 @@ def _render_notification_actions(client, item, tab_key):
             action_columns[2] if not is_confirmed else action_columns[1]
         )
 
+    confirm_clicked = False
     if not is_confirmed and not is_cancelled:
         with action_columns[0]:
-            if st.button(
+            confirm_clicked = st.button(
                 "Confirm",
                 key=f"notification_accept_{tab_key}_{item['id']}",
                 type="primary",
                 icon=":material/check:",
                 width="stretch",
-            ):
-                error = (
-                    "The original date or time is missing. Choose a replacement schedule."
-                    if requested_date is None or requested_time is None
-                    else _validate_schedule_choice(
-                        requested_date,
-                        requested_time,
-                        help_request=is_help_request,
-                    )
-                )
-                if error:
-                    st.error(error)
-                elif _update_notification(
-                    client,
-                    item,
-                    {
-                        "requested_date": requested_date.isoformat(),
-                        "requested_time_slot": requested_time.strftime("%H:%M:%S"),
-                        "approval_status": "Scheduled",
-                    },
-                ):
-                    st.rerun()
+            )
 
     with reschedule_column:
         if st.button(
@@ -792,6 +771,29 @@ def _render_notification_actions(client, item, tab_key):
             ):
                 st.session_state["confirm_cancel_notification_id"] = item["id"]
                 st.rerun()
+
+    if confirm_clicked:
+        error = (
+            "The original date or time is missing. Choose a replacement schedule."
+            if requested_date is None or requested_time is None
+            else _validate_schedule_choice(
+                requested_date,
+                requested_time,
+                help_request=is_help_request,
+            )
+        )
+        if error:
+            st.error(error)
+        elif _update_notification(
+            client,
+            item,
+            {
+                "requested_date": requested_date.isoformat(),
+                "requested_time_slot": requested_time.strftime("%H:%M:%S"),
+                "approval_status": "Scheduled",
+            },
+        ):
+            st.rerun()
 
     rescheduling_key = f"notification_rescheduling:{tab_key}:{item['id']}"
     if st.session_state.get(rescheduling_key):
