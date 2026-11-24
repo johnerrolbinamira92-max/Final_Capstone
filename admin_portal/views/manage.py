@@ -1906,126 +1906,125 @@ def show_manage_page():
         st.session_state.pop("record_filter_barangay", None)
 
     with search_controls_placeholder.container():
-        search_column, name_column = st.columns([1.5, 1])
-        with search_column:
-            st.markdown("**Patient ID**")
-            st.session_state.setdefault(
-                "patient_case_search_year",
-                str(datetime.date.today().year),
-            )
-            with st.container(
-                horizontal=True,
-                wrap=False,
-                vertical_alignment="center",
-                gap="small",
+        st.markdown("**Restricted Name Lookup**")
+        name_lookup_column, filter_button_column = st.columns(
+            [0.88, 0.12],
+            gap="small",
+            vertical_alignment="center",
+        )
+        with name_lookup_column:
+            st.session_state.setdefault("patient_name_lookup_query", "")
+            name_search_term = st.text_input(
+                "Restricted Name Lookup",
+                key="patient_name_lookup_query",
+                placeholder="Enter a patient name",
+                type="password",
+                autocomplete="off",
+                label_visibility="collapsed",
+                width="stretch",
+            ).strip()
+        with filter_button_column:
+            with st.popover(
+                "",
+                icon=":material/filter_alt:",
+                help="Filter records",
+                key="record_filters_popover",
+                width="stretch",
             ):
-                st.markdown("**BOC -**", width="content")
-                patient_year = st.text_input(
-                    "Year",
-                    key="patient_case_search_year",
-                    max_chars=4,
-                    placeholder="YYYY",
-                    label_visibility="collapsed",
-                    width=76,
-                ).strip()
-                st.markdown("**-**", width="content")
-                patient_number = st.text_input(
-                    "Unique number",
-                    key="patient_case_search_number",
-                    max_chars=4,
-                    placeholder="0001",
-                    label_visibility="collapsed",
-                    width=80,
-                ).strip()
-        with name_column:
-            st.markdown("**Restricted Name Lookup**")
-            name_lookup_column, filter_button_column = st.columns(
-                [0.88, 0.12],
-                gap="small",
-                vertical_alignment="center",
-            )
-            with name_lookup_column:
-                st.session_state.setdefault("patient_name_lookup_query", "")
-                name_search_term = st.text_input(
-                    "Restricted Name Lookup",
-                    key="patient_name_lookup_query",
-                    placeholder="Enter a patient name",
-                    type="password",
-                    autocomplete="off",
-                    label_visibility="collapsed",
-                    width="stretch",
-                ).strip()
-            with filter_button_column:
-                with st.popover(
-                    "",
-                    icon=":material/filter_alt:",
-                    help="Filter records",
-                    key="record_filters_popover",
-                    width="stretch",
-                ):
-                    province_column, city_column, barangay_column, gender_column = (
-                        st.columns(4)
+                province_column, city_column, barangay_column, gender_column = (
+                    st.columns(4)
+                )
+                with province_column:
+                    selected_province = st.selectbox(
+                        "Province",
+                        province_names,
+                        index=None,
+                        placeholder="Choose a Bicol province",
+                        key="record_filter_province",
+                        on_change=_clear_record_city_and_barangay,
                     )
-                    with province_column:
-                        selected_province = st.selectbox(
-                            "Province",
-                            province_names,
-                            index=None,
-                            placeholder="Choose a Bicol province",
-                            key="record_filter_province",
-                            on_change=_clear_record_city_and_barangay,
-                        )
-                    with city_column:
-                        selected_city = st.selectbox(
-                            "Municipality / City",
-                            municipality_options,
-                            index=None,
-                            placeholder=(
-                                "Choose a province first"
-                                if selected_province is None
-                                else "Choose a municipality or city"
-                            ),
-                            disabled=selected_province is None,
-                            key="record_filter_city",
-                            on_change=_clear_record_barangay,
-                        )
-                    with barangay_column:
-                        selected_barangay = st.selectbox(
-                            "Barangay",
-                            barangay_options,
-                            index=None,
-                            placeholder=(
-                                "Choose a municipality or city first"
-                                if selected_city is None
-                                else "Choose a barangay"
-                            ),
-                            disabled=selected_city is None,
-                            key="record_filter_barangay",
-                        )
-                    with gender_column:
-                        selected_gender = st.selectbox(
-                            "Gender",
-                            ["All genders", *genders],
-                            key="record_filter_gender",
-                        )
+                with city_column:
+                    selected_city = st.selectbox(
+                        "Municipality / City",
+                        municipality_options,
+                        index=None,
+                        placeholder=(
+                            "Choose a province first"
+                            if selected_province is None
+                            else "Choose a municipality or city"
+                        ),
+                        disabled=selected_province is None,
+                        key="record_filter_city",
+                        on_change=_clear_record_barangay,
+                    )
+                with barangay_column:
+                    selected_barangay = st.selectbox(
+                        "Barangay",
+                        barangay_options,
+                        index=None,
+                        placeholder=(
+                            "Choose a municipality or city first"
+                            if selected_city is None
+                            else "Choose a barangay"
+                        ),
+                        disabled=selected_city is None,
+                        key="record_filter_barangay",
+                    )
+                with gender_column:
+                    selected_gender = st.selectbox(
+                        "Gender",
+                        ["All genders", *genders],
+                        key="record_filter_gender",
+                    )
 
-                    minimum_age_column, maximum_age_column = st.columns(2)
-                    with minimum_age_column:
-                        minimum_age = st.number_input(
-                            "Minimum age",
-                            min_value=0,
-                            max_value=120,
-                            value=0,
-                            key="record_filter_minimum_age",
-                        )
-                    with maximum_age_column:
-                        maximum_age = st.number_input(
-                            "Maximum age",
-                            min_value=0,
-                            max_value=120,
-                            value=120,
-                            key="record_filter_maximum_age",
-                        )
+                minimum_age_column, maximum_age_column = st.columns(2)
+                with minimum_age_column:
+                    minimum_age = st.number_input(
+                        "Minimum age",
+                        min_value=0,
+                        max_value=120,
+                        value=0,
+                        key="record_filter_minimum_age",
+                    )
+                with maximum_age_column:
+                    maximum_age = st.number_input(
+                        "Maximum age",
+                        min_value=0,
+                        max_value=120,
+                        value=120,
+                        key="record_filter_maximum_age",
+                    )
+
+        st.markdown("**Patient ID**")
+        st.session_state.setdefault(
+            "patient_case_search_year",
+            str(datetime.date.today().year),
+        )
+        with st.container(
+            horizontal=True,
+            wrap=False,
+            vertical_alignment="center",
+            gap="xsmall",
+            key="patient-case-search-code",
+        ):
+            st.markdown("**BOC-**", width="content")
+            patient_year = st.text_input(
+                "Year",
+                key="patient_case_search_year",
+                max_chars=4,
+                placeholder="YYYY",
+                label_visibility="collapsed",
+                width=68,
+            ).strip()
+            st.markdown("**-**", width="content")
+            patient_number = st.text_input(
+                "Unique number",
+                key="patient_case_search_number",
+                max_chars=4,
+                placeholder="0001",
+                label_visibility="collapsed",
+                width=68,
+            ).strip()
 
     case_number_search_term = ""
     if _is_four_digit_value(patient_year) and _is_four_digit_value(

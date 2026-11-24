@@ -441,24 +441,47 @@ st.markdown(
         border-right: 1px solid var(--hfrc-line);
     }
 
+    [data-testid="stSidebar"] > div:first-child {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+    }
+
+    [data-testid="stSidebarContent"] {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    [data-testid="stSidebarUserContent"] {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        justify-content: center;
+        min-height: 100vh;
+        box-sizing: border-box;
+        padding: 1.25rem .75rem;
+    }
+
     .hfrc-sidebar-brand {
         display: flex;
         align-items: center;
-        gap: .55rem;
+        gap: .8rem;
         margin: .2rem 0 .65rem;
-        padding: .25rem .2rem .8rem;
+        padding: .25rem .2rem .9rem;
         border-bottom: 1px solid rgba(220, 244, 238, .16);
         color: #ffffff;
-        font-size: .74rem;
+        font-size: .9rem;
         font-weight: 650;
-        line-height: 1.25;
+        line-height: 1.3;
     }
 
     .hfrc-sidebar-brand-mark {
         display: grid;
-        width: 2.35rem;
-        height: 2.35rem;
-        flex: 0 0 2.35rem;
+        width: 3.75rem;
+        height: 3.75rem;
+        flex: 0 0 3.75rem;
         place-items: center;
         border: 1px solid rgba(255,255,255,.55);
         border-radius: .55rem;
@@ -472,11 +495,16 @@ st.markdown(
         object-fit: contain;
     }
 
+    .hfrc-sidebar-brand strong {
+        font-size: 1.05rem;
+        font-weight: 700;
+    }
+
     .hfrc-sidebar-brand small {
         display: block;
         margin-top: .12rem;
         color: #a9d0c8;
-        font-size: .58rem;
+        font-size: .75rem;
         font-weight: 400;
     }
 
@@ -1393,6 +1421,11 @@ st.markdown(
             letter-spacing: -.04em;
         }
 
+        .st-key-patient-case-search-code [data-testid="stHorizontalBlock"] {
+            gap: 6px !important;
+            align-items: center;
+        }
+
         .st-key-patient-results-table-hint [data-testid="stCaptionContainer"] {
             color: var(--hfrc-teal-bright) !important;
         }
@@ -1983,7 +2016,7 @@ with st.sidebar:
             with st.expander("Notification read status details"):
                 st.code(str(notification_mark_read_error))
 
-    st.space("stretch")
+    st.space("medium")
     if st.button("Log out"):
         st.session_state["admin_authenticated"] = False
         st.session_state.pop("admin_auth_mode", None)
