@@ -105,17 +105,19 @@ a { color: inherit; }
 .header-actions { display: flex; align-items: center; gap: 10px; }
 .auth-account { display: flex; align-items: center; gap: 8px; }
 .account-settings-trigger {
+  width: 100%;
   min-height: 36px;
-  padding: 0 12px;
-  border: 1px solid var(--teal-bright);
-  border-radius: 999px;
-  background: var(--surface-raised);
-  color: var(--text);
-  font-size: 11px;
+  padding: 7px 12px;
+  border: 1px solid #39625d;
+  border-radius: 9px;
+  background: #183a35;
+  color: #f5f1e7;
+  text-align: left;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
 }
-.account-settings-trigger:hover { background: var(--teal); }
+.account-settings-trigger:hover { border-color: #83b9b0; background: #21423e; }
 .account-settings-trigger:focus-visible { outline: 2px solid #2dd4bf; outline-offset: 3px; }
 .account-settings-trigger[hidden] { display: none; }
 .notification-menu, .account-menu { position: relative; }
@@ -391,12 +393,41 @@ h1 em { color: var(--teal-bright); font-weight: 500; }
   box-shadow: 0 22px 65px rgb(3 14 13 / 32%);
 }
 .account-settings-dialog::backdrop { background: rgb(3 14 13 / 76%); backdrop-filter: blur(4px); }
+.confirmation-dialog {
+  width: min(440px, calc(100% - 32px));
+  max-width: none;
+  padding: clamp(22px, 5vw, 30px);
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  background: #f8fafc;
+  color: #111827;
+  box-shadow: 0 22px 65px rgb(3 14 13 / 32%);
+}
+.confirmation-dialog::backdrop { background: rgb(3 14 13 / 76%); backdrop-filter: blur(4px); }
+.confirmation-dialog h2 { margin: 0; color: #123f3a; font-size: 20px; font-weight: 700; }
+.confirmation-dialog p { margin: 10px 0 0; color: #475569; font-size: 13px; line-height: 1.6; }
+.confirmation-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 22px; }
+.confirmation-button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.confirmation-confirm { border-color: #123f3a; background: #123f3a; color: #fff; }
+.confirmation-confirm:hover { background: #0e332f; }
+.confirmation-confirm.is-danger { border-color: #b91c1c; background: #b91c1c; }
+.confirmation-confirm.is-danger:hover { background: #991b1b; }
+.confirmation-button:focus-visible { outline: 3px solid #367a75; outline-offset: 2px; }
 .account-settings-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .account-settings-header .auth-clinic-badge { margin-top: 2px; }
 .account-settings-header h2 { margin: 8px 0 0; color: #111827; font-family: "DM Sans", sans-serif; font-size: clamp(22px, 5vw, 27px); font-weight: 700; letter-spacing: -.025em; line-height: 1.25; }
 .account-settings-intro { margin: 10px 0 16px; color: #475569; font-size: 13px; line-height: 1.55; }
-.account-settings-section,
-.account-settings-danger {
+.account-settings-section {
   display: grid;
   gap: 8px;
   margin: 12px 0 0;
@@ -405,8 +436,7 @@ h1 em { color: var(--teal-bright); font-weight: 500; }
   border-radius: 12px;
   background: #fff;
 }
-.account-settings-section h3,
-.account-settings-danger h3 { margin: 0 0 2px; color: #123f3a; font-size: 13px; font-weight: 700; }
+.account-settings-section h3 { margin: 0 0 2px; color: #123f3a; font-size: 13px; font-weight: 700; }
 .account-settings-dialog input:not([type="checkbox"]) {
   width: 100%;
   min-height: 42px;
@@ -418,7 +448,6 @@ h1 em { color: var(--teal-bright); font-weight: 500; }
   font-size: 13px;
 }
 .account-settings-action,
-.account-settings-danger-button,
 .account-settings-signout {
   min-height: 38px;
   padding: 0 12px;
@@ -438,11 +467,6 @@ h1 em { color: var(--teal-bright); font-weight: 500; }
 .account-settings-status { margin: 0; color: #475569; font-size: 11px; line-height: 1.45; }
 .account-settings-status:empty { display: none; }
 .account-settings-status.error { color: #991b1b; }
-.account-settings-danger { border-color: #fecaca; background: #fffafa; }
-.account-settings-danger h3 { color: #991b1b; }
-.account-settings-danger > p:not(.account-settings-status) { margin: 0; color: #64748b; font-size: 11px; line-height: 1.5; }
-.account-settings-danger-button { justify-self: start; border-color: #b91c1c; background: #b91c1c; }
-.account-settings-danger-button:hover { background: #991b1b; }
 .account-settings-footer { display: flex; justify-content: flex-end; margin-top: 14px; }
 .account-settings-signout { border-color: #cbd5e1; background: #fff; color: #334155; }
 .account-settings-signout:hover { background: #f1f5f9; color: #123f3a; }
@@ -798,7 +822,6 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; }
   .brand-kicker { font-size: 9px; }
   .brand-copy strong { font-size: 14px; }
   .auth-account { gap: 5px; }
-  .account-settings-trigger { min-height: 34px; padding-inline: 9px; font-size: 10px; }
   .account-icon-button { width: 34px; height: 34px; }
   .notification-button { width: 34px; height: 34px; }
   .notification-popover { width: min(360px, calc(100vw - 32px)); padding: 15px; }
@@ -835,7 +858,6 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; }
   .brand-copy strong { font-size: 13px; }
   .header-actions { gap: 4px; }
   .auth-account { gap: 4px; }
-  .account-settings-trigger { padding-inline: 7px; font-size: 9px; }
   .notification-popover, .account-popover { position: fixed; top: 72px; right: 16px; }
 }
 

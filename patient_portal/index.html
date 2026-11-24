@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=6">
+    <link rel="stylesheet" href="styles.css?v=7">
     <link rel="stylesheet" href="css/chatbot.css">
   </head>
   <body>
@@ -74,17 +74,17 @@
                   <p class="account-popover-label">Signed in as</p>
                   <p class="account-email" id="auth-email"></p>
                 </div>
-                <button class="account-signout" id="auth-signout" type="button">Sign Out</button>
+                <button
+                  class="account-settings-trigger"
+                  id="account-settings-open"
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-controls="account-settings-dialog"
+                  hidden
+                >Account Settings</button>
+                <button class="account-signout" id="auth-signout" type="button">Log out</button>
               </div>
             </div>
-            <button
-              class="account-settings-trigger"
-              id="account-settings-open"
-              type="button"
-              aria-haspopup="dialog"
-              aria-controls="account-settings-dialog"
-              hidden
-            >Account Settings</button>
           </div>
         </div>
       </div>
@@ -392,15 +392,22 @@
         <p class="account-settings-status" id="account-settings-wellness-status" role="status" aria-live="polite"></p>
       </section>
 
-      <section class="account-settings-danger">
-        <h3>Private journal entries</h3>
-        <p>Permanently delete all journal entries backed up to this account and their local copies.</p>
-        <button class="account-settings-danger-button" id="account-settings-clear-entries" type="button">Clear cloud journal entries</button>
-        <p class="account-settings-status" id="account-settings-clear-status" role="status" aria-live="polite"></p>
-      </section>
-
       <div class="account-settings-footer">
-        <button class="account-settings-signout" id="account-settings-signout" type="button">Sign out</button>
+        <button class="account-settings-signout" id="account-settings-signout" type="button">Log out</button>
+      </div>
+    </dialog>
+
+    <dialog
+      class="confirmation-dialog"
+      id="confirmation-dialog"
+      aria-labelledby="confirmation-title"
+      aria-describedby="confirmation-message"
+    >
+      <h2 id="confirmation-title">Confirm action</h2>
+      <p id="confirmation-message"></p>
+      <div class="confirmation-actions">
+        <button class="confirmation-button confirmation-cancel" id="confirmation-cancel" type="button">Cancel</button>
+        <button class="confirmation-button confirmation-confirm" id="confirmation-confirm" type="button">Confirm</button>
       </div>
     </dialog>
 
@@ -411,7 +418,7 @@
     </div>
 
     <script src="config.js"></script>
-    <script type="module" src="js/app.js?v=8"></script>
+    <script type="module" src="js/app.js?v=9"></script>
     <script type="module" src="js/chatbot.js?v=3"></script>
   </body>
 </html>

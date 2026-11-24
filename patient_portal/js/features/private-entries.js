@@ -64,6 +64,7 @@ export function createPrivateEntries({
   historyElement,
   onStorageError,
   onRemove,
+  onConfirmRemove,
   onMilestone
 }) {
   let storageUnavailable = false;
@@ -225,9 +226,11 @@ export function createPrivateEntries({
     if (!button) return;
     const scopeAtClick = scopeVersion;
     const entry = entries.find((candidate) => candidate.id === button.dataset.entryId);
+    if (!entry) return;
     try {
+      if (onConfirmRemove && !(await onConfirmRemove(entry))) return;
+      if (scopeAtClick !== scopeVersion) return;
       if (
-        entry &&
         currentUserId &&
         entry.cloudSynced &&
         onRemove &&

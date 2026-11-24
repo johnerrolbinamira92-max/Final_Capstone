@@ -1,6 +1,6 @@
 import { sendHelpRequest } from "./features/callback-request.js?v=3";
 import { initCallbackSchedule } from "./features/callback-schedule.js?v=2";
-import { createPrivateEntries } from "./features/private-entries.js?v=5";
+import { createPrivateEntries } from "./features/private-entries.js?v=6";
 import { hideFeedback, showFeedback } from "./ui/feedback.js";
 
 const GUEST_REQUEST_TOKENS_KEY = "hfrc_request_tokens:guest";
@@ -76,8 +76,11 @@ const accountSettingsPasswordSubmit = document.querySelector("#account-settings-
 const accountSettingsPasswordStatus = document.querySelector("#account-settings-password-status");
 const accountSettingsWellnessOptIn = document.querySelector("#account-settings-wellness-opt-in");
 const accountSettingsWellnessStatus = document.querySelector("#account-settings-wellness-status");
-const accountSettingsClearEntries = document.querySelector("#account-settings-clear-entries");
-const accountSettingsClearStatus = document.querySelector("#account-settings-clear-status");
+const confirmationDialog = document.querySelector("#confirmation-dialog");
+const confirmationTitle = document.querySelector("#confirmation-title");
+const confirmationMessage = document.querySelector("#confirmation-message");
+const confirmationCancel = document.querySelector("#confirmation-cancel");
+const confirmationConfirm = document.querySelector("#confirmation-confirm");
 const notificationMenu = document.querySelector(".notification-menu");
 const notificationButton = document.querySelector("#notification-button");
 const notificationBadge = document.querySelector("#notification-badge");
@@ -121,11 +124,20 @@ let userWellnessItems = [];
 let guestImportDismissed = false;
 let requestHistoryLoaded = false;
 let requestHistoryError = false;
+let confirmationResolver = null;
 
 const privateEntries = createPrivateEntries({
   historyElement: document.querySelector("#entry-history"),
   onStorageError: (message) => showFeedback(message, "error"),
   onMilestone: handleWellnessMilestone,
+  onConfirmRemove: (entry) => requestConfirmation({
+    title: "Remove saved entry?",
+    message: entry.cloudSynced
+      ? "This entry will be removed from your account and this device. This cannot be undone."
+      : "This private entry will be removed from this device. This cannot be undone.",
+    confirmText: "Remove Entry",
+    danger: true
+  }),
   onRemove: async (entry) => {
     if (!currentSession) return true;
     if (!entry.cloudSynced) return true;
@@ -245,20 +257,37 @@ function openAccountSettings() {
   accountSettingsPasswordForm.reset();
   accountSettingsEmailSubmit.disabled = false;
   accountSettingsPasswordSubmit.disabled = false;
-  accountSettingsClearEntries.disabled = false;
   accountSettingsEmailStatus.textContent = "";
   accountSettingsPasswordStatus.textContent = "";
   accountSettingsWellnessStatus.textContent = "";
-  accountSettingsClearStatus.textContent = "";
   accountSettingsEmailStatus.classList.remove("error");
   accountSettingsPasswordStatus.classList.remove("error");
   accountSettingsWellnessStatus.classList.remove("error");
-  accountSettingsClearStatus.classList.remove("error");
   accountSettingsWellnessOptIn.checked = Boolean(
     currentSession.user.user_metadata?.wellness_email_opt_in === true
   );
   accountSettingsDialog.showModal();
   accountSettingsEmailInput.focus();
+}
+
+function settleConfirmation(confirmed) {
+  const resolve = confirmationResolver;
+  confirmationResolver = null;
+  if (confirmationDialog.open) confirmationDialog.close();
+  if (resolve) resolve(confirmed);
+}
+
+function requestConfirmation({ title, message, confirmText, danger = false }) {
+  if (confirmationResolver) settleConfirmation(false);
+  confirmationTitle.textContent = title;
+  confirmationMessage.textContent = message;
+  confirmationConfirm.textContent = confirmText;
+  confirmationConfirm.classList.toggle("is-danger", danger);
+  return new Promise((resolve) => {
+    confirmationResolver = resolve;
+    confirmationDialog.showModal();
+    confirmationCancel.focus();
+  });
 }
 
 function setAuthMode(mode) {
@@ -937,6 +966,7 @@ guestWellnessDismiss.addEventListener("click", () => {
 });
 
 function clearSignedInUiState(showGuestEntries = true) {
+  settleConfirmation(false);
   currentSession = null;
   authReady = false;
   requestRows = [];
@@ -968,15 +998,12 @@ function clearSignedInUiState(showGuestEntries = true) {
   accountSettingsPasswordForm.reset();
   accountSettingsEmailSubmit.disabled = false;
   accountSettingsPasswordSubmit.disabled = false;
-  accountSettingsClearEntries.disabled = false;
   accountSettingsEmailStatus.textContent = "";
   accountSettingsPasswordStatus.textContent = "";
   accountSettingsWellnessStatus.textContent = "";
-  accountSettingsClearStatus.textContent = "";
   accountSettingsEmailStatus.classList.remove("error");
   accountSettingsPasswordStatus.classList.remove("error");
   accountSettingsWellnessStatus.classList.remove("error");
-  accountSettingsClearStatus.classList.remove("error");
   accountSettingsWellnessOptIn.checked = false;
   accountSettingsWellnessOptIn.disabled = false;
   wellnessEmailStatus.textContent = "";
@@ -1166,6 +1193,15 @@ document.querySelector("#account-settings-close").addEventListener("click", () =
 accountSettingsDialog.addEventListener("click", (event) => {
   if (event.target === accountSettingsDialog) accountSettingsDialog.close();
 });
+confirmationCancel.addEventListener("click", () => settleConfirmation(false));
+confirmationConfirm.addEventListener("click", () => settleConfirmation(true));
+confirmationDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  settleConfirmation(false);
+});
+confirmationDialog.addEventListener("click", (event) => {
+  if (event.target === confirmationDialog) settleConfirmation(false);
+});
 document.querySelector("#auth-dialog-close").addEventListener("click", () => authDialog.close());
 authDialog.addEventListener("click", (event) => {
   if (event.target === authDialog) authDialog.close();
@@ -1305,42 +1341,6 @@ accountSettingsPasswordForm.addEventListener("submit", async (event) => {
   }
 });
 
-accountSettingsClearEntries.addEventListener("click", async () => {
-  if (!supabase || !currentSession) return;
-  const sessionUserId = currentSession.user.id;
-  if (!window.confirm("Permanently delete all journal entries backed up to this account? This cannot be undone.")) {
-    return;
-  }
-
-  accountSettingsClearEntries.disabled = true;
-  accountSettingsClearStatus.textContent = "Clearing your cloud journal entries…";
-  accountSettingsClearStatus.classList.remove("error");
-  let cloudEntriesCleared = false;
-  try {
-    const { error } = await supabase
-      .from("patient_journal_entries")
-      .delete()
-      .eq("user_id", sessionUserId);
-    if (error) throw error;
-    cloudEntriesCleared = true;
-    privateEntries.clearUserEntries(sessionUserId);
-    if (currentSession && currentSession.user.id === sessionUserId) {
-      accountSettingsClearStatus.textContent = "Your cloud journal entries and this device’s account copy were cleared.";
-    }
-  } catch (error) {
-    console.error("Could not clear the account journal entries.", error);
-    if (currentSession && currentSession.user.id === sessionUserId) {
-      accountSettingsClearStatus.textContent = cloudEntriesCleared
-        ? "Cloud entries were deleted, but this browser could not clear its saved copy. Please check browser storage."
-        : "Could not clear your cloud journal entries. Please try again.";
-      accountSettingsClearStatus.classList.add("error");
-    }
-  } finally {
-    if (currentSession && currentSession.user.id === sessionUserId) {
-      accountSettingsClearEntries.disabled = false;
-    }
-  }
-});
 authModeTabs.forEach(({ element, mode }, index) => {
   element.addEventListener("click", () => {
     setAuthMode(mode);
@@ -1366,8 +1366,16 @@ authPasswordToggle.addEventListener("click", () => {
   authPasswordToggle.setAttribute("aria-label", isShowing ? "Hide password" : "Show password");
   authPasswordToggle.setAttribute("aria-pressed", String(isShowing));
 });
-document.querySelector("#auth-signout").addEventListener("click", async () => {
-  if (!supabase) return;
+async function signOutCurrentUser() {
+  if (!supabase || !currentSession) return;
+  const sessionUserId = currentSession.user.id;
+  const confirmed = await requestConfirmation({
+    title: "Log out?",
+    message: "Are you sure you want to log out? Your saved entries remain safely stored in your account.",
+    confirmText: "Log Out"
+  });
+  if (!confirmed || !currentSession || currentSession.user.id !== sessionUserId) return;
+  accountSettingsDialog.close();
   clearSignedInUiState();
   authReady = false;
   try {
@@ -1387,11 +1395,9 @@ document.querySelector("#auth-signout").addEventListener("click", async () => {
   } finally {
     if (!currentSession) authReady = true;
   }
-});
-document.querySelector("#account-settings-signout").addEventListener("click", () => {
-  accountSettingsDialog.close();
-  document.querySelector("#auth-signout").click();
-});
+}
+document.querySelector("#auth-signout").addEventListener("click", signOutCurrentUser);
+document.querySelector("#account-settings-signout").addEventListener("click", signOutCurrentUser);
 document.querySelector("#toast-close").addEventListener("click", () => {
   window.clearTimeout(toastTimeout);
   entryToast.hidden = true;
