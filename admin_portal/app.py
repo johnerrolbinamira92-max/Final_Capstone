@@ -1291,6 +1291,46 @@ st.markdown(
             background: var(--hfrc-surface);
         }
 
+        .st-key-admin-calendar-page [class*="st-key-appointment-icon-reschedule-"] button,
+        .st-key-admin-calendar-page [class*="st-key-appointment-icon-cancel-"] button {
+            box-sizing: border-box;
+            width: 36px !important;
+            min-width: 36px !important;
+            min-height: 36px !important;
+            height: 36px !important;
+            padding: 0 !important;
+            border-radius: 8px !important;
+        }
+
+        .st-key-admin-calendar-page [class*="st-key-appointment-icon-cancel-"] button,
+        .st-key-admin-calendar-page [class*="st-key-appointment-icon-cancel-"] button * {
+            border-color: rgba(239, 68, 68, .45) !important;
+            color: #ef4444 !important;
+        }
+
+        .st-key-admin-calendar-page [class*="st-key-appointment-icon-cancel-"] {
+            margin-left: 8px;
+        }
+
+        .st-key-admin-calendar-page [class*="st-key-appointment-confirm-cancel-"] button,
+        .st-key-admin-calendar-page [class*="st-key-appointment-keep-"] button,
+        .st-key-admin-calendar-page [class*="st-key-appointment-confirm-reschedule-"] button,
+        .st-key-admin-calendar-page [class*="st-key-appointment-close-reschedule-"] button {
+            box-sizing: border-box;
+            width: 100% !important;
+            min-width: 96px !important;
+            white-space: nowrap !important;
+            text-overflow: clip !important;
+            overflow: visible !important;
+        }
+
+        .st-key-admin-calendar-page [class*="st-key-appointment-confirm-cancel-"] button *,
+        .st-key-admin-calendar-page [class*="st-key-appointment-keep-"] button *,
+        .st-key-admin-calendar-page [class*="st-key-appointment-confirm-reschedule-"] button *,
+        .st-key-admin-calendar-page [class*="st-key-appointment-close-reschedule-"] button * {
+            white-space: nowrap !important;
+        }
+
         .st-key-appointment-calendar-panel [class*="st-key-appointment_day_"] button {
             min-height: 4.5rem;
             height: 4.5rem;
@@ -1431,7 +1471,7 @@ st.markdown(
         }
 
         [role="dialog"]:has(.st-key-selected-patient-details) {
-            background: #003f3b !important;
+            background: #0c201d !important;
             color: #e6f4f1 !important;
         }
 
@@ -1452,10 +1492,9 @@ st.markdown(
             text-transform: uppercase;
         }
 
-        .st-key-selected-patient-details .patient-not-recorded {
+        .st-key-selected-patient-details .patient-empty-value {
             color: #6b8e89 !important;
-            font-size: 15.5px;
-            font-style: italic;
+            font-size: 18px;
             line-height: 1.5;
         }
 
@@ -1465,7 +1504,7 @@ st.markdown(
             padding: 10px 12px;
             border: 1px solid rgba(167, 243, 208, .14);
             border-radius: 8px;
-            background: #0b2e2b;
+            background: #102824;
             color: #ffffff !important;
             font-size: 15.5px !important;
             font-weight: 500;
@@ -1475,13 +1514,13 @@ st.markdown(
         }
 
         .st-key-selected-patient-details [data-testid="stVerticalBlockBorderWrapper"] {
-            border-color: #6f9c95 !important;
-            background: #064c46 !important;
+            border-color: #355a53 !important;
+            background: #102824 !important;
         }
 
         .st-key-selected-patient-details [data-testid="stButton"] button {
-            border-color: #6f9c95 !important;
-            background: #064c46 !important;
+            border-color: #355a53 !important;
+            background: #102824 !important;
             color: #e6f4f1 !important;
         }
 
@@ -1489,15 +1528,33 @@ st.markdown(
             color: #e6f4f1 !important;
         }
 
+        .st-key-selected-patient-details [class*="st-key-toggle_patient_edit_"] button,
+        .st-key-selected-patient-details [class*="st-key-delete_selected_patient_"] button {
+            box-sizing: border-box;
+            width: 38px !important;
+            min-width: 38px !important;
+            min-height: 38px !important;
+            height: 38px !important;
+            padding: 0 !important;
+            border-radius: 8px !important;
+        }
+
+        .st-key-selected-patient-details [class*="st-key-delete_selected_patient_"] [data-testid="stButton"] button,
+        .st-key-selected-patient-details [class*="st-key-delete_selected_patient_"] [data-testid="stButton"] button * {
+            border-color: rgba(239, 68, 68, .45) !important;
+            background: rgba(239, 68, 68, .12) !important;
+            color: #ef4444 !important;
+        }
+
         .st-key-selected-patient-details [data-testid="stDataFrame"],
         .st-key-selected-patient-details [data-testid="stDataFrame"] *,
         .st-key-selected-patient-details [data-testid="stDataEditor"],
         .st-key-selected-patient-details [data-testid="stDataEditor"] * {
-            --gdg-bg-cell: #0b2e2b !important;
-            --gdg-bg-cell-medium: #113c38 !important;
-            --gdg-bg-group-header: #113c38 !important;
+            --gdg-bg-cell: #102824 !important;
+            --gdg-bg-cell-medium: #17342f !important;
+            --gdg-bg-group-header: #17342f !important;
             --gdg-bg-group-header-hovered: #164b45 !important;
-            --gdg-bg-header: #113c38 !important;
+            --gdg-bg-header: #17342f !important;
             --gdg-bg-header-has-focus: #164b45 !important;
             --gdg-bg-header-hovered: #164b45 !important;
             --gdg-bg-search-result: #3a625d !important;
@@ -1511,26 +1568,26 @@ st.markdown(
             --gdg-text-header-selected: #ffffff !important;
             --gdg-text-group-header: #ffffff !important;
             --gdg-accent-color: #7ce0d2 !important;
-            --gdg-accent-fg: #0b2e2b !important;
+            --gdg-accent-fg: #0c201d !important;
             --gdg-accent-light: #164b45 !important;
-            --gdg-bg-icon-header: #113c38 !important;
+            --gdg-bg-icon-header: #17342f !important;
             --gdg-fg-icon-header: #ffffff !important;
             --gdg-link-color: #9af0e3 !important;
         }
 
         .st-key-selected-patient-details [data-testid="stDataFrame"],
         .st-key-selected-patient-details [data-testid="stDataEditor"] {
-            border: 1px solid #8bb5ad !important;
+            border: 1px solid #355a53 !important;
             border-radius: .5rem;
-            background: #0b2e2b !important;
+            background: #102824 !important;
         }
 
         .st-key-selected-patient-details [data-testid="stTable"],
         .st-key-selected-patient-details [data-testid="stTable"] table,
         .st-key-selected-patient-details [data-testid="stTable"] th,
         .st-key-selected-patient-details [data-testid="stTable"] td {
-            border-color: #8bb5ad !important;
-            background: #0b2e2b !important;
+            border-color: #355a53 !important;
+            background: #102824 !important;
             color: #ffffff !important;
         }
 
@@ -1540,7 +1597,7 @@ st.markdown(
 
         .st-key-selected-patient-details [data-testid="stTable"] th,
         .st-key-selected-patient-details [data-testid="stTable"] td {
-            border-bottom: 1px solid #8bb5ad !important;
+            border-bottom: 1px solid #355a53 !important;
         }
 
         [data-testid="stMainBlockContainer"]:has(.st-key-admin-search-page) [data-testid="stExpander"] {

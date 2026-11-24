@@ -50,6 +50,7 @@ alter table public.patient_help_requests
             'Rescheduled',
             'Completed',
             'No-show',
+            'Declined',
             'Cancelled'
         )
     );

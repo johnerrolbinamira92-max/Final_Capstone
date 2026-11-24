@@ -62,7 +62,7 @@ export function createPrivateEntries({
   historyElement,
   onStorageError,
   onRemove,
-  onGuestMilestone
+  onMilestone
 }) {
   let storageUnavailable = false;
   let currentUserId = null;
@@ -352,13 +352,8 @@ export function createPrivateEntries({
       };
       entries.push(entry);
       if (persistEntries()) {
-        if (
-          !currentUserId &&
-          entries.length > 0 &&
-          entries.length % 5 === 0 &&
-          onGuestMilestone
-        ) {
-          onGuestMilestone(entries.length);
+        if (entries.length > 0 && entries.length % 5 === 0 && onMilestone) {
+          onMilestone(entries.length, currentUserId);
         }
         return true;
       }

@@ -131,7 +131,13 @@ security definer
 set search_path = ''
 as $$
 begin
-    perform public.increment_portal_engagement('need_help_submitted');
+    begin
+        perform public.increment_portal_engagement('need_help_submitted');
+    exception
+        when others then
+            raise warning 'Could not record portal engagement for patient help request: %',
+                SQLERRM;
+    end;
     return new;
 end;
 $$;

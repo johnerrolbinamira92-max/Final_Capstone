@@ -53,7 +53,7 @@ a { color: inherit; }
 }
 
 .header-inner {
-  height: 72px;
+  height: 80px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -61,6 +61,7 @@ a { color: inherit; }
 
 .brand {
   display: inline-flex;
+  min-width: 0;
   align-items: center;
   gap: 12px;
   text-decoration: none;
@@ -86,8 +87,9 @@ a { color: inherit; }
 .brand-mark span:last-child { align-self: end; }
 
 .brand-logo {
-  width: 42px;
-  height: 42px;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
   display: block;
   padding: 2px;
   border: 1px solid var(--line);
@@ -96,9 +98,9 @@ a { color: inherit; }
   object-fit: contain;
 }
 
-.brand-copy { display: grid; line-height: 1.3; }
-.brand-kicker { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
-.brand-copy strong { font-size: 14px; font-weight: 700; }
+.brand-copy { display: grid; min-width: 0; line-height: 1.3; }
+.brand-kicker { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; white-space: nowrap; }
+.brand-copy strong { font-size: 17px; font-weight: 700; }
 
 .header-actions { display: flex; align-items: center; gap: 10px; }
 .auth-account { display: flex; align-items: center; gap: 8px; }
@@ -116,6 +118,24 @@ a { color: inherit; }
   cursor: pointer;
 }
 .account-icon-button:hover, .account-icon-button[aria-expanded="true"] { border-color: var(--teal-bright); background: var(--surface-raised); }
+.account-icon-button.is-signed-in {
+  position: relative;
+  border-color: var(--teal-bright);
+  background: var(--surface-raised);
+  color: var(--teal-bright);
+  box-shadow: 0 0 0 2px rgb(45 212 191 / 16%);
+}
+.account-icon-button.is-signed-in::after {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: #34d399;
+  content: "";
+}
 .account-icon-button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
 .account-icon-button:focus-visible, .account-signout:focus-visible { outline: 2px solid #2dd4bf; outline-offset: 3px; }
 .notification-button {
@@ -420,6 +440,7 @@ h1 em { color: var(--teal-bright); font-weight: 500; }
 
 .share-section { border-top: 1px solid var(--line); padding: 76px 0 86px; }
 .section-heading { margin-bottom: 34px; }
+.section-heading, .history-heading { scroll-margin-top: 104px; }
 .section-heading h2, .history-heading h2 { margin: 0 0 8px; font-size: clamp(32px, 4vw, 42px); line-height: 1.2; }
 .section-heading > div > p:last-child { margin-bottom: 0; color: var(--muted); }
 .form-grid { display: grid; grid-template-columns: 1fr .95fr; align-items: start; gap: 20px; }
@@ -477,7 +498,7 @@ textarea::placeholder, input::placeholder { color: #759994; opacity: 1; }
   cursor: pointer;
   transition: border-color 140ms ease, background-color 140ms ease;
 }
-.choice-card:has(input:checked) { border-color: var(--teal-bright); background: color-mix(in srgb, var(--teal) 35%, var(--surface)); box-shadow: inset 0 0 0 1px var(--teal-bright); }
+.choice-card.is-active { border-color: var(--teal-bright); background: color-mix(in srgb, var(--teal) 35%, var(--surface)); box-shadow: inset 0 0 0 1px var(--teal-bright); }
 .choice-card input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .choice-card:focus-within { outline: 3px solid var(--teal-bright); outline-offset: 3px; }
 .choice-icon { width: 32px; height: 32px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; color: #fff; }
@@ -555,22 +576,23 @@ textarea::placeholder, input::placeholder { color: #759994; opacity: 1; }
 .guest-wellness-reminder { margin-top: 6px !important; color: #c1d5d0; font-size: 11px !important; }
 .guest-wellness-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(150px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(42px, auto);
   gap: 10px;
   align-items: stretch;
 }
 .guest-wellness-actions > button {
   display: inline-flex;
   width: 100%;
-  min-height: 38px;
+  min-height: 42px;
   align-items: center;
   justify-content: center;
-  padding: 8px 14px;
+  padding: 8px 10px;
   border-radius: 999px;
   font-size: 11px;
   line-height: 1.2;
   text-align: center;
-  white-space: nowrap;
+  white-space: normal;
 }
 .guest-wellness-dismiss {
   border-color: rgba(193, 213, 208, .4);
@@ -634,6 +656,35 @@ textarea::placeholder, input::placeholder { color: #759994; opacity: 1; }
 .toast-signin { color: var(--teal-bright); font-size: 12px; font-weight: 700; white-space: nowrap; }
 .toast-close { padding: 0 2px; color: var(--muted); font-size: 19px; line-height: 1; }
 
+body .care-chatbot-widget { right: 28px; bottom: 32px; }
+.care-chatbot-widget .care-chatbot-toggle {
+  display: grid;
+  width: 58px;
+  min-width: 58px;
+  height: 58px;
+  min-height: 58px;
+  place-items: center;
+  gap: 0;
+  padding: 0;
+  border-radius: 50%;
+  box-shadow: 0 12px 30px rgb(3 14 13 / 36%), 0 0 0 1px rgb(131 185 176 / 50%);
+}
+.care-chatbot-widget .care-chatbot-toggle:hover {
+  transform: translateY(-2px);
+}
+.care-chatbot-widget .care-chatbot-toggle-icon {
+  display: block;
+  width: 30px;
+  height: 30px;
+  border-radius: 0;
+  background: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .site-footer { padding: 30px 0; background: var(--teal); }
 .footer-inner { display: flex; align-items: center; justify-content: space-between; gap: 28px; }
 .footer-brand { display: flex; align-items: flex-start; gap: 14px; max-width: 620px; }
@@ -655,10 +706,11 @@ textarea::placeholder, input::placeholder { color: #759994; opacity: 1; }
 @media (max-width: 650px) {
   .page-width, .header-inner { width: min(100% - 32px, 520px); }
   .header-inner { height: 64px; }
-  .brand-mark, .brand-logo { width: 36px; height: 36px; border-radius: 8px; }
+  .brand-mark, .brand-logo { width: 42px; height: 42px; border-radius: 8px; }
+  .brand-logo { flex-basis: 42px; }
   .brand { gap: 8px; }
-  .brand-kicker { font-size: 8px; }
-  .brand-copy strong { font-size: 12px; }
+  .brand-kicker { font-size: 9px; }
+  .brand-copy strong { font-size: 14px; }
   .auth-account { gap: 5px; }
   .account-icon-button { width: 34px; height: 34px; }
   .notification-button { width: 34px; height: 34px; }
@@ -676,7 +728,6 @@ textarea::placeholder, input::placeholder { color: #759994; opacity: 1; }
   .section-heading { margin-bottom: 23px; }
   .section-heading h2, .history-heading h2 { font-size: 32px; }
   .guest-wellness-banner { align-items: stretch; flex-direction: column; gap: 12px; }
-  .guest-wellness-actions { grid-template-columns: 1fr; }
   .guest-import-banner { grid-template-columns: 1fr; gap: 10px; }
   .guest-import-actions { justify-content: flex-start; }
   .panel { padding: 20px; border-radius: 22px; }
@@ -693,8 +744,8 @@ textarea::placeholder, input::placeholder { color: #759994; opacity: 1; }
 }
 
 @media (max-width: 420px) {
-  .brand-kicker { display: none; }
-  .brand-copy strong { font-size: 11px; }
+  .brand-kicker { font-size: 8px; letter-spacing: .08em; }
+  .brand-copy strong { font-size: 13px; }
   .header-actions { gap: 4px; }
   .auth-account { gap: 4px; }
   .notification-popover, .account-popover { position: fixed; top: 72px; right: 16px; }

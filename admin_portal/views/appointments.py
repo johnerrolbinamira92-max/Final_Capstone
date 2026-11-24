@@ -33,7 +33,14 @@ HELP_REQUEST_STATUSES = (
     "Rescheduled",
     "Completed",
     "No-show",
+    "Declined",
     "Cancelled",
+)
+RESCHEDULE_TIME_SLOTS = tuple(
+    time(hour, minute)
+    for start_hour, end_hour in ((8, 11), (13, 15))
+    for hour in range(start_hour, end_hour + 1)
+    for minute in (0, 30)
 )
 WEEKDAY_LABELS = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 APPOINTMENT_COLUMNS = [
@@ -204,19 +211,25 @@ APPOINTMENT_STYLES = """
     font-weight: 700;
     line-height: 1.3;
 }
-.st-key-admin-calendar-page .appointment-selected-entry {
+.st-key-admin-calendar-page [class*="st-key-appointment-selected-entry-"] [data-testid="stVerticalBlockBorderWrapper"] {
+    box-sizing: border-box;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
     margin-top: 1rem;
-    padding: 1rem;
-    border: 1px solid rgba(255, 255, 255, .07);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, .025);
+    padding: 16px 18px 20px 18px !important;
+    border: 1px solid #31534f !important;
+    border-radius: 12px !important;
+    background: #102824 !important;
 }
-.st-key-admin-calendar-page .appointment-selected-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: .75rem;
-    margin-bottom: .9rem;
+.st-key-admin-calendar-page [class*="st-key-appointment-selected-entry-"] [data-testid="stVerticalBlock"],
+.st-key-admin-calendar-page [class*="st-key-appointment-cancel-confirmation-"] [data-testid="stVerticalBlock"],
+.st-key-admin-calendar-page [class*="st-key-appointment-reschedule-panel-"] [data-testid="stVerticalBlock"],
+.st-key-admin-calendar-page [class*="st-key-appointment-cancel-confirmation-"] [data-testid="stVerticalBlockBorderWrapper"],
+.st-key-admin-calendar-page [class*="st-key-appointment-reschedule-panel-"] [data-testid="stVerticalBlockBorderWrapper"] {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
 }
 .st-key-admin-calendar-page .appointment-selected-name {
     margin: .15rem 0 0;
@@ -269,7 +282,7 @@ APPOINTMENT_STYLES = """
     color: #efb0a5;
 }
 .st-key-admin-calendar-page .appointment-detail-quote {
-    margin-top: 1rem;
+    margin: 10px 0 14px;
     padding: .8rem .9rem;
     border: 1px solid rgba(255, 255, 255, .04);
     border-radius: 10px;
@@ -879,7 +892,7 @@ def _render_calendar(appointments, selected_date):
     )
 
 
-def _render_selected_day(appointments, selected_date):
+def _render_selected_day(appointments, selected_date, client):
     if appointments.empty:
         day_appointments = appointments
     else:
@@ -911,6 +924,16 @@ def _render_selected_day(appointments, selected_date):
             return
         for index, appointment in enumerate(day_appointments.to_dict(orient="records")):
             patient_name = str(appointment.get("patient_name") or "Patient")
+            row_key = str(
+                appointment.get("appointment_id") or f"appointment-{index}"
+            ).replace(":", "-")
+            cancel_key = f"appointment-cancel-confirm-{row_key}"
+            reschedule_key = f"appointment-reschedule-open-{row_key}"
+            cancel_status = (
+                "Declined"
+                if appointment.get("event_source") == "help_request"
+                else "Cancelled"
+            )
             status_label = _calendar_appointment_status_label(appointment)
             metadata = [
                 ("Time", _format_time(appointment.get("requested_time_slot"))),
@@ -963,21 +986,167 @@ def _render_selected_day(appointments, selected_date):
                 if quote_label is not None
                 else ""
             )
-            st.markdown(
-                f"""
-                <article class="appointment-selected-entry">
-                  <div class="appointment-selected-header">
-                    <div>
-                      <div class="appointment-detail-label">Patient</div>
-                      <div class="appointment-selected-name">{escape(patient_name)}</div>
-                    </div>
-                  </div>
-                  <div class="appointment-metadata-grid">{metadata_markup}</div>
-                  {quote_markup}
-                </article>
-                """,
-                unsafe_allow_html=True,
-            )
+            with st.container(
+                border=True,
+                key=f"appointment-selected-entry-{row_key}",
+            ):
+                name_column, reschedule_column, cancel_column = st.columns(
+                    [5, 0.65, 0.65],
+                    vertical_alignment="center",
+                    gap="small",
+                )
+                with name_column:
+                    st.markdown(
+                        '<div class="appointment-detail-label">Patient</div>'
+                        f'<div class="appointment-selected-name">'
+                        f"{escape(patient_name)}</div>",
+                        unsafe_allow_html=True,
+                    )
+                with reschedule_column:
+                    if st.button(
+                        "",
+                        key=f"appointment-icon-reschedule-{row_key}",
+                        icon=":material/calendar_month:",
+                        help=(
+                            "Reschedule appointment"
+                            if client is not None
+                            else "Reschedule appointment is unavailable in offline snapshot mode."
+                        ),
+                        disabled=client is None,
+                        width="content",
+                    ):
+                        st.session_state[reschedule_key] = True
+                        st.session_state.pop(cancel_key, None)
+                        st.rerun()
+                with cancel_column:
+                    if st.button(
+                        "",
+                        key=f"appointment-icon-cancel-{row_key}",
+                        icon=":material/close:",
+                        help=(
+                            "Cancel appointment"
+                            if client is not None
+                            else "Cancel appointment is unavailable in offline snapshot mode."
+                        ),
+                        disabled=client is None,
+                        width="content",
+                    ):
+                        st.session_state[cancel_key] = True
+                        st.session_state.pop(reschedule_key, None)
+                        st.rerun()
+
+                st.markdown(
+                    f'<div class="appointment-metadata-grid">'
+                    f"{metadata_markup}</div>{quote_markup}",
+                    unsafe_allow_html=True,
+                )
+
+                if st.session_state.get(cancel_key):
+                    with st.container(
+                        border=True,
+                        key=f"appointment-cancel-confirmation-{row_key}",
+                    ):
+                        st.warning(f"Cancel appointment for {patient_name}?")
+                        confirm_column, keep_column = st.columns([1, 1])
+                        with confirm_column:
+                            if st.button(
+                                "Confirm Cancel",
+                                key=f"appointment-confirm-cancel-{row_key}",
+                                type="primary",
+                                disabled=client is None,
+                                help=(
+                                    "Unavailable in offline snapshot mode."
+                                    if client is None
+                                    else None
+                                ),
+                                width="stretch",
+                            ):
+                                st.session_state.pop(cancel_key, None)
+                                if not _update_appointment_outcome(
+                                    client,
+                                    appointment,
+                                    cancel_status,
+                                ):
+                                    st.session_state[cancel_key] = True
+                        with keep_column:
+                            if st.button(
+                                "Keep",
+                                key=f"appointment-keep-{row_key}",
+                                width="stretch",
+                            ):
+                                st.session_state.pop(cancel_key, None)
+                                st.rerun()
+
+                if st.session_state.get(reschedule_key):
+                    with st.container(
+                        border=True,
+                        key=f"appointment-reschedule-panel-{row_key}",
+                    ):
+                        st.markdown("**Reschedule appointment**")
+                        current_date_value = appointment.get("requested_date")
+                        try:
+                            current_date = date.fromisoformat(
+                                str(current_date_value)[:10]
+                            )
+                        except (TypeError, ValueError):
+                            current_date = selected_date
+                        current_time_value = appointment.get(
+                            "requested_time_slot"
+                        )
+                        try:
+                            current_time = time.fromisoformat(
+                                str(current_time_value)
+                            )
+                        except (TypeError, ValueError):
+                            current_time = RESCHEDULE_TIME_SLOTS[0]
+                        if current_time not in RESCHEDULE_TIME_SLOTS:
+                            current_time = RESCHEDULE_TIME_SLOTS[0]
+
+                        date_column, time_column = st.columns(2)
+                        with date_column:
+                            new_date = st.date_input(
+                                "New Date",
+                                value=current_date,
+                                key=f"appointment-reschedule-date-{row_key}",
+                            )
+                        with time_column:
+                            new_time = st.selectbox(
+                                "New Time",
+                                RESCHEDULE_TIME_SLOTS,
+                                index=RESCHEDULE_TIME_SLOTS.index(current_time),
+                                format_func=_format_time,
+                                key=f"appointment-reschedule-time-{row_key}",
+                            )
+                        confirm_column, close_column = st.columns([1, 1])
+                        with confirm_column:
+                            if st.button(
+                                "Confirm",
+                                key=f"appointment-confirm-reschedule-{row_key}",
+                                type="primary",
+                                disabled=client is None,
+                                help=(
+                                    "Unavailable in offline snapshot mode."
+                                    if client is None
+                                    else None
+                                ),
+                                width="stretch",
+                            ):
+                                st.session_state.pop(reschedule_key, None)
+                                if not _reschedule_appointment(
+                                    client,
+                                    appointment,
+                                    new_date,
+                                    new_time,
+                                ):
+                                    st.session_state[reschedule_key] = True
+                        with close_column:
+                            if st.button(
+                                "Cancel",
+                                key=f"appointment-close-reschedule-{row_key}",
+                                width="stretch",
+                            ):
+                                st.session_state.pop(reschedule_key, None)
+                                st.rerun()
 
 
 def _render_appointment_history(appointments):
@@ -1104,6 +1273,62 @@ def _update_appointment_outcome(client, appointment, status):
         f"Appointment outcome recorded as "
         f"{'Did not come' if status == 'No-show' else status}."
     )
+    st.rerun()
+    return True
+
+
+def _reschedule_appointment(client, appointment, new_date, new_time):
+    help_request = appointment.get("event_source") == "help_request"
+    table_name = "patient_help_requests" if help_request else "appointments"
+    id_column = "request_id" if help_request else "appointment_id"
+    record_id = (
+        str(appointment["appointment_id"]).removeprefix("help_request:")
+        if help_request
+        else appointment["appointment_id"]
+    )
+    new_time_value = new_time.strftime("%H:%M:%S")
+    try:
+        response = (
+            client.table(table_name)
+            .update(
+                {
+                    "requested_date": new_date.isoformat(),
+                    "requested_time_slot": new_time_value,
+                    "approval_status": "Rescheduled",
+                }
+            )
+            .eq(id_column, record_id)
+            .select(id_column)
+            .execute()
+        )
+        if not response.data:
+            raise RuntimeError("No matching appointment was rescheduled.")
+    except Exception as error:
+        st.error("Unable to reschedule this appointment in Supabase.")
+        with st.expander("Technical details"):
+            st.code(str(error))
+        return False
+
+    try:
+        _log_appointment_action(
+            "APPOINTMENT RESCHEDULED",
+            f"{appointment.get('patient_name') or 'Patient'}: "
+            f"{appointment.get('requested_date') or 'date not set'} at "
+            f"{_format_time(appointment.get('requested_time_slot'))} moved to "
+            f"{new_date.isoformat()} at {_format_time(new_time_value)}.",
+        )
+    except Exception as error:
+        st.warning(
+            "The appointment was rescheduled, but its local activity entry "
+            f"could not be written: {error}"
+        )
+
+    st.session_state["appointment_flash"] = (
+        f"Appointment for {appointment.get('patient_name') or 'Patient'} "
+        f"rescheduled to {new_date.isoformat()} at {_format_time(new_time_value)}."
+    )
+    st.session_state["appointment_selected_date"] = new_date
+    st.session_state["appointment_calendar_month"] = new_date.replace(day=1)
     st.rerun()
     return True
 
@@ -1732,6 +1957,7 @@ def show_appointments_page():
                             _render_selected_day(
                                 calendar_appointments,
                                 st.session_state["appointment_selected_date"],
+                                client,
                             )
 
             with st.container(border=True, key="appointment-outcome-queue"):

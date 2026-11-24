@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=3">
+    <link rel="stylesheet" href="styles.css?v=5">
     <link rel="stylesheet" href="css/chatbot.css">
   </head>
   <body>
@@ -45,7 +45,7 @@
               <div class="notification-history" id="notification-history"></div>
             </div>
           </div>
-          <button class="account-icon-button" id="auth-open-button" type="button" data-open-auth aria-label="Sign in" title="Sign in">
+          <button class="account-icon-button" id="auth-open-button" type="button" data-open-auth aria-label="Guest (Sign in)" title="Guest (Sign in)">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <circle cx="12" cy="8" r="3.5"></circle>
               <path d="M5 20v-1a7 7 0 0 1 14 0v1"></path>
@@ -57,8 +57,8 @@
                 class="account-icon-button"
                 id="account-menu-button"
                 type="button"
-                aria-label="Account profile"
-                title="Account profile"
+                aria-label="Signed-in account"
+                title="Signed-in account"
                 aria-haspopup="dialog"
                 aria-expanded="false"
                 aria-controls="account-popover"
@@ -142,14 +142,14 @@
           </div>
           <aside class="guest-wellness-banner" id="guest-wellness-banner" aria-live="polite" hidden>
             <div>
-              <p class="eyebrow">A gentle check-in</p>
+              <p class="eyebrow">A GENTLE CHECK-IN</p>
               <p id="guest-wellness-message"></p>
-              <p class="guest-wellness-reminder">Sign in with an email anytime for permanent cross-device backup and appointment email updates.</p>
+              <p class="guest-wellness-reminder" id="guest-wellness-reminder">Guests get in-app notification updates for requests and a wellness check-in every five entries here. Sign in with email for permanent cross-device cloud backup and direct email alerts.</p>
             </div>
             <div class="guest-wellness-actions">
               <button class="button button-outline" id="guest-wellness-assistant" type="button">Open Care Assistant</button>
               <button class="button button-primary" id="guest-wellness-callback" type="button">Request a callback</button>
-              <button class="button button-outline" id="guest-wellness-signin" type="button" data-open-auth>Sign in</button>
+              <button class="button button-outline" id="guest-wellness-signin" type="button">Sign in</button>
               <button class="button button-outline guest-wellness-dismiss" id="guest-wellness-dismiss" type="button">Dismiss</button>
             </div>
           </aside>
@@ -162,13 +162,13 @@
                 <label class="sr-only" for="message">Your message</label>
                 <textarea id="message" name="message" placeholder="I’ve been feeling..." maxlength="10000" required></textarea>
                 <div class="field-hint">
-                  <span><span id="entry-hint-prefix">Your words stay on this device unless you ask for help or </span><span id="textarea-guest-prompt"> <button class="inline-signin" id="textarea-signin-link" type="button" data-open-auth aria-haspopup="dialog" aria-controls="auth-dialog">sign in to save them permanently</button>.</span></span>
+                  <span><span id="entry-hint-prefix">Saved on this device only. </span><span id="textarea-guest-prompt"><button class="inline-signin" id="textarea-signin-link" type="button" data-open-auth aria-haspopup="dialog" aria-controls="auth-dialog">Sign in with email</button><span id="textarea-signin-suffix"> for cloud backup &amp; email alerts.</span></span></span>
                   <span id="character-count">0 / 10,000</span>
                 </div>
                 <fieldset class="choice-fieldset">
                   <legend>What would feel right after sharing?</legend>
                   <div class="choice-grid">
-                    <label class="choice-card">
+                    <label class="choice-card is-active">
                       <input type="radio" name="next-step" value="help" checked>
                       <span class="choice-icon heart-icon" aria-hidden="true">♡</span>
                       <span><strong>I need help</strong><small>I’d like the center to contact me.</small></span>
@@ -234,7 +234,7 @@
                 <div class="entry-actions">
                   <div id="form-message" class="form-message" role="status" aria-live="polite" hidden></div>
                   <button class="button button-submit" id="submit-button" type="submit">Send my help request <span aria-hidden="true">›</span></button>
-                  <p class="signin-helper" id="private-entry-signin-helper">Want to save your entries permanently &amp; get appointment updates? <button class="inline-signin" id="private-entry-signin-link" type="button" data-open-auth aria-haspopup="dialog" aria-controls="auth-dialog">Sign in</button></p>
+                  <p class="signin-helper" id="private-entry-signin-helper"><span id="private-entry-signin-copy">Want cloud backup across devices &amp; email alerts?</span> <button class="inline-signin" id="private-entry-signin-link" type="button" data-open-auth aria-haspopup="dialog" aria-controls="auth-dialog">Sign in</button></p>
                   <p class="retention-note">By submitting, you acknowledge the 30-day device-history notice. This service does not replace emergency care.</p>
                 </div>
               </div>
@@ -250,7 +250,7 @@
             <p id="history-retention-note">Entries saved as a guest remain on this device for 30 days. Clearing browser data removes them sooner.</p>
           </div>
           <div class="history-signin-banner" id="history-signin-banner">
-            Saved on this device for 30 days. <button class="inline-signin" id="recent-signin-link" type="button" data-open-auth aria-haspopup="dialog" aria-controls="auth-dialog">Sign in with email</button> to save entries permanently and see appointment updates.
+            Entries and in-app notification updates for requests stay on this device; a wellness check-in appears every five entries. <button class="inline-signin" id="recent-signin-link" type="button" data-open-auth aria-haspopup="dialog" aria-controls="auth-dialog">Sign in with email</button> for permanent cross-device cloud backup and direct email alerts.
           </div>
           <div class="wellness-email-setting" id="wellness-email-setting" hidden>
             <label for="wellness-email-opt-in">
@@ -312,7 +312,7 @@
         <button class="contact-dialog-close" id="auth-dialog-close" type="button" aria-label="Close sign-in dialog">×</button>
       </div>
       <h2 id="auth-title">Patient Portal Sign In</h2>
-      <p class="auth-intro" id="auth-intro">Sign in with your email to permanently save private entries and view appointment confirmations.</p>
+      <p class="auth-intro" id="auth-intro">Sign in with your email for permanent cross-device cloud backup and direct email alerts.</p>
       <div class="auth-mode-tabs" role="group" aria-label="Patient account options">
         <button class="auth-mode-tab" id="auth-signin-tab" type="button" aria-pressed="true">Sign In</button>
         <button class="auth-mode-tab" id="auth-signup-tab" type="button" aria-pressed="false">Create Account</button>
@@ -347,13 +347,13 @@
     </dialog>
 
     <div class="entry-toast" id="entry-toast" role="status" aria-live="polite" hidden>
-      <span>Sign in to back up entries and choose optional wellness check-ins.</span>
+      <span>You already get in-app notification updates for requests and a wellness check-in every five entries on this device. Sign in with email for permanent cross-device cloud backup and direct email alerts.</span>
       <button class="toast-signin" id="toast-signin" type="button" data-open-auth>Sign In</button>
       <button class="toast-close" id="toast-close" type="button" aria-label="Dismiss message">×</button>
     </div>
 
     <script src="config.js"></script>
-    <script type="module" src="js/app.js?v=5"></script>
-    <script type="module" src="js/chatbot.js?v=2"></script>
+    <script type="module" src="js/app.js?v=7"></script>
+    <script type="module" src="js/chatbot.js?v=3"></script>
   </body>
 </html>

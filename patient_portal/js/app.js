@@ -1,12 +1,13 @@
-import { sendHelpRequest } from "./features/callback-request.js?v=2";
+import { sendHelpRequest } from "./features/callback-request.js?v=3";
 import { initCallbackSchedule } from "./features/callback-schedule.js?v=2";
-import { createPrivateEntries } from "./features/private-entries.js?v=3";
+import { createPrivateEntries } from "./features/private-entries.js?v=4";
 import { hideFeedback, showFeedback } from "./ui/feedback.js";
 
 const GUEST_REQUEST_TOKENS_KEY = "hfrc_guest_request_tokens";
 const GUEST_REQUEST_SEEN_KEY = "hfrc_guest_request_seen";
 const GUEST_WELLNESS_ITEMS_KEY = "hfrc_guest_wellness_checkins";
-const GUEST_WELLNESS_MESSAGE = "You've checked in 5 times in your Vent-Out Space. Taking time to reflect matters—if you'd ever like someone to talk to, our Care Assistant or callback team at Holy Face Center is here for you.";
+const USER_WELLNESS_ITEMS_PREFIX = "hfrc_user_checkins_";
+const WELLNESS_CHECKIN_MESSAGE = "You've checked in 5 times in your Vent-Out Space. Taking time to reflect matters—if you'd ever like someone to talk to, our Care Assistant or callback team at Holy Face Center is here for you.";
 
 const form = document.querySelector("#entry-form");
 const messageField = document.querySelector("#message");
@@ -43,8 +44,10 @@ const notificationHistory = document.querySelector("#notification-history");
 const notificationRequestCount = document.querySelector("#notification-request-count");
 const guestWellnessBanner = document.querySelector("#guest-wellness-banner");
 const guestWellnessMessage = document.querySelector("#guest-wellness-message");
+const guestWellnessReminder = document.querySelector("#guest-wellness-reminder");
 const guestWellnessAssistant = document.querySelector("#guest-wellness-assistant");
 const guestWellnessCallback = document.querySelector("#guest-wellness-callback");
+const guestWellnessSignin = document.querySelector("#guest-wellness-signin");
 const guestWellnessDismiss = document.querySelector("#guest-wellness-dismiss");
 const guestImportBanner = document.querySelector("#guest-import-banner");
 const guestImportCopy = document.querySelector("#guest-import-copy");
@@ -53,7 +56,11 @@ const guestImportDismiss = document.querySelector("#guest-import-dismiss");
 const guestImportStatus = document.querySelector("#guest-import-status");
 const historySigninBanner = document.querySelector("#history-signin-banner");
 const textareaGuestPrompt = document.querySelector("#textarea-guest-prompt");
+const textareaSigninLink = document.querySelector("#textarea-signin-link");
+const textareaSigninSuffix = document.querySelector("#textarea-signin-suffix");
 const privateEntrySigninHelper = document.querySelector("#private-entry-signin-helper");
+const privateEntrySigninCopy = document.querySelector("#private-entry-signin-copy");
+const privateEntrySigninLink = document.querySelector("#private-entry-signin-link");
 const entryToast = document.querySelector("#entry-toast");
 const config = window.PATIENT_PORTAL_CONFIG || {};
 let supabase = null;
@@ -67,6 +74,7 @@ let requestLoadSequence = 0;
 let requestRows = [];
 let seenRequestStates = new Map();
 let guestWellnessItems = [];
+let userWellnessItems = [];
 let guestImportDismissed = false;
 let requestHistoryLoaded = false;
 let requestHistoryError = false;
@@ -74,7 +82,7 @@ let requestHistoryError = false;
 const privateEntries = createPrivateEntries({
   historyElement: document.querySelector("#entry-history"),
   onStorageError: (message) => showFeedback(message, "error"),
-  onGuestMilestone: handleGuestWellnessMilestone,
+  onMilestone: handleWellnessMilestone,
   onRemove: async (entry) => {
     if (!currentSession) return true;
     if (!entry.cloudSynced) return true;
@@ -154,7 +162,7 @@ async function recordPortalEngagement(actionType) {
   }
 }
 
-function activateView(tab, moveFocus = false) {
+function activateView(tab, moveFocus = false, scrollToSection = false) {
   viewTabs.forEach((candidate) => {
     const isActive = candidate === tab;
     candidate.setAttribute("aria-selected", String(isActive));
@@ -171,6 +179,12 @@ function activateView(tab, moveFocus = false) {
     }
   }
   if (moveFocus) tab.focus();
+  if (scrollToSection) {
+    const heading = tab.getAttribute("aria-controls") === "history"
+      ? document.querySelector("#history .history-heading")
+      : document.querySelector("#share .section-heading");
+    heading.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 function openAuthDialog() {
@@ -185,8 +199,8 @@ function setAuthMode(mode) {
   const isSignUp = mode === "signup";
   document.querySelector("#auth-title").textContent = isSignUp ? "Create Patient Account" : "Patient Portal Sign In";
   document.querySelector("#auth-intro").textContent = isSignUp
-    ? "Create an account with your email to permanently save private entries and view appointment confirmations."
-    : "Sign in with your email to permanently save private entries and view appointment confirmations.";
+    ? "Create an account with your email for permanent cross-device cloud backup and direct email alerts."
+    : "Sign in with your email for permanent cross-device cloud backup and direct email alerts.";
   authSubmit.textContent = isSignUp ? "Create Account" : "Sign In to Portal";
   authPasswordInput.autocomplete = isSignUp ? "new-password" : "current-password";
   authWellnessConsent.hidden = !isSignUp;
@@ -238,11 +252,9 @@ function requestHasUnreadUpdate(row) {
 
 function updateNotificationBadge() {
   const unreadRequests = requestRows.filter(requestHasUnreadUpdate).length;
-  const unreadWellness = currentSession
-    ? 0
-    : guestWellnessItems.filter((item) =>
-      seenRequestStates.get(`wellness:${item.id}`) !== item.created_at
-    ).length;
+  const unreadWellness = currentWellnessItems().filter((item) =>
+    seenRequestStates.get(`wellness:${item.id}`) !== item.created_at
+  ).length;
   const unreadCount = unreadRequests + unreadWellness;
   notificationBadge.hidden = unreadCount === 0;
   notificationBadge.textContent = unreadCount > 9 ? "9+" : String(unreadCount);
@@ -250,6 +262,10 @@ function updateNotificationBadge() {
     "aria-label",
     unreadCount ? `Request notifications, ${unreadCount} unread updates` : "Request notifications"
   );
+}
+
+function currentWellnessItems() {
+  return currentSession ? userWellnessItems : guestWellnessItems;
 }
 
 function notificationTimestampValue(item) {
@@ -292,7 +308,7 @@ function renderNotificationItem(item) {
     header.append(heading, status);
     const copy = document.createElement("p");
     copy.className = "notification-wellness-copy";
-    copy.textContent = GUEST_WELLNESS_MESSAGE;
+    copy.textContent = WELLNESS_CHECKIN_MESSAGE;
     const date = document.createElement("p");
     date.textContent = formatNotificationTimestamp(item);
     notice.append(header, copy, date);
@@ -326,11 +342,9 @@ function renderRequestHistory(rows) {
   notificationLatest.replaceChildren();
   notificationHistory.replaceChildren();
   const items = rows.map((row) => ({ type: "request", data: row }));
-  if (!currentSession) {
-    guestWellnessItems.forEach((item) => {
-      items.push({ type: "wellness", data: item });
-    });
-  }
+  currentWellnessItems().forEach((item) => {
+    items.push({ type: "wellness", data: item });
+  });
   items.sort((first, second) => {
     const difference = notificationTimestamp(second) - notificationTimestamp(first);
     return difference || String(notificationTimestampValue(second) || "").localeCompare(
@@ -374,7 +388,7 @@ function renderRequestHistory(rows) {
 
     if (latest.type === "wellness") {
       latestStatus.textContent = `${formatNotificationTimestamp(latest)} — Vent-Out Space check-in`;
-      latestDetails.textContent = GUEST_WELLNESS_MESSAGE;
+      latestDetails.textContent = WELLNESS_CHECKIN_MESSAGE;
     } else {
       const row = latest.data;
       latestStatus.textContent = `${formatNotificationTimestamp(latest)} — ${row.approval_status || "Pending"}`;
@@ -399,11 +413,9 @@ function markRequestStatesSeen() {
   const storageKey = currentSession
     ? `patient-request-seen:${currentSession.user.id}`
     : GUEST_REQUEST_SEEN_KEY;
-  if (!currentSession) {
-    guestWellnessItems.forEach((item) => {
-      seenRequestStates.set(`wellness:${item.id}`, item.created_at);
-    });
-  }
+  currentWellnessItems().forEach((item) => {
+    seenRequestStates.set(`wellness:${item.id}`, item.created_at);
+  });
   try {
     localStorage.setItem(
       storageKey,
@@ -488,6 +500,26 @@ function readGuestWellnessItems() {
     );
   } catch (error) {
     console.error("Could not read guest wellness check-ins.", error);
+    return [];
+  }
+}
+
+function readUserWellnessItems(userId) {
+  try {
+    const saved = JSON.parse(
+      localStorage.getItem(`${USER_WELLNESS_ITEMS_PREFIX}${userId}`) || "[]"
+    );
+    if (!Array.isArray(saved)) {
+      throw new TypeError("User wellness check-ins are not a list.");
+    }
+    return saved.filter((item) =>
+      item &&
+      typeof item.id === "string" &&
+      typeof item.created_at === "string" &&
+      Number.isFinite(new Date(item.created_at).getTime())
+    );
+  } catch (error) {
+    console.error("Could not read user wellness check-ins.", error);
     return [];
   }
 }
@@ -644,15 +676,35 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
+function updateAccountProfileButton() {
+  const guestLabel = "Guest (Sign in)";
+  const email = typeof currentSession?.user?.email === "string"
+    ? currentSession.user.email.trim()
+    : "";
+  const accountLabel = currentSession
+    ? `Signed in as ${email || "account"}`
+    : guestLabel;
+  authOpenButton.title = guestLabel;
+  authOpenButton.setAttribute("aria-label", guestLabel);
+  accountButton.title = accountLabel;
+  accountButton.setAttribute("aria-label", accountLabel);
+  accountButton.classList.toggle("is-signed-in", Boolean(currentSession));
+}
+
 function updateAccountCopy() {
+  updateAccountProfileButton();
   const isGuest = !currentSession;
   const isPrivateFlow = form.querySelector('input[name="next-step"]:checked').value === "private";
   const userMetadata = currentSession ? currentSession.user.user_metadata : null;
   document.querySelector("#entry-hint-prefix").textContent = currentSession
     ? "Your private entries are backed up to your account and are not sent to the center."
-    : "Your words stay on this device unless you ask for help or ";
+    : "Saved on this device only. ";
+  textareaSigninLink.textContent = "Sign in with email";
+  textareaSigninSuffix.textContent = " for cloud backup & email alerts.";
   textareaGuestPrompt.hidden = !isGuest;
   privateEntrySigninHelper.hidden = !isGuest || !isPrivateFlow;
+  privateEntrySigninCopy.textContent = "Want cloud backup across devices & email alerts?";
+  privateEntrySigninLink.textContent = "Sign in";
   document.querySelector("#private-note-copy").textContent = currentSession
     ? "Your entry is saved on this device and backed up to your account. It is not sent to the center. You can remove it at any time."
     : "Your entry is saved only in this browser on this device for up to 30 days. It is not sent to the center. You can remove it at any time.";
@@ -696,20 +748,36 @@ function createGuestRequestToken() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-function handleGuestWellnessMilestone(count) {
-  if (currentSession || count < 5 || count % 5 !== 0) return;
+function handleWellnessMilestone(count, userId) {
+  if (
+    count < 5 ||
+    count % 5 !== 0 ||
+    (userId && (!currentSession || currentSession.user.id !== userId)) ||
+    (!userId && currentSession)
+  ) return;
   const item = {
     id: `${count}-${Date.now()}`,
     entry_count: count,
     created_at: new Date().toISOString()
   };
-  guestWellnessItems = [...readGuestWellnessItems(), item];
-  try {
-    localStorage.setItem(GUEST_WELLNESS_ITEMS_KEY, JSON.stringify(guestWellnessItems));
-  } catch (error) {
-    console.error("Could not save the guest wellness check-in.", error);
+  if (userId) {
+    userWellnessItems = [...readUserWellnessItems(userId), item];
+  } else {
+    guestWellnessItems = [...readGuestWellnessItems(), item];
   }
-  guestWellnessMessage.textContent = GUEST_WELLNESS_MESSAGE;
+  try {
+    const storageKey = userId
+      ? `${USER_WELLNESS_ITEMS_PREFIX}${userId}`
+      : GUEST_WELLNESS_ITEMS_KEY;
+    localStorage.setItem(storageKey, JSON.stringify(currentWellnessItems()));
+  } catch (error) {
+    console.error("Could not save the wellness check-in.", error);
+  }
+  guestWellnessMessage.textContent = WELLNESS_CHECKIN_MESSAGE;
+  guestWellnessReminder.textContent = currentSession
+    ? "Your entries are backed up to your account. You can check in anytime or ask our Care Assistant or callback team for support."
+    : "Guests get in-app notification updates for requests and a wellness check-in every five entries here. Sign in with email for permanent cross-device cloud backup and direct email alerts.";
+  guestWellnessSignin.textContent = currentSession ? "View my entries" : "Sign in";
   guestWellnessBanner.hidden = false;
   renderRequestHistory(requestRows);
   updateNotificationBadge();
@@ -769,12 +837,20 @@ guestWellnessCallback.addEventListener("click", () => {
   setFlow("help");
   document.querySelector("#callback-panel").scrollIntoView({ behavior: "smooth", block: "start" });
 });
+guestWellnessSignin.addEventListener("click", () => {
+  if (currentSession) {
+    activateView(viewTabs[1]);
+    return;
+  }
+  openAuthDialog();
+});
 guestWellnessDismiss.addEventListener("click", () => {
   guestWellnessBanner.hidden = true;
 });
 
 function clearSignedInUiState(showGuestEntries = true) {
   currentSession = null;
+  updateAccountProfileButton();
   stopRequestPolling();
   setAccountPopoverOpen(false);
   privateEntries.setUser(null);
@@ -804,6 +880,7 @@ function clearSignedInUiState(showGuestEntries = true) {
   notificationButton.hidden = false;
   historySigninBanner.hidden = false;
   guestWellnessItems = [];
+  userWellnessItems = [];
   guestWellnessBanner.hidden = true;
   guestImportBanner.hidden = true;
   guestImportStatus.textContent = "";
@@ -897,6 +974,7 @@ async function handleSignedInSession(session, forceSync = false) {
     setAccountPopoverOpen(false);
     stopRequestPolling();
     guestWellnessItems = [];
+    userWellnessItems = readUserWellnessItems(session.user.id);
     privateEntries.setUser(session.user);
     renderRequestHistory(requestRows);
     guestImportDismissed = false;
@@ -914,6 +992,7 @@ async function handleSignedInSession(session, forceSync = false) {
   entryToast.hidden = true;
 
   loadSeenRequestStates(session.user.id);
+  updateNotificationBadge();
   startRequestPolling(session);
   authEmail.textContent = session.user.email || "";
   authEmail.title = session.user.email || "";
@@ -941,7 +1020,7 @@ async function syncSignedInSession() {
 }
 
 viewTabs.forEach((tab, index) => {
-  tab.addEventListener("click", () => activateView(tab));
+  tab.addEventListener("click", () => activateView(tab, false, true));
   tab.addEventListener("keydown", (event) => {
     let nextIndex;
     if (event.key === "ArrowRight") {
@@ -956,7 +1035,7 @@ viewTabs.forEach((tab, index) => {
       return;
     }
     event.preventDefault();
-    activateView(viewTabs[nextIndex], true);
+    activateView(viewTabs[nextIndex], true, true);
   });
 });
 activateView(viewTabs.find((tab) => tab.getAttribute("aria-selected") === "true"));
@@ -1118,6 +1197,11 @@ document.querySelector("#copy-number-button").addEventListener("click", async ()
 
 function setFlow(value) {
   const isHelp = value === "help";
+  const flowOptions = form.querySelectorAll('input[name="next-step"]');
+  flowOptions.forEach((input) => {
+    input.checked = input.value === value;
+    input.closest(".choice-card").classList.toggle("is-active", input.checked);
+  });
   updateAccountCopy();
   document.querySelector("#callback-panel").hidden = !isHelp;
   document.querySelector("#private-note-panel").hidden = isHelp;

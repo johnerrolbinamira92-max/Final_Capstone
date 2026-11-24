@@ -23,6 +23,68 @@ function validateHelpRequest() {
   return "";
 }
 
+function getMissingColumn(error) {
+  if (!["42703", "PGRST204"].includes(error.code)) return null;
+  const message = `${error.message || ""} ${error.details || ""}`;
+  const match = message.match(
+    /(?:column\s+(?:["']?[a-z_][\w]*["']?\.)?["']?([a-z_][\w]*)["']?(?:\s+of\s+relation\s+["']?[a-z_][\w]*["']?)?\s+does not exist|could not find the ["']([a-z_][\w]*)["'] column)/i
+  );
+  return match ? match[1] || match[2] : null;
+}
+
+async function postHelpRequest(config, session, payload) {
+  const optionalColumns = new Set([
+    "guest_token",
+    "patient_name",
+    "patient_age",
+    "patient_user_id"
+  ]);
+  const requestPayload = { ...payload };
+
+  while (true) {
+    const response = await fetch(`${config.supabaseUrl.replace(/\/$/, "")}/rest/v1/patient_help_requests`, {
+      method: "POST",
+      headers: {
+        apikey: config.supabaseAnonKey,
+        Authorization: `Bearer ${session ? session.access_token : config.supabaseAnonKey}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal"
+      },
+      body: JSON.stringify(requestPayload)
+    });
+
+    if (response.ok) return;
+
+    const responseText = await response.text();
+    let error;
+    try {
+      const parsed = JSON.parse(responseText);
+      error = parsed && typeof parsed === "object"
+        ? parsed
+        : { message: responseText };
+    } catch {
+      error = { message: responseText };
+    }
+
+    console.error("Supabase rejected the callback request.", {
+      message: error.message,
+      details: error.details,
+      code: error.code
+    });
+
+    const missingColumn = getMissingColumn(error);
+    if (
+      !missingColumn ||
+      !optionalColumns.has(missingColumn) ||
+      !Object.prototype.hasOwnProperty.call(requestPayload, missingColumn)
+    ) {
+      throw new Error("The request could not be sent. Please try again or call the center.");
+    }
+
+    delete requestPayload[missingColumn];
+  }
+}
+
 export async function sendHelpRequest({
   form,
   messageField,
@@ -67,21 +129,7 @@ export async function sendHelpRequest({
   submitButton.textContent = "Sending securely…";
   hideFeedback();
   try {
-    const response = await fetch(`${config.supabaseUrl.replace(/\/$/, "")}/rest/v1/patient_help_requests`, {
-      method: "POST",
-      headers: {
-        apikey: config.supabaseAnonKey,
-        Authorization: `Bearer ${session ? session.access_token : config.supabaseAnonKey}`,
-        "Content-Type": "application/json",
-        Prefer: "return=minimal"
-      },
-      body: JSON.stringify(payload)
-    });
-    if (!response.ok) {
-      const details = await response.text();
-      console.error("Supabase rejected the callback request.", response.status, details);
-      throw new Error("The request could not be sent. Please check your connection and try again, or call the center.");
-    }
+    await postHelpRequest(config, session, payload);
     onSuccess();
     showFeedback("Your help request was sent securely. Center staff will contact you about the schedule you selected.", "success");
   } catch (error) {

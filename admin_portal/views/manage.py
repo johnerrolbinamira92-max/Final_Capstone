@@ -166,19 +166,16 @@ def _render_patient_detail_label(label):
 
 
 def _render_patient_detail_value(value):
-    display_value = (
-        "Not recorded" if value is None or value == "" else str(value)
+    if value is None or value == "":
+        st.markdown(
+            '<span class="patient-empty-value">—</span>',
+            unsafe_allow_html=True,
+        )
+        return
+    st.markdown(
+        f'<div class="patient-field-value">{html.escape(str(value))}</div>',
+        unsafe_allow_html=True,
     )
-    if display_value == "Not recorded":
-        st.markdown(
-            '<span class="patient-not-recorded">Not recorded</span>',
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            f'<div class="patient-field-value">{html.escape(display_value)}</div>',
-            unsafe_allow_html=True,
-        )
 
 
 def _render_patient_details(patient):
@@ -278,11 +275,11 @@ def _render_patient_results(records, filters_applied):
                     str(record.get("province") or "").strip(),
                 )
                 if part
-            ) or "Not recorded"
+            ) or "—"
             age = (
                 record["calculated_age"]
                 if record.get("calculated_age") is not None
-                else "Not recorded"
+                else "—"
             )
             with st.container(key=f"patient-result-row-{index}"):
                 row_columns = st.columns(
@@ -293,7 +290,7 @@ def _render_patient_results(records, filters_applied):
                 with row_columns[1]:
                     st.write(address)
                 with row_columns[2]:
-                    st.write(record.get("sex") or "Not recorded")
+                    st.write(record.get("sex") or "—")
                 with row_columns[3]:
                     st.write(age)
                 with row_columns[4]:
@@ -351,8 +348,48 @@ def _render_selected_patient_detail(selected_id):
         st.session_state.get("manage_return_session_patient_id") == selected_id
     )
     with st.container(key="selected-patient-details"):
-        st.caption("Patient ID / Case Number")
-        st.title(case_number)
+        case_column, edit_column, delete_column = st.columns(
+            [8, 0.45, 0.45],
+            vertical_alignment="center",
+            gap="small",
+        )
+        with case_column:
+            st.caption("Patient ID / Case Number")
+            st.title(case_number)
+        if not logging_return_session:
+            with edit_column:
+                if st.button(
+                    "",
+                    key=f"toggle_patient_edit_{selected_id}",
+                    icon=(
+                        ":material/edit:"
+                        if not editing
+                        else ":material/close:"
+                    ),
+                    help="Edit record" if not editing else "Cancel editing",
+                    width="content",
+                ):
+                    if editing:
+                        st.session_state.pop("manage_edit_patient_id", None)
+                    else:
+                        st.session_state["manage_edit_patient_id"] = selected_id
+                    st.session_state.pop("manage_delete_patient_id", None)
+                    st.session_state.pop("manage_edit_return_session_id", None)
+                    st.session_state.pop("manage_delete_return_session_id", None)
+                    st.rerun()
+            with delete_column:
+                if st.button(
+                    "",
+                    key=f"delete_selected_patient_{selected_id}",
+                    icon=":material/delete:",
+                    help="Delete record",
+                    width="content",
+                ):
+                    st.session_state["manage_delete_patient_id"] = selected_id
+                    st.session_state.pop("manage_edit_patient_id", None)
+                    st.session_state.pop("manage_edit_return_session_id", None)
+                    st.session_state.pop("manage_delete_return_session_id", None)
+                    st.rerun()
         if logging_return_session:
             if st.button(
                 "Back to Patient Details",
@@ -370,65 +407,6 @@ def _render_selected_patient_detail(selected_id):
             on_change="rerun",
         )
         with profile_tab:
-            with st.container(border=True):
-                edit_column, delete_column, session_column = st.columns(
-                    [1, 1, 1.8], vertical_alignment="center"
-                )
-                with edit_column:
-                    if st.button(
-                        "Cancel Edit" if editing else "Edit",
-                        icon=":material/edit:",
-                        key=f"toggle_patient_edit_{selected_id}",
-                        width="stretch",
-                    ):
-                        if editing:
-                            st.session_state.pop("manage_edit_patient_id", None)
-                        else:
-                            st.session_state["manage_edit_patient_id"] = selected_id
-                        st.session_state.pop("manage_delete_patient_id", None)
-                        st.session_state.pop(
-                            "manage_edit_return_session_id", None
-                        )
-                        st.session_state.pop(
-                            "manage_delete_return_session_id", None
-                        )
-                        st.rerun()
-                with delete_column:
-                    if st.button(
-                        "Delete",
-                        icon=":material/delete:",
-                        key=f"delete_selected_patient_{selected_id}",
-                        width="stretch",
-                    ):
-                        st.session_state["manage_delete_patient_id"] = selected_id
-                        st.session_state.pop("manage_edit_patient_id", None)
-                        st.session_state.pop(
-                            "manage_edit_return_session_id", None
-                        )
-                        st.session_state.pop(
-                            "manage_delete_return_session_id", None
-                        )
-                        st.rerun()
-                with session_column:
-                    if st.button(
-                        "Log Return Session",
-                        icon=":material/event_note:",
-                        key=f"log_return_session_{selected_id}",
-                        width="stretch",
-                    ):
-                        st.session_state["manage_return_session_patient_id"] = (
-                            selected_id
-                        )
-                        st.session_state.pop("manage_edit_patient_id", None)
-                        st.session_state.pop("manage_delete_patient_id", None)
-                        st.session_state.pop(
-                            "manage_edit_return_session_id", None
-                        )
-                        st.session_state.pop(
-                            "manage_delete_return_session_id", None
-                        )
-                        st.rerun()
-
             delete_id = st.session_state.get("manage_delete_patient_id")
             if delete_id == selected_id:
                 _render_patient_delete_confirmation(selected_id, patient)
@@ -439,6 +417,27 @@ def _render_selected_patient_detail(selected_id):
                 _render_patient_details(patient)
 
         with return_sessions_tab:
+            heading_column, action_column = st.columns(
+                [5, 2],
+                vertical_alignment="center",
+            )
+            with heading_column:
+                st.markdown("#### Return Sessions")
+            with action_column:
+                if st.button(
+                    "+ Log Return Session",
+                    icon=":material/event_note:",
+                    key=f"log_return_session_{selected_id}",
+                    width="stretch",
+                ):
+                    st.session_state["manage_return_session_patient_id"] = (
+                        selected_id
+                    )
+                    st.session_state.pop("manage_edit_patient_id", None)
+                    st.session_state.pop("manage_delete_patient_id", None)
+                    st.session_state.pop("manage_edit_return_session_id", None)
+                    st.session_state.pop("manage_delete_return_session_id", None)
+                    st.rerun()
             _render_return_session_history(selected_id, case_number)
 
 
@@ -1248,7 +1247,7 @@ def _render_return_session_history(
                         st.markdown("##### Return Session")
                         st.caption(
                             session["Attendance / status"]
-                            or "Status not recorded"
+                            or "—"
                         )
                         edit_column, delete_column = st.columns(2)
                         with edit_column:
@@ -1373,7 +1372,7 @@ def _format_return_session_date(value: str | None) -> str:
     try:
         return datetime.date.fromisoformat(str(value)).strftime("%B %d, %Y")
     except (TypeError, ValueError):
-        return str(value or "Date not recorded")
+        return str(value or "—")
 
 
 def _format_return_session_time(value: str | None) -> str:
@@ -1384,7 +1383,7 @@ def _format_return_session_time(value: str | None) -> str:
             .lstrip("0")
         )
     except (TypeError, ValueError):
-        return str(value or "Time not recorded")
+        return str(value or "—")
 
 
 def _render_return_session_value(label: str, value: str | None) -> None:

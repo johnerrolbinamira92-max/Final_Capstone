@@ -8,7 +8,7 @@ create table if not exists public.patient_help_requests (
     requested_time_slot time not null,
     consent_given boolean not null check (consent_given),
     approval_status text not null default 'Pending'
-        check (approval_status in ('Pending', 'Scheduled', 'Rescheduled', 'Completed', 'No-show', 'Cancelled')),
+        check (approval_status in ('Pending', 'Scheduled', 'Rescheduled', 'Completed', 'No-show', 'Declined', 'Cancelled')),
     created_at timestamptz not null default now()
 );
 
@@ -39,7 +39,7 @@ create unique index if not exists patient_help_requests_guest_token_uidx
 alter table public.patient_help_requests enable row level security;
 
 revoke all on public.patient_help_requests from public, anon, authenticated;
-grant insert on public.patient_help_requests to anon;
+grant insert on public.patient_help_requests to anon, authenticated;
 grant select, update on public.patient_help_requests to service_role;
 
 drop policy if exists "Anyone can submit a consented help request"
@@ -66,6 +66,27 @@ create policy "Anyone can submit a consented help request"
     );
 
 alter table public.patient_help_requests enable row level security;
+
+drop policy if exists "Signed-in patients can submit their own help requests"
+    on public.patient_help_requests;
+create policy "Signed-in patients can submit their own help requests"
+    on public.patient_help_requests
+    for insert
+    to authenticated
+    with check (
+        patient_user_id = (select auth.uid())
+        and consent_given is true
+        and requested_date >= (now() at time zone 'Asia/Manila')::date
+        and extract(isodow from requested_date) between 1 and 5
+        and requested_time_slot >= time '08:00'
+        and requested_time_slot <= time '15:30'
+        and (
+            requested_time_slot < time '12:00'
+            or requested_time_slot >= time '13:00'
+        )
+        and extract(minute from requested_time_slot) in (0, 30)
+        and extract(second from requested_time_slot) = 0
+    );
 
 grant select on table public.patient_help_requests to authenticated;
 
