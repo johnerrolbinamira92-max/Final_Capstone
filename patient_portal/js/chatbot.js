@@ -1,5 +1,6 @@
 const MAX_MESSAGES = 8;
 const MAX_USER_MESSAGE_LENGTH = 500;
+const BOC_INFORMATION_FALLBACK = "BOC is the Congregation of the Brothers of Charity (Fratres a Caritate), an international Catholic religious congregation founded in 1807 in Ghent, Belgium, by Fr. Peter Joseph Triest. It is dedicated to compassionate care for people experiencing mental health challenges and vulnerability.\n\nBrothers of Charity – Holy Face Center for Mental Health, also known as Holy Face Rehabilitation Center for Mental Health, is a non-profit mental health facility at Nazareth Complex, Zone 6, Tabiguian, Tabaco City, Albay, serving individuals and families across the Bicol Region. Its services include outpatient psychiatric consultations, psychological counseling, medication follow-ups, and community-based mental health support. It is open Monday–Friday, 8:00 AM–4:00 PM; phone 0920-691-5015; email holyfacecenter@gmail.com.\n\nWould you like to know more about its services or how to contact the center?";
 const STARTER_PROMPTS = [
   "How do I request a callback?",
   "Clinic hours & contact",
@@ -111,6 +112,14 @@ function trimConversation() {
   }
 }
 
+function getLocalClinicInfoFallback(text) {
+  const asksAboutBoc =
+    /\b(?:who is|who are|what is|what are|tell me about)\s+(?:the\s+)?(?:boc|brothers of charity|holy face center|holy face rehabilitation center)\b/i
+      .test(text) ||
+    /\bwhat does boc stand for\b/i.test(text);
+  return asksAboutBoc ? BOC_INFORMATION_FALLBACK : null;
+}
+
 async function sendMessage(value) {
   const text = value.trim();
   if (!text || text.length > MAX_USER_MESSAGE_LENGTH || sendButton.disabled) return;
@@ -161,10 +170,17 @@ async function sendMessage(value) {
     if (requestVersion !== conversationVersion) return;
     console.error("Care Assistant request failed.", error);
     thinkingMessage.remove();
-    renderMessage(
-      "error",
-      "I couldn’t connect just now. Please try again, or call the center at 0920-691-5015 during Monday–Friday, 8:00 AM–4:00 PM."
-    );
+    const fallbackReply = getLocalClinicInfoFallback(text);
+    if (fallbackReply) {
+      messages.push({ role: "assistant", text: fallbackReply });
+      trimConversation();
+      renderMessage("assistant", fallbackReply);
+    } else {
+      renderMessage(
+        "error",
+        "I couldn’t connect just now. Please try again, or call the center at 0920-691-5015 during Monday–Friday, 8:00 AM–4:00 PM."
+      );
+    }
   } finally {
     if (requestVersion === conversationVersion) {
       sendButton.disabled = false;
