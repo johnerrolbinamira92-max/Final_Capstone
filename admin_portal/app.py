@@ -1,4 +1,5 @@
 import base64
+from html import escape
 import mimetypes
 import os
 import sqlite3
@@ -302,19 +303,20 @@ st.markdown(
     }
 
     .st-key-admin-login-panel [data-testid="stAlert"] {
-        border: 1px solid #fecaca !important;
-        background-color: #fef2f2 !important;
-        color: #991b1b !important;
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
     }
 
-    .st-key-admin-login-panel [data-testid="stAlert"] [data-testid="stMarkdownContainer"],
-    .st-key-admin-login-panel [data-testid="stAlert"] [data-testid="stMarkdownContainer"] p {
-        color: #991b1b !important;
-    }
-
-    .st-key-admin-login-panel [data-testid="stAlert"] svg,
-    .st-key-admin-login-panel [data-testid="stAlert"] [data-testid="stIconMaterial"] {
+    .st-key-admin-login-panel [data-testid="stMarkdownContainer"] .login-error-message {
+        margin: 8px 0 0;
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
         color: #dc2626 !important;
+        font-size: .85rem;
+        font-weight: 500;
+        text-align: center;
     }
 
     .st-key-admin-login-panel .login-panel-eyebrow {
@@ -1855,6 +1857,7 @@ def show_login_page():
                     '<div class="login-security-note">Authorized personnel only. All access and activity are monitored for patient data protection.</div>',
                     unsafe_allow_html=True,
                 )
+                login_error = None
                 if submitted:
                     try:
                         admin = authenticate_admin(email, password)
@@ -1862,14 +1865,14 @@ def show_login_page():
                         try:
                             admin = authenticate_local_admin(email, password)
                         except PermissionError:
-                            st.error(
+                            login_error = (
                                 "Supabase is unavailable and the local admin "
                                 "credentials could not be verified. Configure a "
                                 "bootstrap account in the private .env file or "
                                 "connect online and sign in once."
                             )
                         except (sqlite3.Error, ValueError):
-                            st.error(
+                            login_error = (
                                 "Supabase is unavailable and the local admin "
                                 "credential cache could not be read. Restore the "
                                 "local database or reconnect to sign in online."
@@ -1880,9 +1883,9 @@ def show_login_page():
                             st.session_state["admin_profile"] = admin
                             st.rerun()
                     except PermissionError as error:
-                        st.error(str(error))
+                        login_error = str(error)
                     except Exception as error:
-                        st.error(f"Unable to authenticate with Supabase: {error}")
+                        login_error = f"Unable to authenticate with Supabase: {error}"
                     else:
                         try:
                             cache_local_admin_user(
@@ -1900,6 +1903,11 @@ def show_login_page():
                         st.session_state["admin_auth_mode"] = "online"
                         st.session_state["admin_profile"] = admin
                         st.rerun()
+                if login_error is not None:
+                    st.markdown(
+                        f'<p class="login-error-message">{escape(login_error)}</p>',
+                        unsafe_allow_html=True,
+                    )
 
 
 if not st.session_state.get("admin_authenticated", False):
