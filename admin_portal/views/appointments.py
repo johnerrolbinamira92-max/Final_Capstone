@@ -170,14 +170,20 @@ APPOINTMENT_STYLES = """
     border-color: rgba(45, 212, 191, .35) !important;
     background: rgba(45, 212, 191, .12) !important;
 }
-.st-key-admin-calendar-page [class*="st-key-appointment-outcome-"] {
+.st-key-admin-calendar-page [class*="st-key-appointment-outcome-card-"] {
+    box-sizing: border-box;
     margin: .55rem 0;
-    padding: .7rem .8rem;
+    padding: 12px 16px;
     border: 1px solid rgba(255, 255, 255, .07);
     border-radius: 12px;
     background: rgba(255, 255, 255, .025);
 }
-.st-key-admin-calendar-page [class*="st-key-appointment-outcome-"] button {
+.st-key-admin-calendar-page [class*="st-key-appointment-outcome-card-"] [data-testid="stHorizontalBlock"] {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.st-key-admin-calendar-page [class*="st-key-appointment-outcome-card-"] button {
     min-height: 2.25rem !important;
     padding: .3rem .55rem !important;
     border-radius: 999px !important;
@@ -1236,7 +1242,9 @@ def _render_appointment_history(appointments):
     )
 
 
-def _update_appointment_outcome(client, appointment, status):
+def _update_appointment_outcome(
+    client, appointment, status, *, return_to_awaiting_outcomes=False
+):
     help_request = appointment.get("event_source") == "help_request"
     table_name = "patient_help_requests" if help_request else "appointments"
     id_column = "request_id" if help_request else "appointment_id"
@@ -1277,6 +1285,8 @@ def _update_appointment_outcome(client, appointment, status):
         f"Appointment outcome recorded as "
         f"{'Did not come' if status == 'No-show' else status}."
     )
+    if return_to_awaiting_outcomes:
+        st.session_state["scroll_to_awaiting_outcomes"] = True
     st.rerun()
     return True
 
@@ -1343,7 +1353,22 @@ def _reschedule_appointment(client, appointment, new_date, new_time):
 
 def _render_awaiting_outcomes(appointments, client, *, now=None):
     now = now or datetime.now(ZoneInfo("Asia/Manila"))
+    st.markdown('<div id="visits-awaiting-outcome"></div>', unsafe_allow_html=True)
     st.markdown("### Visits Awaiting Outcome")
+    if st.session_state.pop("scroll_to_awaiting_outcomes", False):
+        st.html(
+            """
+            <script>
+            requestAnimationFrame(() => {
+                const section = document.getElementById("visits-awaiting-outcome");
+                if (section) {
+                    section.scrollIntoView({ behavior: "smooth", block: "start" });
+                }
+            });
+            </script>
+            """,
+            unsafe_allow_javascript=True,
+        )
     st.caption(
         "Appointments remain here after their scheduled time until you mark "
         "them done, cancelled, or as a no-show."
@@ -1380,37 +1405,66 @@ def _render_awaiting_outcomes(appointments, client, *, now=None):
         if pd.isna(identity):
             identity = patient_name
         row_key = str(identity).replace(":", "-")
-        with st.container(border=True, key=f"appointment-outcome-{row_key}"):
-            st.markdown(f"**{patient_name}**")
-            st.caption(
-                f"{scheduled_at:%b %d, %Y} · "
-                f"{_format_time(appointment.get('requested_time_slot'))}"
-            )
-            done_column, cancel_column, no_show_column = st.columns(3)
-            if done_column.button(
-                "Done",
-                key=f"appointment-outcome-done-{row_key}",
-                icon=":material/check_circle:",
-                width="stretch",
-                disabled=client is None,
+        with st.container(
+            horizontal=True,
+            border=True,
+            key=f"appointment-outcome-card-{row_key}",
+            wrap=False,
+            horizontal_alignment="distribute",
+            vertical_alignment="center",
+            gap="small",
+        ):
+            with st.container(width="content", gap="xxsmall"):
+                st.markdown(
+                    f"**{escape(str(patient_name))}** · "
+                    f"{scheduled_at:%b %d, %Y} · "
+                    f"{_format_time(appointment.get('requested_time_slot'))}"
+                )
+            with st.container(
+                horizontal=True,
+                width="content",
+                wrap=False,
+                gap="xsmall",
             ):
-                _update_appointment_outcome(client, appointment, "Completed")
-            if cancel_column.button(
-                "Cancel",
-                key=f"appointment-outcome-cancel-{row_key}",
-                icon=":material/event_busy:",
-                width="stretch",
-                disabled=client is None,
-            ):
-                _update_appointment_outcome(client, appointment, "Cancelled")
-            if no_show_column.button(
-                "Did not come",
-                key=f"appointment-outcome-no-show-{row_key}",
-                icon=":material/person_off:",
-                width="stretch",
-                disabled=client is None,
-            ):
-                _update_appointment_outcome(client, appointment, "No-show")
+                if st.button(
+                    "Done",
+                    key=f"appointment-outcome-done-{row_key}",
+                    icon=":material/check_circle:",
+                    width="content",
+                    disabled=client is None,
+                ):
+                    _update_appointment_outcome(
+                        client,
+                        appointment,
+                        "Completed",
+                        return_to_awaiting_outcomes=True,
+                    )
+                if st.button(
+                    "Cancel",
+                    key=f"appointment-outcome-cancel-{row_key}",
+                    icon=":material/event_busy:",
+                    width="content",
+                    disabled=client is None,
+                ):
+                    _update_appointment_outcome(
+                        client,
+                        appointment,
+                        "Cancelled",
+                        return_to_awaiting_outcomes=True,
+                    )
+                if st.button(
+                    "Did not come",
+                    key=f"appointment-outcome-no-show-{row_key}",
+                    icon=":material/person_off:",
+                    width="content",
+                    disabled=client is None,
+                ):
+                    _update_appointment_outcome(
+                        client,
+                        appointment,
+                        "No-show",
+                        return_to_awaiting_outcomes=True,
+                    )
 
 
 def _log_appointment_action(action_type, details):
