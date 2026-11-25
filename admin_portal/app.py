@@ -301,6 +301,22 @@ st.markdown(
         color: #4f6965;
     }
 
+    .st-key-admin-login-panel [data-testid="stAlert"] {
+        border: 1px solid #fecaca !important;
+        background-color: #fef2f2 !important;
+        color: #991b1b !important;
+    }
+
+    .st-key-admin-login-panel [data-testid="stAlert"] [data-testid="stMarkdownContainer"],
+    .st-key-admin-login-panel [data-testid="stAlert"] [data-testid="stMarkdownContainer"] p {
+        color: #991b1b !important;
+    }
+
+    .st-key-admin-login-panel [data-testid="stAlert"] svg,
+    .st-key-admin-login-panel [data-testid="stAlert"] [data-testid="stIconMaterial"] {
+        color: #dc2626 !important;
+    }
+
     .st-key-admin-login-panel .login-panel-eyebrow {
         margin-bottom: .85rem;
         color: #006d65;
