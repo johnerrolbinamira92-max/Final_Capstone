@@ -19,6 +19,7 @@ from views.appointments import (
     _format_received_at,
     _log_appointment_action,
 )
+from views.privacy import mask_patient_name
 
 
 MANILA_TZ = ZoneInfo("Asia/Manila")
@@ -288,11 +289,11 @@ def _notification_status_label(status):
     }.get(status, status or "Awaiting confirmation")
 
 
-def _new_unread_notifications(items, read_ids, seen_ids):
+def _new_untoasted_notifications(items, read_ids, toasted_ids):
     return [
         item
         for item in items
-        if item["id"] not in seen_ids and item["id"] not in read_ids
+        if item["id"] not in toasted_ids and item["id"] not in read_ids
     ]
 
 
@@ -513,10 +514,46 @@ def _load_notification_snapshot():
         raise ValueError("The cached notification snapshot is invalid.") from error
 
 
+def _toggle_callback_list_revealed():
+    key = "callback_list_revealed"
+    st.session_state[key] = not st.session_state[key]
+
+
+def _toggle_callback_detail_revealed():
+    key = "callback_detail_revealed"
+    st.session_state[key] = not st.session_state[key]
+
+
 def _render_notification_list(items, read_ids, tab_key, client):
-    st.markdown("#### Patient Requests")
+    st.session_state.setdefault("callback_list_revealed", False)
+    st.session_state.setdefault("callback_detail_revealed", False)
+    list_revealed = st.session_state["callback_list_revealed"]
+    detail_revealed = st.session_state["callback_detail_revealed"]
+    list_column, detail_column = st.columns([1.05, 1.35], gap="large")
+    with list_column:
+        with st.container(
+            horizontal=True,
+            horizontal_alignment="distribute",
+            vertical_alignment="center",
+            gap="small",
+        ):
+            st.markdown("#### Patient Requests")
+            st.button(
+                "Hide" if list_revealed else "Show",
+                key="toggle_callback_list_btn",
+                icon=(
+                    ":material/visibility_off:"
+                    if list_revealed
+                    else ":material/visibility:"
+                ),
+                help="Hide patient names" if list_revealed else "Reveal patient names",
+                type="tertiary",
+                width="content",
+                on_click=_toggle_callback_list_revealed,
+            )
     if not items:
-        st.info("There are no notifications in this category.")
+        with list_column:
+            st.info("There are no notifications in this category.")
         return
 
     selected_key = f"notification_selected_item:{tab_key}"
@@ -526,7 +563,6 @@ def _render_notification_list(items, read_ids, tab_key, client):
         st.session_state[selected_key] = selected_id
     selected_item = next(item for item in items if item["id"] == selected_id)
 
-    list_column, detail_column = st.columns([1.05, 1.35], gap="large")
     read_error = None
     opened_id = st.session_state.pop(
         f"notification_opened_item:{tab_key}", None
@@ -553,9 +589,14 @@ def _render_notification_list(items, read_ids, tab_key, client):
                     [1.4, 1], vertical_alignment="center"
                 )
                 with name_column:
+                    display_name = (
+                        str(item.get("title") or "Patient")
+                        if list_revealed
+                        else mask_patient_name(item.get("title"))
+                    )
                     st.markdown(
                         '<div class="notification-row-name">'
-                        f"{escape(str(item['title']))}</div>",
+                        f"{escape(display_name)}</div>",
                         unsafe_allow_html=True,
                     )
                     st.caption(
@@ -575,7 +616,7 @@ def _render_notification_list(items, read_ids, tab_key, client):
                         unsafe_allow_html=True,
                     )
                 st.button(
-                    item["title"],
+                    display_name,
                     key=f"notification-select-{tab_key}-{row_id}",
                     type="tertiary",
                     on_click=_select_notification_item,
@@ -591,7 +632,7 @@ def _render_notification_list(items, read_ids, tab_key, client):
                 f"{read_error}"
             )
         _render_notification_detail(
-            selected_item, client, tab_key
+            selected_item, client, tab_key, detail_revealed
         )
 
 
@@ -894,7 +935,33 @@ def _render_notification_actions(client, item, tab_key):
                 st.rerun()
 
 
-def _render_notification_detail(item, client, tab_key):
+def _mask_callback_email(value):
+    email = str(value or "").strip()
+    if not email or email.casefold() in {
+        "guest",
+        "n/a",
+        "not provided",
+        "not provided (guest)",
+    }:
+        return email
+    local_part, separator, domain = email.partition("@")
+    if separator:
+        return f"{local_part[:2]}••••@{domain}"
+    return f"{email[:2]}••••"
+
+
+def _mask_callback_contact(value):
+    contact = str(value or "").strip()
+    if (
+        not contact
+        or contact.casefold() in {"guest", "n/a", "not provided"}
+        or len(contact) <= 7
+    ):
+        return contact
+    return f"{contact[:4]}••••{contact[-3:]}"
+
+
+def _render_notification_detail(item, client, tab_key, detail_revealed):
     email = item.get("email")
     metadata = [
         ("Email", email),
@@ -908,17 +975,22 @@ def _render_notification_detail(item, client, tab_key):
         ),
     ]
     with st.container(key=f"notification-detail-card-{tab_key}"):
-        header_column, status_column = st.columns(
-            [4, 1.2], vertical_alignment="center"
+        header_column, status_column, reveal_column = st.columns(
+            [3.2, 1, 1.35], vertical_alignment="center"
         )
         with header_column:
+            display_name = (
+                str(item.get("title") or "Patient")
+                if detail_revealed
+                else mask_patient_name(item.get("title"))
+            )
             st.markdown(
                 '<div class="notification-detail-eyebrow">Patient request</div>',
                 unsafe_allow_html=True,
             )
             st.markdown(
                 '<div class="notification-detail-name">'
-                f"{escape(str(item.get('title') or 'Patient'))}</div>",
+                f"{escape(display_name)}</div>",
                 unsafe_allow_html=True,
             )
         with status_column:
@@ -926,6 +998,20 @@ def _render_notification_detail(item, client, tab_key):
                 '<div class="notification-status-wrap">'
                 f"{_notification_status_pill(item.get('status'))}</div>",
                 unsafe_allow_html=True,
+            )
+        with reveal_column:
+            st.button(
+                "Hide" if detail_revealed else "Show",
+                key="toggle_callback_detail_btn",
+                icon=(
+                    ":material/visibility_off:"
+                    if detail_revealed
+                    else ":material/visibility:"
+                ),
+                help="Hide patient details" if detail_revealed else "Reveal patient details",
+                type="tertiary",
+                width="content",
+                on_click=_toggle_callback_detail_revealed,
             )
 
         with st.container(key=f"notification-metadata-{tab_key}"):
@@ -950,7 +1036,13 @@ def _render_notification_detail(item, client, tab_key):
                                     unsafe_allow_html=True,
                                 )
                                 continue
-                            value = email_label
+                            value = (
+                                email_label
+                                if detail_revealed
+                                else _mask_callback_email(email_label)
+                            )
+                        elif label == "Contact Number" and not detail_revealed:
+                            value = _mask_callback_contact(value)
                         st.markdown(
                             '<div class="notification-field-value">'
                             f"{escape(str(value))}</div>",
@@ -1000,30 +1092,55 @@ def _render_notification_items(items, client):
             st.code(str(error))
         return
 
+    unread_ids = {item["id"] for item in items if item["id"] not in read_ids}
+    if unread_ids:
+        with st.container(
+            horizontal=True,
+            horizontal_alignment="right",
+            vertical_alignment="center",
+        ):
+            if st.button(
+                "Mark all as read",
+                key="notification-mark-all-as-read",
+                type="tertiary",
+                width="content",
+            ):
+                try:
+                    _mark_notifications_read(unread_ids)
+                except Exception as error:
+                    st.error("Unable to mark notifications as read.")
+                    with st.expander("Technical details"):
+                        st.code(str(error))
+                else:
+                    st.rerun()
+
     not_responded = [item for item in items if item["status"] == "Pending"]
     responded = [item for item in items if item["status"] != "Pending"]
     not_responded_tab, responded_tab = st.tabs(
         [
             f"Not Responded ({len(not_responded)})",
             f"Responded ({len(responded)})",
-        ]
+        ],
+        on_change="rerun",
     )
-    with not_responded_tab:
-        _render_notification_tab(
-            not_responded,
-            None,
-            read_ids,
-            "not-responded",
-            client,
-        )
-    with responded_tab:
-        _render_notification_tab(
-            responded,
-            None,
-            read_ids,
-            "responded",
-            client,
-        )
+    if not_responded_tab.open:
+        with not_responded_tab:
+            _render_notification_tab(
+                not_responded,
+                None,
+                read_ids,
+                "not-responded",
+                client,
+            )
+    if responded_tab.open:
+        with responded_tab:
+            _render_notification_tab(
+                responded,
+                None,
+                read_ids,
+                "responded",
+                client,
+            )
 
 
 def _render_cached_notification_feed():
@@ -1083,89 +1200,54 @@ def _render_live_notification_feed(client):
 
 
 @st.fragment(run_every="5s")
-def render_notification_alerts():
-    def render_notification_dots():
-        st.markdown(
-            """
-            <style>
-            .st-key-overview-notifications [data-testid="stPageLink"] a {
-                position: relative;
-            }
-            .st-key-overview-notifications [data-testid="stPageLink"] a::after {
-                content: "";
-                position: absolute;
-                top: .38rem;
-                right: .38rem;
-                width: .38rem;
-                height: .38rem;
-                border-radius: 50%;
-                background: #e53935;
-            }
-            .st-key-hfrc-sidebar-notification-link
-            [data-testid="stPageLink"] a {
-                position: relative;
-            }
-            .st-key-hfrc-sidebar-notification-link
-            [data-testid="stPageLink"] a::after {
-                content: "";
-                display: inline-block;
-                width: .38rem;
-                height: .38rem;
-                flex: 0 0 .38rem;
-                margin-left: .45rem;
-                border-radius: 50%;
-                background: #e53935;
-            }
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-
+def render_notification_alerts(cached_items=None, cached_read_ids=None):
+    items = None
     if (
-        not SUPABASE_URL
-        or not SUPABASE_KEY
-        or not is_supabase_connection_available()
+        SUPABASE_URL
+        and SUPABASE_KEY
+        and is_supabase_connection_available()
     ):
-        return
+        client = get_supabase_client()
+        if client is not None:
+            live_items, errors = _load_notifications(client)
+            if errors:
+                if any(is_supabase_connection_error(error) for _, error in errors):
+                    is_supabase_connection_available.clear()
+                else:
+                    st.caption(
+                        "Live notification updates are temporarily unavailable."
+                    )
+            else:
+                items = live_items
 
-    client = get_supabase_client()
-    if client is None:
-        return
-
-    items, errors = _load_notifications(client)
-    if errors:
-        if any(is_supabase_connection_error(error) for _, error in errors):
-            is_supabase_connection_available.clear()
+    using_cached_feed = items is None
+    if items is None:
+        if cached_items is None:
             return
-        st.caption("Live notification updates are temporarily unavailable.")
-        if st.session_state.get("overview_notification_unread", False):
-            render_notification_dots()
-        return
+        items = cached_items
 
-    try:
-        read_ids = _load_notification_read_ids()
-    except Exception as error:
-        st.error("Unable to load saved notification read status.")
-        with st.expander("Technical details"):
-            st.code(str(error))
-        if st.session_state.get("overview_notification_unread", False):
-            render_notification_dots()
-        return
+    if using_cached_feed and cached_read_ids is not None:
+        read_ids = cached_read_ids
+    else:
+        try:
+            read_ids = _load_notification_read_ids()
+        except Exception as error:
+            st.error("Unable to load saved notification read status.")
+            with st.expander("Technical details"):
+                st.code(str(error))
+            return
 
     current_ids = {item["id"] for item in items}
-    has_unread = bool(current_ids - read_ids)
-    st.session_state["overview_notification_unread"] = has_unread
-    seen_key = f"notification_seen_ids:{_notification_admin_id()}"
-    if seen_key not in st.session_state:
-        st.session_state[seen_key] = current_ids
+    toasted_key = f"notification_toasted_ids:{_notification_admin_id()}"
+    if toasted_key not in st.session_state:
+        st.session_state[toasted_key] = current_ids
     else:
-        seen_ids = st.session_state[seen_key]
-        for item in _new_unread_notifications(items, read_ids, seen_ids):
+        toasted_ids = st.session_state[toasted_key]
+        for item in _new_untoasted_notifications(
+            items, read_ids, toasted_ids
+        ):
             st.toast(f"New notification: {item['title']}", icon="🔔")
-        st.session_state[seen_key] = seen_ids | current_ids
-
-    if has_unread:
-        render_notification_dots()
+        st.session_state[toasted_key] = toasted_ids | current_ids
 
 
 def show_notifications_page(*, appointments_page=None):
@@ -1175,8 +1257,8 @@ def show_notifications_page(*, appointments_page=None):
             '<div class="notifications-eyebrow">Patient Activity</div>',
             unsafe_allow_html=True,
         )
-        st.markdown("# Notifications")
-        st.write("Review appointment schedules and messages from patients.")
+        st.markdown("# Callback Requests")
+        st.write("Review patient callback requests and manage their responses.")
         if "notification_flash" in st.session_state:
             st.success(st.session_state.pop("notification_flash"))
 

@@ -109,6 +109,50 @@ def get_local_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_cloud_admin_names() -> list[str]:
+    client = get_supabase_client()
+    if client is None:
+        return []
+    response = (
+        client.table("admin_users")
+        .select("display_name")
+        .order("display_name")
+        .execute()
+    )
+    return [
+        row["display_name"].strip()
+        for row in response.data or []
+        if row.get("display_name") and row["display_name"].strip()
+    ]
+
+
+def get_registered_admin_names() -> list[str]:
+    """Return administrator names registered in the online or local user table."""
+    conn = get_local_connection()
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT display_name FROM local_admin_users "
+            "WHERE TRIM(display_name) <> '' "
+            "ORDER BY display_name COLLATE NOCASE"
+        ).fetchall()
+    finally:
+        conn.close()
+    names = [row["display_name"].strip() for row in rows]
+
+    if SUPABASE_URL and SUPABASE_KEY and is_supabase_connection_available():
+        try:
+            names.extend(_load_cloud_admin_names())
+        except (httpx.RequestError, PostgrestAPIError):
+            st.warning(
+                "Online administrator names could not be loaded; showing locally "
+                "cached names instead."
+            )
+
+    return sorted(set(names), key=str.casefold)
+
+
 def initialize_local_database():
     """Builds the master database schemas safely without dropping existing rows."""
     conn = get_local_connection()
@@ -123,7 +167,11 @@ def initialize_local_database():
         
         -- Page 1: Referral & Intake
         referral_noted_by TEXT,
+        referring_person_or_instance TEXT,
+        date_of_referral TEXT,
         means_of_referral TEXT,
+        referral_request TEXT,
+        agreements_made_for_further_interviewing TEXT,
         interview_date TEXT,
         interview_place TEXT,
         interview_persons_present TEXT,
@@ -160,6 +208,7 @@ def initialize_local_database():
         
         -- Household & Socio-Economic Classifications
         family_composition TEXT,
+        household_member_count INTEGER,
         total_annual_income REAL DEFAULT 0.0,
         poverty_threshold_per_year REAL DEFAULT 0.0,
         poverty_rating TEXT,
@@ -176,18 +225,38 @@ def initialize_local_database():
         
         -- Clinical Intake Sheets & Logs
         interviewers_initial_impression TEXT,
-        history_of_illness TEXT,
-        mental_status_examination TEXT,
-        nurses_observation TEXT,
-        diagnosis TEXT,
-        treatment TEXT,
-        parenteral_medication_records TEXT
+        history_of_illness TEXT NOT NULL DEFAULT '',
+        mental_status_examination TEXT NOT NULL DEFAULT '',
+        nurses_observation TEXT NOT NULL DEFAULT '',
+        diagnosis TEXT NOT NULL DEFAULT '',
+        treatment TEXT NOT NULL DEFAULT '',
+        parenteral_medication_records TEXT NOT NULL DEFAULT ''
     );
     """)
 
     existing_columns = {
         row[1] for row in cursor.execute("PRAGMA table_info(patients)").fetchall()
     }
+    intake_columns = {
+        "referring_person_or_instance": "TEXT",
+        "date_of_referral": "TEXT",
+        "referral_request": "TEXT",
+        "agreements_made_for_further_interviewing": "TEXT",
+        "household_member_count": "INTEGER",
+        "history_of_illness": "TEXT NOT NULL DEFAULT ''",
+        "mental_status_examination": "TEXT NOT NULL DEFAULT ''",
+        "nurses_observation": "TEXT NOT NULL DEFAULT ''",
+        "diagnosis": "TEXT NOT NULL DEFAULT ''",
+        "treatment": "TEXT NOT NULL DEFAULT ''",
+        "parenteral_medication_records": "TEXT NOT NULL DEFAULT ''",
+    }
+    for column, column_type in intake_columns.items():
+        if column not in existing_columns:
+            cursor.execute(
+                f"ALTER TABLE patients ADD COLUMN {column} {column_type}"
+            )
+            existing_columns.add(column)
+
     if "patient_case_number" not in existing_columns:
         cursor.execute("ALTER TABLE patients ADD COLUMN patient_case_number TEXT")
         existing_columns.add("patient_case_number")

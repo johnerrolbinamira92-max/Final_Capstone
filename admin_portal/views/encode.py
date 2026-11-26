@@ -1,4 +1,3 @@
-import calendar
 import datetime
 import json
 from collections import Counter
@@ -7,11 +6,30 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from database import get_local_connection, get_next_patient_case_number
-from views.record_tables import dataframe_to_storage
+from database import (
+    get_local_connection,
+    get_next_patient_case_number,
+)
+from views.patient_intake import (
+    ADMINISTRATIVE_STATUS_OPTIONS,
+    CIVIL_STATUS_OPTIONS,
+    EDUCATIONAL_ATTAINMENT_OPTIONS,
+    FIELD_LABELS,
+    INFORMATION_NOTED_BY_OPTIONS,
+    MIN_BIRTH_DATE,
+    SECTION_TITLES,
+    SEX_OPTIONS,
+)
+from views.record_tables import (
+    DATE_DISPLAY_FORMAT,
+    FAMILY_COLUMNS,
+    MEDICATION_COLUMN_LABELS,
+    MEDICATION_COLUMNS,
+    dataframe_from_storage,
+    dataframe_to_storage,
+    family_column_config,
+)
 
-# Define static calendar threshold boundaries globally at the top level
-MIN_BIRTH_DATE = datetime.date(1900, 1, 1)
 BICOL_ADDRESS_FILE = (
     Path(__file__).resolve().parents[1] / "data" / "bicol_address_hierarchy.json"
 )
@@ -31,15 +49,6 @@ def _clear_barangay_selection(barangay_key):
 def _clear_city_and_barangay_selection(city_key, barangay_key):
     _clear_barangay_selection(barangay_key)
     st.session_state.pop(city_key, None)
-
-
-def _clear_birth_month_and_day(month_key, day_key):
-    st.session_state.pop(month_key, None)
-    st.session_state.pop(day_key, None)
-
-
-def _clear_birth_day(day_key):
-    st.session_state.pop(day_key, None)
 
 
 def _is_four_digit_value(value):
@@ -66,6 +75,22 @@ def _refresh_case_number_sequence(year_key, sequence_key):
             st.session_state.pop(error_key, None)
 
 
+def _initialize_case_number_inputs(year_key, sequence_key):
+    if year_key not in st.session_state:
+        st.session_state[year_key] = str(datetime.date.today().year)
+    refresh_case_number = st.session_state.pop(
+        "encode_case_number_refresh_pending",
+        False,
+    )
+    if sequence_key not in st.session_state:
+        st.session_state[sequence_key] = ""
+        refresh_case_number = True
+    if refresh_case_number:
+        st.session_state[sequence_key] = ""
+        st.session_state.pop(f"{sequence_key}_error", None)
+        _refresh_case_number_sequence(year_key, sequence_key)
+
+
 def _calculate_age(birth_date, today=None):
     if birth_date is None:
         return None
@@ -76,67 +101,44 @@ def _calculate_age(birth_date, today=None):
     )
 
 
-def _render_birth_date(key_for):
+def _render_birth_date(key_for, initial_date=None):
     today = datetime.date.today()
-    year_key = key_for("date_of_birth_year")
-    month_key = key_for("date_of_birth_month")
-    day_key = key_for("date_of_birth_day")
-
-    st.markdown("**Date of Birth (DOB)**")
-    year_column, month_column, day_column = st.columns(3)
-    with year_column:
-        year = st.selectbox(
-            "Birth year",
-            range(today.year, MIN_BIRTH_DATE.year - 1, -1),
-            index=None,
-            placeholder="Choose or search for a year",
-            key=year_key,
-            on_change=_clear_birth_month_and_day,
-            args=(month_key, day_key),
-        )
-
-    latest_month = today.month if year == today.year else 12
-    with month_column:
-        month = st.selectbox(
-            "Birth month",
-            range(1, latest_month + 1),
-            index=None,
-            format_func=lambda value: calendar.month_name[value],
-            placeholder="Choose month",
-            disabled=year is None,
-            key=month_key,
-            on_change=_clear_birth_day,
-            args=(day_key,),
-        )
-
-    if year is None or month is None:
-        latest_day = 31
-    elif year == today.year and month == today.month:
-        latest_day = today.day
-    else:
-        latest_day = calendar.monthrange(year, month)[1]
-
-    with day_column:
-        day = st.selectbox(
-            "Birth day",
-            range(1, latest_day + 1),
-            index=None,
-            placeholder="Choose day",
-            disabled=year is None or month is None,
-            key=day_key,
-        )
-
-    if year is None or month is None or day is None:
-        return None
-    return datetime.date(year, month, day)
+    if initial_date is not None and not MIN_BIRTH_DATE <= initial_date <= today:
+        initial_date = None
+    return st.date_input(
+        FIELD_LABELS["date_of_birth"].rstrip(":"),
+        value=initial_date,
+        min_value=MIN_BIRTH_DATE,
+        max_value=today,
+        format=DATE_DISPLAY_FORMAT,
+        key=key_for("date_of_birth_input"),
+    )
 
 
-def _render_address_dropdowns(section, key_for, address_hierarchy):
+def _render_address_dropdowns(
+    section,
+    key_for,
+    address_hierarchy,
+    initial_values=None,
+):
     province_key = key_for(f"{section}_province")
     city_key = key_for(f"{section}_city")
     barangay_key = key_for(f"{section}_barangay")
+    initial_values = initial_values or {}
 
     province_names = list(address_hierarchy)
+    initial_province = str(initial_values.get("province") or "").strip()
+    if province_key not in st.session_state and initial_province:
+        province_match = next(
+            (
+                name
+                for name in province_names
+                if name.casefold() == initial_province.casefold()
+            ),
+            initial_province,
+        )
+        st.session_state[province_key] = province_match
+
     province_choice = st.selectbox(
         "Province",
         province_names,
@@ -166,6 +168,17 @@ def _render_address_dropdowns(section, key_for, address_hierarchy):
             if province_record
             else []
         )
+        initial_city = str(initial_values.get("city_municipality") or "").strip()
+        if city_key not in st.session_state and initial_city:
+            city_match = next(
+                (
+                    name
+                    for name in city_names
+                    if name.casefold() == initial_city.casefold()
+                ),
+                initial_city,
+            )
+            st.session_state[city_key] = city_match
         city_choice = st.selectbox(
             "City / Municipality",
             city_names,
@@ -202,6 +215,17 @@ def _render_address_dropdowns(section, key_for, address_hierarchy):
         barangay_by_code = {
             barangay["code"]: barangay["name"] for barangay in barangay_records
         }
+        initial_barangay = str(initial_values.get("barangay") or "").strip()
+        if barangay_key not in st.session_state and initial_barangay:
+            barangay_code = next(
+                (
+                    code
+                    for code, name in barangay_by_code.items()
+                    if name.casefold() == initial_barangay.casefold()
+                ),
+                initial_barangay,
+            )
+            st.session_state[barangay_key] = barangay_code
 
         def format_barangay(code):
             name = barangay_by_code.get(code)
@@ -241,25 +265,23 @@ def _render_address_dropdowns(section, key_for, address_hierarchy):
     }
 
 
-def _reset_encode_form():
+def _reset_encode_form(*, scroll_to_top=True):
     st.session_state["encode_form_version"] = (
         st.session_state.get("encode_form_version", 0) + 1
     )
-    st.session_state.family_table_v2 = pd.DataFrame(columns=[
-        "Full Name",
-        "Age",
-        "Civil Status",
-        "Educational Attainment",
-        "Relation to Client",
-        "Occupation",
-        "Monthly Income (PHP)",
-    ])
+    st.session_state.family_table_v2 = pd.DataFrame(columns=FAMILY_COLUMNS)
     st.session_state.med_table = pd.DataFrame([{
         "Date (1)": None, "FPZ (1)": "", "Date (2)": None, "FPZ (2)": "",
         "Date (3)": None, "FPZ (3)": "",
     }])
     st.session_state["record_added_pending"] = False
-    st.session_state["scroll_to_top"] = True
+    st.session_state.pop("record_added_case_number", None)
+    st.session_state["scroll_to_top"] = scroll_to_top
+
+
+def _open_encode_dialog():
+    st.session_state["show_encode_dialog"] = True
+    st.session_state["encode_case_number_refresh_pending"] = True
 
 
 def _save_patient_record(payload, first_name, last_name):
@@ -312,6 +334,10 @@ def _save_patient_record(payload, first_name, last_name):
 
 
 def show_encode_page():
+    encode_success_toast = st.session_state.pop("encode_success_toast", None)
+    if encode_success_toast:
+        st.toast(encode_success_toast)
+
     form_version = st.session_state.get("encode_form_version", 0)
     widget_key = lambda name: f"encode_{form_version}_{name}"
 
@@ -353,17 +379,13 @@ def show_encode_page():
             unsafe_allow_html=True,
         )
 
-    # Initialize an empty family grid structure with clear column headers
     if "family_table_v2" not in st.session_state:
-        st.session_state.family_table_v2 = pd.DataFrame(columns=[
-            "Full Name", 
-            "Age", 
-            "Civil Status",
-            "Educational Attainment", 
-            "Relation to Client",
-            "Occupation", 
-            "Monthly Income (PHP)"
-        ])
+        st.session_state.family_table_v2 = pd.DataFrame(columns=FAMILY_COLUMNS)
+    else:
+        st.session_state.family_table_v2 = dataframe_from_storage(
+            dataframe_to_storage(st.session_state.family_table_v2),
+            FAMILY_COLUMNS,
+        )
 
     if "med_table" not in st.session_state:
         st.session_state.med_table = pd.DataFrame([{
@@ -372,217 +394,418 @@ def show_encode_page():
 
     address_hierarchy = _load_bicol_address_hierarchy()
 
-    # --- Section Layout Form Setup ---
     year_key = widget_key("patient_case_year")
     sequence_key = widget_key("patient_case_sequence")
-    if year_key not in st.session_state:
-        st.session_state[year_key] = str(datetime.date.today().year)
-    if sequence_key not in st.session_state:
-        st.session_state[sequence_key] = ""
-        _refresh_case_number_sequence(year_key, sequence_key)
+    _initialize_case_number_inputs(year_key, sequence_key)
 
-    st.markdown("### Patient ID / Case Number")
-    with st.container(
-        horizontal=True,
-        wrap=False,
-        vertical_alignment="center",
-        gap="small",
-    ):
-        st.markdown("**BOC -**", width="content")
-        patient_year = st.text_input(
-            "Year",
-            key=year_key,
-            max_chars=4,
-            placeholder="YYYY",
-            on_change=_refresh_case_number_sequence,
-            args=(year_key, sequence_key),
-            label_visibility="collapsed",
-            width=76,
-        ).strip()
-        st.markdown("**-**", width="content")
-        patient_sequence = st.text_input(
-            "Unique number",
-            key=sequence_key,
-            max_chars=4,
-            placeholder="0001",
-            label_visibility="collapsed",
-            width=80,
-        ).strip()
-    patient_case_number = (
-        f"BOC-{patient_year}-{patient_sequence}"
-        if _is_four_digit_value(patient_year)
-        and _is_four_digit_value(patient_sequence)
-        else ""
-    )
-    st.caption(
-        "The unique number is auto-filled from the selected year and remains "
-        "editable."
-    )
-    sequence_error = st.session_state.get(f"{sequence_key}_error")
-    if sequence_error:
-        st.error(sequence_error)
-
-    st.markdown("### 🏢 Referral Context & Interview Logistics")
-    c_ref1, c_ref2 = st.columns(2)
-    with c_ref1:
-        referral_noted_by = st.text_input("Information Noted By", placeholder="Enter staff name...", key=widget_key("referral_noted_by"))
-        interview_date = st.date_input(
-            "Date of Interview",
-            value=None,
-            min_value=MIN_BIRTH_DATE,
-            max_value=datetime.date.today(),
-            key=widget_key("interview_date"),
+    today = datetime.date.today()
+    with st.container(border=True, key="encode-intake-section-administration"):
+        st.markdown(f"#### {SECTION_TITLES['administration']}")
+        st.markdown(f"**{FIELD_LABELS['patient_case_number']}**")
+        with st.container(
+            horizontal=True,
+            wrap=False,
+            vertical_alignment="center",
+            gap="small",
+        ):
+            st.markdown("**BOC -**", width="content")
+            patient_year = st.text_input(
+                "Year",
+                key=year_key,
+                max_chars=4,
+                placeholder="YYYY",
+                on_change=_refresh_case_number_sequence,
+                args=(year_key, sequence_key),
+                label_visibility="collapsed",
+                width=76,
+            ).strip()
+            st.markdown("**-**", width="content")
+            patient_sequence = st.text_input(
+                "Unique number",
+                key=sequence_key,
+                max_chars=4,
+                placeholder="0001",
+                label_visibility="collapsed",
+                width=80,
+            ).strip()
+        patient_case_number = (
+            f"BOC-{patient_year}-{patient_sequence}"
+            if _is_four_digit_value(patient_year)
+            and _is_four_digit_value(patient_sequence)
+            else ""
         )
-        interview_place = st.text_input("Place of Interview", placeholder="Clinic, Home Address, Office...", key=widget_key("interview_place"))
-    with c_ref2:
-        means_of_referral = st.text_input("Means of Referral", placeholder="Walk-in, Letter, Hospital Transfer...", key=widget_key("means_of_referral"))
-        primary_source_info = st.text_input("Primary Source of Information", placeholder="Patient, Mother, Guardian...", key=widget_key("primary_source_info"))
-
-    interview_persons_present = st.text_area("Persons Present During the Interview", placeholder="List individual names...", key=widget_key("interview_persons_present"))
-
-    st.divider()
-    st.markdown("### 👤 Identifying Information: Core Profile")
-    c_name1, c_name2, c_name3, c_name4 = st.columns(4)
-    with c_name1: last_name = st.text_input("Last Name", placeholder="Dela Cruz", key=widget_key("last_name"))
-    with c_name2: first_name = st.text_input("First Name", placeholder="Juan", key=widget_key("first_name"))
-    with c_name3: middle_name = st.text_input("Middle Name", placeholder="R Ramos", key=widget_key("middle_name"))
-    with c_name4: ext_name = st.text_input("Suffix", placeholder="Jr., III", key=widget_key("extension_name"))
-
-    st.write("**Complete Client Residential Demographics:**")
-    patient_address = _render_address_dropdowns(
-        "patient_address",
-        widget_key,
-        address_hierarchy,
-    )
-    c_address1, c_address2 = st.columns(2)
-    with c_address1:
-        street_address = st.text_input(
-            "Street / House Number",
-            placeholder="Block 5 Lot 2",
-            key=widget_key("street_address"),
-            disabled=not patient_address["province"],
+        st.caption(
+            "The unique number is auto-filled from the selected year and remains "
+            "editable."
         )
-    with c_address2:
-        purok = st.text_input(
-            "Purok",
-            placeholder="Purok 1",
-            key=widget_key("purok"),
-            disabled=not patient_address["province"],
+        sequence_error = st.session_state.get(f"{sequence_key}_error")
+        if sequence_error:
+            st.error(sequence_error)
+        status = st.selectbox(
+            FIELD_LABELS["status"],
+            ADMINISTRATIVE_STATUS_OPTIONS,
+            key=widget_key("status"),
         )
-    barangay = patient_address["barangay"]
-    city_municipality = patient_address["city_municipality"]
-    province = patient_address["province"]
 
-    dob = _render_birth_date(widget_key)
-    calculated_age = _calculate_age(dob)
+    with st.container(border=True, key="encode-intake-section-referral"):
+        st.markdown(f"#### {SECTION_TITLES['referral']}")
+        referral_left, referral_right = st.columns(2)
+        with referral_left:
+            referral_noted_by = st.selectbox(
+                FIELD_LABELS["referral_noted_by"],
+                INFORMATION_NOTED_BY_OPTIONS,
+                index=None,
+                accept_new_options=True,
+                key=widget_key("referral_noted_by_select"),
+            )
+            referring_person_or_instance = st.text_input(
+                FIELD_LABELS["referring_person_or_instance"],
+                key=widget_key("referring_person_or_instance"),
+            )
+            date_of_referral = st.date_input(
+                FIELD_LABELS["date_of_referral"],
+                value=None,
+                min_value=MIN_BIRTH_DATE,
+                max_value=today,
+                format=DATE_DISPLAY_FORMAT,
+                key=widget_key("date_of_referral"),
+            )
+        with referral_right:
+            means_of_referral = st.text_input(
+                FIELD_LABELS["means_of_referral"],
+                key=widget_key("means_of_referral"),
+            )
+            referral_request = st.text_area(
+                FIELD_LABELS["referral_request"],
+                key=widget_key("referral_request"),
+            )
+        agreements_made_for_further_interviewing = st.text_area(
+            FIELD_LABELS["agreements_made_for_further_interviewing"],
+            key=widget_key("agreements_made_for_further_interviewing"),
+        )
 
-    c_demo1, c_demo2, c_demo3, c_demo4 = st.columns(4)
-    with c_demo1:
+    with st.container(border=True, key="encode-intake-section-interview"):
+        st.markdown(f"#### {SECTION_TITLES['interview']}")
+        interview_left, interview_right = st.columns(2)
+        with interview_left:
+            interview_date = st.date_input(
+                FIELD_LABELS["interview_date"],
+                value=None,
+                min_value=MIN_BIRTH_DATE,
+                max_value=today,
+                format=DATE_DISPLAY_FORMAT,
+                key=widget_key("interview_date"),
+            )
+            interview_place = st.text_input(
+                FIELD_LABELS["interview_place"],
+                key=widget_key("interview_place"),
+            )
+        with interview_right:
+            interview_persons_present = st.text_area(
+                FIELD_LABELS["interview_persons_present"],
+                key=widget_key("interview_persons_present"),
+            )
+            primary_source_info = st.text_input(
+                FIELD_LABELS["primary_source_of_information"],
+                key=widget_key("primary_source_info"),
+            )
+
+    with st.container(border=True, key="encode-intake-section-identifying"):
+        st.markdown(f"#### {SECTION_TITLES['identifying']}")
+        st.markdown(f"##### {SECTION_TITLES['client']}")
+        st.markdown(f"**{FIELD_LABELS['client_name']}**")
+        name_columns = st.columns(4)
+        with name_columns[0]:
+            first_name = st.text_input(
+                "First Name",
+                placeholder="Juan",
+                key=widget_key("first_name"),
+            )
+        with name_columns[1]:
+            middle_name = st.text_input(
+                "Middle Name",
+                placeholder="R Ramos",
+                key=widget_key("middle_name"),
+            )
+        with name_columns[2]:
+            last_name = st.text_input(
+                "Last Name",
+                placeholder="Dela Cruz",
+                key=widget_key("last_name"),
+            )
+        with name_columns[3]:
+            ext_name = st.text_input(
+                "Extension Name",
+                placeholder="Jr., III",
+                key=widget_key("extension_name"),
+            )
+
+        dob = _render_birth_date(widget_key)
+        calculated_age = _calculate_age(dob)
         age_key = widget_key("calculated_age")
         st.session_state[age_key] = (
             str(calculated_age) if calculated_age is not None else ""
         )
         st.text_input(
-            "Calculated Age",
+            FIELD_LABELS["age"],
             key=age_key,
             disabled=True,
-            placeholder="Select a full date of birth",
+            placeholder="Calculated from Date of Birth",
         )
-    with c_demo2:
-        sex = st.selectbox("Biological Sex", ["", "Male", "Female"], key=widget_key("sex"))
-    with c_demo3:
-        civil_status = st.selectbox("Civil Status", ["", "Single", "Married", "Widowed", "Separated"], key=widget_key("civil_status"))
-        religion = st.text_input("Religion / Faith Affiliation", placeholder="Roman Catholic", key=widget_key("religion"))
-    with c_demo4:
-        educational = st.text_input("Highest Educational Attainment", placeholder="High School Graduate", key=widget_key("educational_attainment"))
-        status = st.selectbox("Current Administrative Status", ["Alive", "Deceased"], key=widget_key("status"))
 
-    work_experience = st.text_area("Client Work Experience & Career History Records", placeholder="Details...", key=widget_key("work_experience"))
-
-    st.write("**Emergency Guardian Context Layout:**")
-    c_guard1, c_guard2, c_guard3 = st.columns(3)
-    with c_guard1:
-        g_last_name = st.text_input("Guardian Last Name", placeholder="Dela Cruz", key=widget_key("guardian_last_name"))
-        g_contact_person = st.text_input("Primary Contact Person Name", placeholder="Maria S. Dela Cruz", key=widget_key("guardian_contact_person"))
-    with c_guard2:
-        g_first_name = st.text_input("Guardian First Name", placeholder="Maria", key=widget_key("guardian_first_name"))
-        g_contact_number = st.text_input("Active Contact Phone Number", placeholder="09123456789", key=widget_key("g_contact_number"))
-    with c_guard3:
-        g_middle_name = st.text_input("Guardian Middle Name", placeholder="Santos", key=widget_key("guardian_middle_name"))
-
-    st.markdown("**Guardian Address:**")
-    guardian_address = _render_address_dropdowns(
-        "guardian_address",
-        widget_key,
-        address_hierarchy,
-    )
-    g_province = guardian_address["province"]
-    g_city = guardian_address["city_municipality"]
-    g_barangay = guardian_address["barangay"]
-    g_street = st.text_input(
-        "Guardian Street / Zone",
-        placeholder="Zone 1",
-        key=widget_key("guardian_street_address"),
-        disabled=not g_province,
-    )
-
-    st.divider()
-    st.markdown("### 👨‍👩‍👧 Family Composition Table Grid")
-    edited_family_df = st.data_editor(st.session_state.family_table_v2, num_rows="dynamic", width="stretch", key=widget_key("family_table"))
-
-    st.divider()
-    st.markdown("### 📊 Patient's Socio-Economic Classification Analytics")
-    c_cl1, c_cl2, c_cl3 = st.columns(3)
-    with c_cl1:
-        annual_income = st.number_input(
-            "Total Annual Income (PHP)",
-            min_value=0.0,
-            value=None,
-            step=1000.0,
-            format="%.2f",
-            placeholder="0.00",
-            key=widget_key("annual_income"),
+        st.markdown(f"**{FIELD_LABELS['address']}**")
+        patient_address = _render_address_dropdowns(
+            "patient_address",
+            widget_key,
+            address_hierarchy,
         )
-        class_after_interview = st.text_input("Classification After Interview Stage", placeholder="Classification status...", key=widget_key("classification_after_interview"))
-    with c_cl2:
-        poverty_threshold = st.number_input(
-            "Poverty Threshold Per Year (PHP)",
-            min_value=0.0,
-            value=None,
-            step=1000.0,
-            format="%.2f",
-            placeholder="0.00",
-            key=widget_key("poverty_threshold"),
+        address_columns = st.columns(2)
+        with address_columns[0]:
+            street_address = st.text_input(
+                "Street / House Number",
+                placeholder="Block 5 Lot 2",
+                key=widget_key("street_address"),
+                disabled=not patient_address["province"],
+            )
+        with address_columns[1]:
+            purok = st.text_input(
+                "Purok",
+                placeholder="Purok 1",
+                key=widget_key("purok"),
+                disabled=not patient_address["province"],
+            )
+        barangay = patient_address["barangay"]
+        city_municipality = patient_address["city_municipality"]
+        province = patient_address["province"]
+
+        demo_left, demo_right = st.columns(2)
+        with demo_left:
+            sex = st.selectbox(
+                FIELD_LABELS["sex"],
+                SEX_OPTIONS,
+                index=None,
+                key=widget_key("sex_v2"),
+            )
+            civil_status = st.selectbox(
+                FIELD_LABELS["civil_status"],
+                CIVIL_STATUS_OPTIONS,
+                key=widget_key("civil_status"),
+            )
+        with demo_right:
+            religion = st.text_input(
+                FIELD_LABELS["religion"],
+                key=widget_key("religion"),
+            )
+            educational = st.selectbox(
+                FIELD_LABELS["educational_attainment"],
+                EDUCATIONAL_ATTAINMENT_OPTIONS,
+                index=None,
+                accept_new_options=True,
+                key=widget_key("educational_attainment_select"),
+            )
+        work_experience = st.text_area(
+            FIELD_LABELS["work_experience"],
+            key=widget_key("work_experience"),
         )
-        class_after_home_visit = st.text_input("Classification After Home Visit Verification", placeholder="Classification status...", key=widget_key("classification_after_home_visit"))
-    with c_cl3:
-        poverty_rating = st.text_input("Poverty Threshold Ratings", placeholder="Below Poverty Line", key=widget_key("poverty_rating"))
 
-    st.divider()
-    st.markdown("### 🧠 Comprehensive Chief Complaint Mapping")
-    chief_complaint_patient = st.text_area("Chief Complaint: According to the Client / Patient Statement", key=widget_key("chief_complaint_patient"))
-    chief_complaint_relatives = st.text_area("Chief Complaint: According to Reference / Relatives Statement", key=widget_key("chief_complaint_relatives"))
+    with st.container(border=True, key="encode-intake-section-relatives"):
+        st.markdown(f"#### {SECTION_TITLES['relatives']}")
+        guardian_name = st.text_input(
+            "Name",
+            key=widget_key("guardian_name"),
+        )
+        g_first_name = guardian_name
+        g_middle_name = ""
+        g_last_name = ""
+        st.markdown(f"**{FIELD_LABELS['address']}**")
+        guardian_address = _render_address_dropdowns(
+            "guardian_address",
+            widget_key,
+            address_hierarchy,
+        )
+        guardian_address_columns = st.columns(2)
+        with guardian_address_columns[0]:
+            g_street = st.text_input(
+                "Street / Zone",
+                placeholder="Zone 1",
+                key=widget_key("guardian_street_address"),
+                disabled=not guardian_address["province"],
+            )
+        with guardian_address_columns[1]:
+            g_contact_person = st.text_input(
+                FIELD_LABELS["contact_person"],
+                placeholder="Same as Nearest Relative (or enter alternate contact)",
+                key=widget_key("guardian_contact_person"),
+            )
+        g_barangay = guardian_address["barangay"]
+        g_city = guardian_address["city_municipality"]
+        g_province = guardian_address["province"]
+        g_contact_number = st.text_input(
+            FIELD_LABELS["contact_number"],
+            key=widget_key("g_contact_number"),
+        )
 
-    c_comp1, c_comp2 = st.columns(2)
-    with c_comp1:
-        complaint_duration = st.text_input("Duration of Symptoms", placeholder="3 Months", key=widget_key("complaint_duration"))
-        complaint_recent = st.text_input("Recent Manifestations", placeholder="Insomnia", key=widget_key("complaint_recent"))
-    with c_comp2:
-        complaint_onset = st.text_input("Onset of Condition", placeholder="Gradual after job loss", key=widget_key("complaint_onset"))
-        complaint_previous_hospitalization = st.text_input("Previous Hospitalization Records", placeholder="None", key=widget_key("complaint_previous_hospitalization"))
+    with st.container(border=True, key="encode-intake-section-family"):
+        st.markdown(f"#### {SECTION_TITLES['family']}")
+        edited_family_df = st.data_editor(
+            st.session_state.family_table_v2,
+            num_rows="dynamic",
+            width="stretch",
+            key=widget_key("family_table"),
+            column_config=family_column_config(st.session_state.family_table_v2),
+            alt="Family composition of the patient",
+        )
 
-    st.divider()
-    st.markdown("### 📋 Clinical Intake Records, Examinations & Clinical Progression Sheets")
-    interviewers_initial_impression = st.text_area("Interviewers Initial Impression Evaluation Notes", key=widget_key("interviewers_initial_impression"))
-    history_of_illness = st.text_area("History of the Patient's Illness Narrative", key=widget_key("history_of_illness"))
-    mse = st.text_area("Mental Status Examination (MSE) / Clinical Progress Notes", key=widget_key("mental_status_examination"))
-    nurses_observation = st.text_area("Nurses Observation Summary During Consultation", key=widget_key("nurses_observation"))
-    diagnosis = st.text_area("Official Medical Diagnosis Statement", key=widget_key("diagnosis"))
-    treatment = st.text_area("Prescribed Treatment Plan Strategy", key=widget_key("treatment"))
+    with st.container(border=True, key="encode-intake-section-classification"):
+        st.markdown(f"#### {SECTION_TITLES['classification']}")
+        classification_left, classification_right = st.columns(2)
+        with classification_left:
+            household_member_count = st.number_input(
+                FIELD_LABELS["household_member_count"],
+                min_value=0,
+                value=None,
+                step=1,
+                key=widget_key("household_member_count"),
+            )
+            annual_income = st.number_input(
+                FIELD_LABELS["total_annual_income"],
+                min_value=0.0,
+                value=None,
+                step=1000.0,
+                format="%.2f",
+                key=widget_key("annual_income"),
+            )
+            poverty_threshold = st.number_input(
+                FIELD_LABELS["poverty_threshold_per_year"],
+                min_value=0.0,
+                value=None,
+                step=1000.0,
+                format="%.2f",
+                key=widget_key("poverty_threshold"),
+            )
+        with classification_right:
+            poverty_rating = st.text_input(
+                FIELD_LABELS["poverty_rating"],
+                key=widget_key("poverty_rating"),
+            )
+            class_after_interview = st.text_input(
+                FIELD_LABELS["classification_after_interview"],
+                key=widget_key("classification_after_interview"),
+            )
+            class_after_home_visit = st.text_input(
+                FIELD_LABELS["classification_after_home_visit"],
+                key=widget_key("classification_after_home_visit"),
+            )
 
-    st.divider()
-    st.markdown("### 💊 Parenteral Medication Log Sheet Grid")
-    edited_med_df = st.data_editor(st.session_state.med_table, num_rows="dynamic", width="stretch", key=widget_key("med_table"))
+    with st.container(border=True, key="encode-intake-section-complaint"):
+        st.markdown(f"#### {SECTION_TITLES['complaint']}")
+        chief_complaint_patient = st.text_area(
+            FIELD_LABELS["chief_complaint_patient"],
+            key=widget_key("chief_complaint_patient"),
+        )
+        chief_complaint_relatives = st.text_area(
+            FIELD_LABELS["chief_complaint_relatives"],
+            key=widget_key("chief_complaint_relatives"),
+        )
+        complaint_left, complaint_right = st.columns(2)
+        with complaint_left:
+            complaint_duration = st.text_input(
+                FIELD_LABELS["complaint_duration"],
+                key=widget_key("complaint_duration"),
+            )
+            complaint_onset = st.text_input(
+                FIELD_LABELS["complaint_onset"],
+                key=widget_key("complaint_onset"),
+            )
+        with complaint_right:
+            complaint_recent = st.text_input(
+                FIELD_LABELS["complaint_recent"],
+                key=widget_key("complaint_recent"),
+            )
+            complaint_previous_hospitalization = st.text_input(
+                FIELD_LABELS["complaint_previous_hospitalization"],
+                key=widget_key("complaint_previous_hospitalization"),
+            )
+
+    with st.container(border=True, key="encode-intake-section-impression"):
+        st.markdown(f"#### {SECTION_TITLES['impression']}")
+        interviewers_initial_impression = st.text_area(
+            FIELD_LABELS["interviewers_initial_impression"],
+            key=widget_key("interviewers_initial_impression"),
+            label_visibility="collapsed",
+        )
+
+    with st.container(
+        border=True,
+        key="encode-intake-section-history-of-illness",
+    ):
+        st.markdown(f"#### {SECTION_TITLES['history_of_illness']}")
+        history_of_illness = st.text_area(
+            FIELD_LABELS["history_of_illness"],
+            key=widget_key("history_of_illness"),
+            label_visibility="collapsed",
+        )
+
+    with st.container(
+        border=True,
+        key="encode-intake-section-mental-status",
+    ):
+        st.markdown(f"#### {SECTION_TITLES['mental_status_examination']}")
+        mse = st.text_area(
+            FIELD_LABELS["mental_status_examination"],
+            key=widget_key("mental_status_examination"),
+            label_visibility="collapsed",
+        )
+
+    with st.container(
+        border=True,
+        key="encode-intake-section-nurses-observation",
+    ):
+        st.markdown(f"#### {SECTION_TITLES['nurses_observation']}")
+        nurses_observation = st.text_area(
+            FIELD_LABELS["nurses_observation"],
+            key=widget_key("nurses_observation"),
+            label_visibility="collapsed",
+        )
+
+    with st.container(border=True, key="encode-intake-section-diagnosis"):
+        st.markdown(f"#### {SECTION_TITLES['diagnosis']}")
+        diagnosis = st.text_area(
+            FIELD_LABELS["diagnosis"],
+            key=widget_key("diagnosis"),
+            label_visibility="collapsed",
+        )
+
+    with st.container(border=True, key="encode-intake-section-treatment"):
+        st.markdown(f"#### {SECTION_TITLES['treatment']}")
+        treatment = st.text_area(
+            FIELD_LABELS["treatment"],
+            key=widget_key("treatment"),
+            label_visibility="collapsed",
+        )
+
+    with st.container(border=True, key="encode-intake-section-medications"):
+        st.markdown(f"#### {SECTION_TITLES['medications']}")
+        edited_med_df = st.data_editor(
+            st.session_state.med_table,
+            num_rows="dynamic",
+            width="stretch",
+            key=widget_key("med_table"),
+            column_config={
+                column: (
+                    st.column_config.DateColumn(
+                        MEDICATION_COLUMN_LABELS[column],
+                        format=DATE_DISPLAY_FORMAT,
+                    )
+                    if column in MEDICATION_COLUMNS[::2]
+                    else st.column_config.TextColumn(
+                        MEDICATION_COLUMN_LABELS[column]
+                    )
+                )
+                for column in MEDICATION_COLUMNS
+            },
+            alt="Patient parenteral medication log",
+        )
 
     st.divider()
     record_added_pending = st.session_state.get("record_added_pending", False)
@@ -590,8 +813,10 @@ def show_encode_page():
         "Save Record",
         type="primary",
         disabled=record_added_pending,
+        key=widget_key("save_record"),
     )
 
+    save_succeeded = False
     if submit_button:
         if not _is_four_digit_value(patient_year) or not _is_four_digit_value(
             patient_sequence
@@ -610,20 +835,35 @@ def show_encode_page():
 
                 raw_payload = {
                     "patient_case_number": patient_case_number,
-                    "referral_noted_by": referral_noted_by, "means_of_referral": means_of_referral,
-                    "interview_date": str(interview_date) if interview_date else None, "interview_place": interview_place,
-                    "interview_persons_present": interview_persons_present, "primary_source_of_information": primary_source_info,
+                    "referral_noted_by": referral_noted_by,
+                    "referring_person_or_instance": referring_person_or_instance,
+                    "date_of_referral": (
+                        date_of_referral.isoformat() if date_of_referral else None
+                    ),
+                    "means_of_referral": means_of_referral,
+                    "referral_request": referral_request,
+                    "agreements_made_for_further_interviewing": (
+                        agreements_made_for_further_interviewing
+                    ),
+                    "interview_date": (
+                        interview_date.isoformat() if interview_date else None
+                    ),
+                    "interview_place": interview_place,
+                    "interview_persons_present": interview_persons_present,
+                    "primary_source_of_information": primary_source_info,
                     "last_name": last_name, "first_name": first_name, "middle_name": middle_name, "extension_name": ext_name,
                     "calculated_age": calculated_age if calculated_age is not None else 0,
                     "street_address": street_address,
                     "purok": purok, "barangay": barangay,
-                    "city_municipality": city_municipality, "province": province, "date_of_birth": str(dob) if dob else None,
+                    "city_municipality": city_municipality, "province": province,
+                    "date_of_birth": dob.isoformat() if dob else None,
                     "sex": sex, "civil_status": civil_status, "religion": religion, "educational_attainment": educational,
                     "status": status, "work_experience": work_experience, "guardian_last_name": g_last_name,
                     "guardian_first_name": g_first_name, "guardian_middle_name": g_middle_name, "guardian_street_address": g_street,
                     "g_barangay": g_barangay, "g_city": g_city, "g_province": g_province,
                     "guardian_contact_person": g_contact_person, "g_contact_number": g_contact_number,
                     "family_composition": family_text_summary,
+                    "household_member_count": household_member_count,
                     "total_annual_income": (
                         float(annual_income) if annual_income is not None else 0.0
                     ),
@@ -646,6 +886,7 @@ def show_encode_page():
                 cleaned_payload = {k: v for k, v in raw_payload.items() if v != ""}
 
                 try:
+                    new_patient_id = patient_case_number
                     _save_patient_record(
                         cleaned_payload,
                         first_name,
@@ -654,13 +895,17 @@ def show_encode_page():
                 except ValueError as e:
                     st.error(f"⚠️ Validation Error: {str(e)}")
                 else:
-                    st.session_state["record_added_pending"] = True
-                    st.session_state["record_added_case_number"] = (
-                        patient_case_number
+                    st.session_state.pop("show_encode_dialog", None)
+                    st.session_state["encode_success_toast"] = (
+                        f"Patient record {new_patient_id} saved."
                     )
-                    st.rerun()
+                    _reset_encode_form(scroll_to_top=False)
+                    save_succeeded = True
             except Exception as e:
                 st.error(f"❌ Storage Execution Error: {str(e)}")
+
+    if save_succeeded:
+        st.rerun()
 
     if st.session_state.get("record_added_pending"):
         case_number = st.session_state.pop("record_added_case_number", None)

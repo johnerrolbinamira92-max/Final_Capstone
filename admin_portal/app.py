@@ -8,7 +8,6 @@ from pathlib import Path
 import streamlit as st
 from database import (
     SUPABASE_KEY,
-    SUPABASE_URL,
     authenticate_admin,
     authenticate_local_admin,
     cache_local_admin_user,
@@ -25,6 +24,7 @@ from views.home_dashboard import show_home_dashboard_page
 from views.notifications import (
     _load_notification_read_ids,
     _load_notifications,
+    _load_notification_snapshot,
     _mark_notifications_read,
     render_notification_alerts,
     show_notifications_page,
@@ -83,6 +83,33 @@ st.markdown(
         --hfrc-muted: #4f6965;
         --hfrc-teal: #006d65;
         --hfrc-teal-bright: #00a394;
+    }
+
+    html,
+    body,
+    [data-testid="stApp"],
+    [data-testid="stAppViewContainer"] {
+        max-width: 100vw !important;
+        width: 100vw !important;
+        overflow-x: clip !important;
+        overscroll-behavior: none !important;
+        overscroll-behavior-x: none !important;
+        overscroll-behavior-y: none !important;
+        touch-action: pan-y !important;
+    }
+
+    [data-testid="stMain"],
+    [data-testid="stMainBlockContainer"],
+    .block-container,
+    [data-testid="stHorizontalBlock"] {
+        overscroll-behavior: none !important;
+        max-width: 100% !important;
+        overflow-x: clip !important;
+        box-sizing: border-box !important;
+    }
+
+    [data-testid="column"] {
+        min-width: 0 !important;
     }
 
     [data-testid="stAppViewContainer"] {
@@ -455,31 +482,60 @@ st.markdown(
     }
 
     [data-testid="stSidebar"] {
+        position: relative;
+        height: 100vh !important;
+        max-height: 100vh !important;
+        overflow: hidden !important;
+        overflow-y: hidden !important;
         background: var(--hfrc-page-deep);
         border-right: 1px solid var(--hfrc-line);
     }
 
     [data-testid="stSidebar"] > div:first-child {
         display: flex;
+        height: 100vh !important;
+        max-height: 100vh !important;
+        overflow: hidden !important;
+        overflow-y: hidden !important;
         flex-direction: column;
-        min-height: 100vh;
+        min-height: 0;
+    }
+
+    [data-testid="stSidebarHeader"] {
+        position: absolute;
+        z-index: 1000;
+        top: 0;
+        right: 0;
+        left: 0;
+        display: flex;
+        min-height: 3rem;
+        align-items: center;
+        justify-content: flex-end;
+        background: transparent;
     }
 
     [data-testid="stSidebarContent"] {
         display: flex;
         flex: 1;
+        height: 100vh !important;
+        max-height: 100vh !important;
+        overflow: hidden !important;
+        overflow-y: hidden !important;
+        box-sizing: border-box;
         flex-direction: column;
         min-height: 0;
     }
 
     [data-testid="stSidebarUserContent"] {
-        display: flex;
+        display: flex !important;
         flex: 1;
-        flex-direction: column;
-        justify-content: center;
-        min-height: 100vh;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        height: calc(100vh - 56px) !important;
+        margin-top: 56px;
+        min-height: 0;
         box-sizing: border-box;
-        padding: 36px 0 24px;
+        padding: 0;
     }
 
     .st-key-hfrc-sidebar-layout,
@@ -487,9 +543,9 @@ st.markdown(
         display: flex;
         flex: 1;
         flex-direction: column;
-        justify-content: center;
-        min-height: calc(100vh - 48px);
-        gap: 14px;
+        justify-content: flex-start;
+        min-height: 0;
+        gap: 8px;
     }
 
     .st-key-hfrc-sidebar-navigation,
@@ -497,63 +553,85 @@ st.markdown(
         display: flex;
         flex-direction: column;
         justify-content: flex-start;
+        gap: 4px;
+    }
+
+    .st-key-hfrc-sidebar-navigation {
+        margin-top: auto !important;
+        margin-bottom: auto !important;
+        border-top: 1px solid rgba(255, 255, 255, 0.14);
+        padding-top: 12px;
     }
 
     .st-key-hfrc-sidebar-logout {
-        margin-top: 12px;
+        margin-top: auto !important;
+        padding-bottom: 16px;
+    }
+
+    .st-key-hfrc-sidebar-status {
+        position: static !important;
+        margin-top: 0 !important;
+        margin-bottom: 10px !important;
     }
 
     .hfrc-sidebar-brand {
+        position: absolute;
+        z-index: 1;
+        top: 0;
+        right: 3.5rem;
+        left: 1rem;
         display: flex;
         align-items: center;
-        gap: .8rem;
-        margin: 18px 0 24px;
-        padding: .25rem .2rem .9rem;
-        border-bottom: 1px solid rgba(220, 244, 238, .16);
+        gap: 10px;
+        min-height: 3rem;
+        margin: 0;
+        padding: 0;
         color: #ffffff;
-        font-size: .9rem;
-        font-weight: 650;
-        line-height: 1.3;
+        font-size: .95rem;
+        font-weight: 700;
+        line-height: 1.15;
+        pointer-events: none;
     }
 
     .hfrc-sidebar-brand-mark {
         display: grid;
-        width: 3.75rem;
-        height: 3.75rem;
-        flex: 0 0 3.75rem;
+        box-sizing: border-box;
+        width: 40px;
+        height: 40px;
+        flex: 0 0 40px;
         place-items: center;
         border: 1px solid rgba(255,255,255,.55);
-        border-radius: .55rem;
+        border-radius: 8px;
         background: #d7d2a4;
         color: #064c46;
-        font-size: 1.25rem;
+        font-size: .9rem;
     }
 
     img.hfrc-sidebar-brand-mark {
-        padding: .2rem;
+        padding: .1rem;
         object-fit: contain;
     }
 
     .hfrc-sidebar-brand strong {
-        font-size: 1.05rem;
-        font-weight: 700;
+        font-size: .85rem;
+        font-weight: 600;
     }
 
     .hfrc-sidebar-brand small {
         display: block;
-        margin-top: .12rem;
+        margin-top: .08rem;
         color: #a9d0c8;
         font-size: .75rem;
         font-weight: 400;
     }
 
-    body:not(:has(.st-key-admin-login-page)) [data-testid="stSidebarCollapseButton"],
-    body:not(:has(.st-key-admin-login-page)) [data-testid="collapsedControl"] {
+    [data-testid="stSidebarCollapseButton"],
+    [data-testid="collapsedControl"] {
         display: flex !important;
         visibility: visible !important;
         opacity: 1 !important;
         pointer-events: auto !important;
-        z-index: 1001 !important;
+        z-index: 999 !important;
     }
 
     [data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
@@ -568,22 +646,38 @@ st.markdown(
 
     .st-key-hfrc-sidebar-navigation [data-testid="stPageLink"] {
         margin: 0;
-        padding: 0 0 .12rem;
-        border-bottom: 1px solid rgba(220, 244, 238, .16);
+        padding: 4px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
     }
 
     .st-key-hfrc-sidebar-navigation [data-testid="stPageLink"] a {
-        min-height: 2.25rem;
-        padding: .45rem .4rem;
-        border-radius: .35rem;
+        display: flex;
+        min-height: 2.5rem;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 12px;
+        border-radius: 8px;
         color: #d7ebe7;
-        font-size: .74rem;
+        font-size: .95rem;
+        font-weight: 500;
+    }
+
+    .st-key-hfrc-sidebar-navigation [data-testid="stPageLink"] a svg {
+        width: 17px;
+        height: 17px;
+        flex: 0 0 17px;
+    }
+
+    .st-key-hfrc-sidebar-navigation [data-testid="stPageLink"] a:hover {
+        background: rgba(0, 163, 148, .22);
+        color: #ffffff;
     }
 
     .st-key-hfrc-sidebar-navigation [data-testid="stPageLink"] a[aria-current="page"] {
         border-left: 3px solid #f2a477;
         background: #006d65;
         color: #ffffff;
+        font-weight: 500;
     }
 
     [data-testid="stSidebar"] button[kind="secondary"] {
@@ -790,8 +884,9 @@ st.markdown(
     }
 
     .st-key-overview-toolbar [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child {
-        flex: 0 0 2.5rem !important;
-        width: 2.5rem !important;
+        flex: 0 0 4.5rem !important;
+        width: 4.5rem !important;
+        overflow: visible !important;
     }
 
     .st-key-overview-toolbar [data-testid="stTextInput"],
@@ -825,6 +920,181 @@ st.markdown(
         opacity: 1;
     }
 
+    .st-key-overview-toolbar [data-testid="stHorizontalBlock"],
+    .st-key-overview-toolbar [data-testid="stColumn"]:nth-child(2),
+    .st-key-home-quick-search {
+        overflow: visible !important;
+    }
+
+    .st-key-home-quick-search {
+        position: relative;
+        z-index: 100;
+    }
+
+    .st-key-home-quick-search [data-testid="stForm"] [data-testid="InputInstructions"] {
+        display: none !important;
+    }
+
+    .st-key-home-quick-search [data-testid="stTextInput"] button {
+        display: none !important;
+    }
+
+    .st-key-home-quick-search-results {
+        position: absolute !important;
+        top: calc(100% + 6px);
+        left: auto;
+        right: 0;
+        z-index: 1000;
+        width: 495px !important;
+        max-width: 495px !important;
+        min-width: 420px !important;
+        max-height: 240px !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        box-sizing: border-box;
+        padding: 8px 10px !important;
+        border-radius: 10px !important;
+        background: #0f2926;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+        color: #e6f4f1;
+    }
+
+    .st-key-home-quick-search-results [data-testid="stVerticalBlock"] {
+        gap: 0 !important;
+    }
+
+    .st-key-home-quick-search-results .st-key-patient-results-table [data-testid="stVerticalBlockBorderWrapper"] {
+        border: none !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+    }
+
+    .st-key-home-quick-search-results [data-testid="stMarkdownContainer"],
+    .st-key-home-quick-search-results [data-testid="stCaptionContainer"] {
+        color: #e6f4f1 !important;
+    }
+
+    .st-key-home-quick-search-close-row [data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        justify-content: flex-end !important;
+        margin-bottom: 2px !important;
+        padding-top: 2px !important;
+    }
+
+    .st-key-home-quick-search-close-row [data-testid="stButton"] button {
+        width: 24px !important;
+        height: 24px !important;
+        min-height: 24px !important;
+        font-size: 0.75rem !important;
+        padding: 0 !important;
+        margin-bottom: 0 !important;
+        border-radius: 7px;
+    }
+
+    .st-key-home-quick-search-results .st-key-patient-results-table-header {
+        min-height: 28px !important;
+        padding: 5px 6px !important;
+    }
+
+    .st-key-home-quick-search-results .st-key-patient-results-table-header .patient-results-table-header-label {
+        min-height: 20px !important;
+        font-size: 0.74rem !important;
+        white-space: nowrap;
+    }
+
+    .st-key-home-quick-search-results .st-key-patient-results-table-header strong {
+        font-size: 0.74rem !important;
+    }
+
+    .st-key-home-quick-search-results [class*="st-key-patient-result-row-"] {
+        padding: 5px 6px !important;
+    }
+
+    .st-key-home-quick-search-results .st-key-patient-results-table [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] + [data-testid="stColumn"] {
+        padding-left: 6px !important;
+    }
+
+    .st-key-home-quick-search-results [class*="st-key-patient-result-row-"] [data-testid="stColumn"]:nth-child(-n+4) [data-testid="stMarkdownContainer"],
+    .st-key-home-quick-search-results [class*="st-key-patient-result-row-"] [data-testid="stColumn"]:nth-child(-n+4) [data-testid="stMarkdownContainer"] p {
+        font-size: 0.78rem !important;
+        font-weight: 500 !important;
+        color: #e2e8f0 !important;
+        line-height: 1.2 !important;
+    }
+
+    .st-key-home-quick-search-results .st-key-patient-results-table-header [data-testid="stColumn"] {
+        white-space: nowrap !important;
+    }
+
+    .st-key-home-quick-search-results .st-key-patient-results-table-header [data-testid="stHorizontalBlock"],
+    .st-key-home-quick-search-results [class*="st-key-patient-result-row-"] [data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important;
+        gap: 6px !important;
+    }
+
+    .st-key-home-quick-search-results .st-key-patient-results-table-header [data-testid="stColumn"],
+    .st-key-home-quick-search-results [class*="st-key-patient-result-row-"] [data-testid="stColumn"] {
+        box-sizing: border-box !important;
+    }
+
+    .st-key-home-quick-search-results .st-key-patient-results-table-header [data-testid="stColumn"]:nth-child(1),
+    .st-key-home-quick-search-results [class*="st-key-patient-result-row-"] [data-testid="stColumn"]:nth-child(1) {
+        flex: 0 0 112px !important;
+        width: 112px !important;
+        min-width: 112px !important;
+        max-width: 112px !important;
+    }
+
+    .st-key-home-quick-search-results .st-key-patient-results-table-header [data-testid="stColumn"]:nth-child(2),
+    .st-key-home-quick-search-results [class*="st-key-patient-result-row-"] [data-testid="stColumn"]:nth-child(2) {
+        flex: 1 1 135px !important;
+        min-width: 135px !important;
+        max-width: none !important;
+    }
+
+    .st-key-home-quick-search-results .st-key-patient-results-table-header [data-testid="stColumn"]:nth-child(3),
+    .st-key-home-quick-search-results [class*="st-key-patient-result-row-"] [data-testid="stColumn"]:nth-child(3) {
+        flex: 0 0 54px !important;
+        width: 54px !important;
+        min-width: 54px !important;
+        max-width: 54px !important;
+    }
+
+    .st-key-home-quick-search-results .st-key-patient-results-table-header [data-testid="stColumn"]:nth-child(4),
+    .st-key-home-quick-search-results [class*="st-key-patient-result-row-"] [data-testid="stColumn"]:nth-child(4) {
+        flex: 0 0 36px !important;
+        width: 36px !important;
+        min-width: 36px !important;
+        max-width: 36px !important;
+    }
+
+    .st-key-home-quick-search-results .st-key-patient-results-table-header [data-testid="stColumn"]:nth-child(5),
+    .st-key-home-quick-search-results [class*="st-key-patient-result-row-"] [data-testid="stColumn"]:nth-child(5) {
+        flex: 0 0 72px !important;
+        width: 72px !important;
+        min-width: 72px !important;
+        max-width: 72px !important;
+    }
+
+    .st-key-home-quick-search-results [class*="st-key-patient-result-row-"] [data-testid="stColumn"]:nth-child(-n+4) [data-testid="stMarkdownContainer"],
+    .st-key-home-quick-search-results [class*="st-key-patient-result-row-"] [data-testid="stColumn"]:nth-child(-n+4) [data-testid="stMarkdownContainer"] p {
+        display: block !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+    }
+
+    .st-key-home-quick-search-results .st-key-patient-results-table [data-testid="stButton"] button {
+        min-height: 24px !important;
+        padding: 2px 8px !important;
+        font-size: 0.72rem !important;
+        white-space: nowrap !important;
+    }
+
     .st-key-overview-toolbar [data-testid="stTextInput"] [data-baseweb="input"] > div:not(:has(input)) {
         background: transparent !important;
         color: var(--hfrc-teal) !important;
@@ -835,18 +1105,167 @@ st.markdown(
         fill: currentColor;
     }
 
+    .st-key-overview-notification-control,
     .st-key-overview-notifications {
-        display: grid;
-        min-width: 2.5rem;
-        min-height: 2.5rem;
-        place-items: center;
-        color: var(--hfrc-text);
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: auto;
+        height: 40px;
+        min-width: 0;
+        min-height: 40px;
+        overflow: visible !important;
+        color: #ffffff;
     }
 
-    .st-key-overview-notifications [data-testid="stMarkdownContainer"] {
-        color: var(--hfrc-text);
-        font-size: 1.45rem;
-        line-height: 1;
+    .st-key-overview-notification-control {
+        width: 40px !important;
+        min-width: 40px !important;
+        margin-left: auto !important;
+    }
+
+    .st-key-overview-notification-control .overview-notification-badge {
+        position: absolute !important;
+        top: -4px !important;
+        right: -4px !important;
+        z-index: 20 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        min-width: 18px !important;
+        height: 18px !important;
+        padding: 0 4px !important;
+        border: 2px solid #0b2421 !important;
+        border-radius: 999px !important;
+        background: #ef4444 !important;
+        color: #ffffff !important;
+        box-sizing: border-box !important;
+        font-size: 0.68rem !important;
+        font-weight: 700 !important;
+        line-height: 1 !important;
+        white-space: nowrap !important;
+        pointer-events: none !important;
+    }
+
+    .st-key-overview-notification-control [data-testid="stElementContainer"]:has(.overview-notification-badge) {
+        position: absolute !important;
+        top: 0 !important;
+        right: 0 !important;
+        width: 0 !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        pointer-events: none !important;
+    }
+
+    .st-key-overview-toolbar [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child,
+    .st-key-overview-notification-control,
+    .st-key-overview-notification-control .st-key-overview-notifications,
+    .st-key-overview-notification-control [data-testid="stPopover"],
+    .st-key-overview-notification-control [data-testid="stPopoverButton"],
+    .st-key-overview-notifications[data-testid="stPopover"],
+    .st-key-overview-notifications [data-testid="stPopover"],
+    [data-testid="stPopover"].st-key-overview-notifications,
+    .st-key-overview-notifications [data-testid="stPopoverButton"],
+    [data-testid="stPopoverButton"].st-key-overview-notifications {
+        overflow: visible !important;
+    }
+
+    .st-key-overview-notification-control [data-testid="stPopover"] > div,
+    .st-key-overview-notifications [data-testid="stPopover"] > div,
+    [data-testid="stPopover"].st-key-overview-notifications > div {
+        position: relative !important;
+        overflow: visible !important;
+    }
+
+    .st-key-overview-notification-control [data-testid="stPopover"] > div > [data-testid="stPopoverButton"],
+    .st-key-overview-notifications [data-testid="stPopover"] > div > [data-testid="stPopoverButton"],
+    [data-testid="stPopover"].st-key-overview-notifications > div > [data-testid="stPopoverButton"] {
+        position: relative !important;
+        overflow: visible !important;
+    }
+
+    .st-key-overview-notification-control [data-testid="stPopoverButton"],
+    .st-key-overview-notifications [data-testid="stPopoverButton"],
+    [data-testid="stPopoverButton"].st-key-overview-notifications {
+        width: 40px !important;
+        height: 40px !important;
+        padding: 0 !important;
+        position: relative !important;
+        overflow: visible !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 0 !important;
+        border-radius: 10px !important;
+        background: #122c29 !important;
+        border: 1px solid rgba(255, 255, 255, 0.14) !important;
+        color: #ffffff !important;
+        box-shadow: none !important;
+        box-sizing: border-box !important;
+        font-size: 1.25rem !important;
+    }
+
+    .st-key-overview-notification-control [data-testid="stPopoverButton"]:focus,
+    .st-key-overview-notification-control [data-testid="stPopoverButton"]:focus-visible,
+    .st-key-overview-notification-control [data-testid="stPopoverButton"]:active,
+    .st-key-overview-notifications [data-testid="stPopoverButton"]:focus,
+    .st-key-overview-notifications [data-testid="stPopoverButton"]:focus-visible,
+    .st-key-overview-notifications [data-testid="stPopoverButton"]:active,
+    [data-testid="stPopoverButton"].st-key-overview-notifications:focus,
+    [data-testid="stPopoverButton"].st-key-overview-notifications:focus-visible,
+    [data-testid="stPopoverButton"].st-key-overview-notifications:active {
+        outline: none !important;
+        box-shadow: none !important;
+    }
+
+    .st-key-overview-notification-control [data-testid="stPopoverButton"] > div > div[aria-hidden="true"],
+    .st-key-overview-notifications [data-testid="stPopoverButton"] > div > div[aria-hidden="true"],
+    [data-testid="stPopoverButton"].st-key-overview-notifications > div > div[aria-hidden="true"] {
+        display: none !important;
+    }
+
+    .st-key-overview-notification-control [data-testid="stPopoverButton"] [data-testid="stIconMaterial"],
+    .st-key-overview-notifications [data-testid="stPopoverButton"] [data-testid="stIconMaterial"] {
+        color: #ffffff !important;
+        font-size: 20px !important;
+    }
+
+    [data-testid="stPopoverBody"]:has(.st-key-overview-callback-popover-content) {
+        border: 1px solid rgba(255, 255, 255, 0.14) !important;
+        background: #0b211e !important;
+    }
+
+    .st-key-overview-callback-popover-content {
+        box-sizing: border-box;
+        width: 340px;
+        max-width: calc(100vw - 2rem);
+        padding: 0 !important;
+        border: none !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        color: #e6f4f1;
+    }
+
+    .st-key-overview-callback-popover-content h4,
+    .st-key-overview-callback-popover-content [data-testid="stMarkdownContainer"],
+    .st-key-overview-callback-popover-content [data-testid="stCaptionContainer"] {
+        color: #e6f4f1 !important;
+    }
+
+    .st-key-overview-callback-popover-content .callback-popover-patient {
+        color: #f5f1e7;
+        font-size: .95rem;
+        font-weight: 700;
+        overflow-wrap: anywhere;
+    }
+
+    .st-key-overview-callback-request-list [class*="st-key-overview-callback-request-"] {
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(151, 190, 181, .18);
     }
 
     .st-key-home-dashboard-content {
@@ -915,28 +1334,46 @@ st.markdown(
         box-shadow: 0 2px 8px rgba(14, 58, 52, .035);
     }
 
-    .st-key-admin-home-page [class*="st-key-home-kpi-"] [data-testid="stVerticalBlockBorderWrapper"] {
+    .st-key-admin-home-page .st-key-home-kpi-row [data-testid="stVerticalBlockBorderWrapper"] {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        text-align: left !important;
+        min-height: 82px !important;
+        padding: 16px 20px !important;
+    }
+
+    .st-key-admin-home-page .st-key-home-kpi-row [data-testid="stVerticalBlockBorderWrapper"] > [data-testid="stVerticalBlock"] {
+        width: 100%;
         display: flex;
         align-items: center;
-        min-height: 108px;
-        padding: 24px 22px;
+        justify-content: flex-start;
     }
 
-    .st-key-admin-home-page [class*="st-key-home-kpi-"] [data-testid="stVerticalBlockBorderWrapper"] > [data-testid="stVerticalBlock"] {
-        width: 100%;
+    .st-key-admin-home-page .st-key-home-kpi-row [data-testid="stMarkdownContainer"]:has(.home-kpi-content) {
+        margin: 0 !important;
+        padding: 0 !important;
     }
 
-    .st-key-admin-home-page [class*="st-key-home-kpi-"] [data-testid="stHorizontalBlock"] {
-        gap: 14px !important;
+    .st-key-admin-home-page .st-key-home-kpi-row [data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important;
+        gap: 10px !important;
+    }
+
+    .st-key-admin-home-page .st-key-home-kpi-row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+        min-width: 0 !important;
     }
 
     .st-key-admin-home-page .home-kpi-icon {
-        display: grid;
-        width: 2.6rem;
-        height: 2.6rem;
-        place-items: center;
+        display: flex;
+        width: 2rem;
+        height: 2rem;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        background: #ffffff !important;
         border-radius: .7rem;
-        font-size: 1.2rem;
+        font-size: 1rem;
     }
 
     .st-key-admin-home-page .home-kpi-icon-teal {
@@ -949,27 +1386,58 @@ st.markdown(
         color: #287e9b;
     }
 
-    .st-key-admin-home-page .home-kpi-icon-coral {
-        background: #fcebe4;
-        color: #df7351;
-    }
-
     .st-key-admin-home-page .home-kpi-icon-purple {
         background: #f0eafa;
         color: #8064a8;
     }
 
+    .st-key-admin-home-page .home-kpi-icon-slate {
+        background: #edf0f2;
+        color: #75828c;
+    }
+
+    .st-key-admin-home-page [data-testid="stMarkdownContainer"]:has(.home-kpi-content) {
+        display: flex;
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .st-key-admin-home-page .home-kpi-content {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+    }
+
+    .st-key-admin-home-page .home-kpi-copy {
+        flex: 1 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 3px;
+        min-width: 0;
+        text-align: center !important;
+    }
+
     .st-key-admin-home-page .home-kpi-value {
         color: #142f2b;
-        font-size: 1.55rem;
-        font-weight: 750;
-        line-height: 1.2;
+        font-size: 1.65rem !important;
+        font-weight: 700 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        line-height: 1.2 !important;
+        white-space: nowrap;
     }
 
     .st-key-admin-home-page .home-kpi-label {
         color: #526b66;
-        font-size: .75rem;
+        font-size: 0.85rem !important;
         font-weight: 600;
+        margin: 0 !important;
+        padding: 0 !important;
+        line-height: 1.2 !important;
+        white-space: nowrap;
     }
 
     .st-key-home-regional-card,
@@ -989,6 +1457,22 @@ st.markdown(
         flex-direction: column;
         height: 100%;
         min-height: 0;
+    }
+
+    .st-key-admin-home-page .st-key-home-appointments-heading-row {
+        margin-top: 8px !important;
+        margin-bottom: 6px !important;
+    }
+
+    .st-key-admin-home-page .st-key-home-appointments-heading-row [data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+    }
+
+    .st-key-admin-home-page .st-key-home-upcoming-names-toggle {
+        margin-top: -10px !important;
+        padding-top: 0 !important;
     }
 
     .st-key-admin-home-page .home-province-row {
@@ -1208,12 +1692,6 @@ st.markdown(
             color: var(--hfrc-muted) !important;
         }
 
-        .st-key-admin-home-page .home-appointment-date {
-            color: #68d5c7 !important;
-            font-size: .78rem;
-            font-weight: 700;
-        }
-
         .st-key-admin-home-page .home-province-row {
             border-bottom-color: var(--hfrc-line);
         }
@@ -1330,10 +1808,11 @@ st.markdown(
 
         .st-key-admin-statistics-page .statistics-status-row {
             display: grid;
-            grid-template-columns: .55rem 1fr auto;
+            grid-template-columns: .5rem minmax(0, 1fr) auto;
             align-items: center;
-            gap: .55rem;
-            margin: .8rem 0;
+            gap: .4rem;
+            margin: .65rem 0;
+            padding-inline: 0;
             color: var(--hfrc-muted);
             font-size: .82rem;
         }
@@ -1423,10 +1902,6 @@ st.markdown(
             color: #ef4444 !important;
         }
 
-        .st-key-admin-calendar-page [class*="st-key-appointment-icon-cancel-"] {
-            margin-left: 8px;
-        }
-
         .st-key-admin-calendar-page [class*="st-key-appointment-confirm-cancel-"] button,
         .st-key-admin-calendar-page [class*="st-key-appointment-keep-"] button,
         .st-key-admin-calendar-page [class*="st-key-appointment-confirm-reschedule-"] button,
@@ -1506,6 +1981,31 @@ st.markdown(
             font-size: clamp(2rem, 3vw, 2.6rem);
             font-weight: 600;
             letter-spacing: -.04em;
+        }
+
+        .st-key-admin-search-page .st-key-record-name-lookup [data-testid="stTextInput"] {
+            position: relative !important;
+        }
+
+        .st-key-admin-search-page .st-key-record-name-lookup [data-testid="stTextInput"]::before {
+            position: absolute;
+            top: 50%;
+            left: 14px;
+            z-index: 2;
+            width: 15px;
+            height: 15px;
+            transform: translateY(-50%);
+            background: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='15'%20height='15'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='rgba(203%2C224%2C220%2C0.55)'%20stroke-width='1.8'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Ccircle%20cx='10.8'%20cy='10.8'%20r='6.6'/%3E%3Cpath%20d='m15.7%2015.7%204.1%204.1'/%3E%3C/svg%3E") center / 15px 15px no-repeat;
+            content: "";
+            pointer-events: none;
+        }
+
+        .st-key-admin-search-page .st-key-record-name-lookup [data-testid="stTextInput"]:has(input:focus)::before {
+            background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='15'%20height='15'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='rgba(226%2C242%2C239%2C0.85)'%20stroke-width='1.8'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Ccircle%20cx='10.8'%20cy='10.8'%20r='6.6'/%3E%3Cpath%20d='m15.7%2015.7%204.1%204.1'/%3E%3C/svg%3E");
+        }
+
+        .st-key-admin-search-page .st-key-record-name-lookup [data-testid="stTextInput"] input {
+            padding-left: 38px !important;
         }
 
         .st-key-patient-case-search-code [data-testid="stHorizontalBlock"] {
@@ -1601,6 +2101,17 @@ st.markdown(
             color: #e6f4f1 !important;
         }
 
+        [class*="intake-section-"] [data-testid="stVerticalBlockBorderWrapper"],
+        [class*="intake-section-"][data-testid="stVerticalBlockBorderWrapper"],
+        .st-key-selected-patient-details [class*="intake-section-"] [data-testid="stVerticalBlockBorderWrapper"],
+        .st-key-selected-patient-details [class*="intake-section-"][data-testid="stVerticalBlockBorderWrapper"] {
+            box-sizing: border-box;
+            border: 1px solid rgba(255, 255, 255, 0.12) !important;
+            border-radius: 12px !important;
+            padding: 18px 20px !important;
+            background: #0f2926 !important;
+        }
+
         .st-key-selected-patient-details .patient-field-label {
             display: block;
             margin-bottom: .35rem;
@@ -1609,7 +2120,7 @@ st.markdown(
             font-weight: 700;
             letter-spacing: .04em;
             line-height: 1.35;
-            text-transform: uppercase;
+            text-transform: none;
         }
 
         .st-key-selected-patient-details .patient-empty-value {
@@ -1648,7 +2159,6 @@ st.markdown(
             color: #e6f4f1 !important;
         }
 
-        .st-key-selected-patient-details [class*="st-key-toggle_patient_edit_"] button,
         .st-key-selected-patient-details [class*="st-key-delete_selected_patient_"] button {
             box-sizing: border-box;
             width: 38px !important;
@@ -1657,6 +2167,112 @@ st.markdown(
             height: 38px !important;
             padding: 0 !important;
             border-radius: 8px !important;
+        }
+
+        .st-key-selected-patient-details [class*="st-key-view-intake-section-header-"] [data-testid="stHorizontalBlock"],
+        .st-key-selected-patient-details [data-testid="stHorizontalBlock"]:has(.view-record-section-title) {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            flex-wrap: nowrap !important;
+            gap: 12px !important;
+            padding-bottom: 10px !important;
+            margin-bottom: 14px !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+        }
+
+        .st-key-selected-patient-details [data-testid="stElementContainer"]:has(.view-record-section-title) {
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
+        }
+
+        .st-key-selected-patient-details .view-record-section-title {
+            color: #e6f4f1 !important;
+            font-size: 1.02rem !important;
+            font-weight: 650 !important;
+            line-height: 1.35 !important;
+        }
+
+        .st-key-selected-patient-details [class*="st-key-view-record-edit-open-"] {
+            flex: 0 0 auto !important;
+            width: auto !important;
+            min-width: 0 !important;
+        }
+
+        .st-key-selected-patient-details [class*="st-key-view-record-edit-open-"] button {
+            min-height: 29px !important;
+            height: 29px !important;
+            padding: 4px 12px !important;
+            border: 1px solid rgba(45, 212, 191, 0.35) !important;
+            border-radius: 999px !important;
+            background: rgba(20, 184, 166, 0.08) !important;
+            color: #99f6e4 !important;
+            font-size: 0.78rem !important;
+            font-weight: 500 !important;
+            line-height: 1 !important;
+            box-shadow: none !important;
+            transition: background 120ms ease, border-color 120ms ease !important;
+        }
+
+        .st-key-selected-patient-details [class*="st-key-view-record-edit-open-"] button * {
+            color: #99f6e4 !important;
+        }
+
+        .st-key-selected-patient-details [class*="st-key-view-record-edit-open-"] button:hover:not(:disabled) {
+            border-color: #2dd4bf !important;
+            background: rgba(20, 184, 166, 0.18) !important;
+            color: #ccfbf1 !important;
+        }
+
+        .st-key-selected-patient-details [class*="st-key-view-intake-section-actions-"] [data-testid="stHorizontalBlock"],
+        .st-key-selected-patient-details [data-testid="stHorizontalBlock"]:has([class*="st-key-view-record-edit-save-"]) {
+            justify-content: flex-end !important;
+            gap: 8px !important;
+            margin-top: 14px !important;
+        }
+
+        .st-key-selected-patient-details [class*="st-key-view-record-edit-cancel-"] button,
+        .st-key-selected-patient-details [class*="st-key-view-record-edit-save-"] button {
+            min-height: 30px !important;
+            height: 30px !important;
+            padding: 4px 14px !important;
+            border-radius: 999px !important;
+            font-size: 0.8rem !important;
+            line-height: 1 !important;
+            box-shadow: none !important;
+        }
+
+        .st-key-selected-patient-details [class*="st-key-view-record-edit-cancel-"] button {
+            border: 1px solid rgba(255, 255, 255, 0.18) !important;
+            background: transparent !important;
+            color: #cbd5e1 !important;
+            font-weight: 500 !important;
+        }
+
+        .st-key-selected-patient-details [class*="st-key-view-record-edit-cancel-"] button * {
+            color: #cbd5e1 !important;
+        }
+
+        .st-key-selected-patient-details [class*="st-key-view-record-edit-cancel-"] button:hover {
+            border-color: rgba(255, 255, 255, 0.32) !important;
+            background: rgba(255, 255, 255, 0.06) !important;
+        }
+
+        .st-key-selected-patient-details [class*="st-key-view-record-edit-save-"] button {
+            border: 1px solid #14b8a6 !important;
+            background: #14b8a6 !important;
+            color: #042f2e !important;
+            font-weight: 600 !important;
+        }
+
+        .st-key-selected-patient-details [class*="st-key-view-record-edit-save-"] button * {
+            color: #042f2e !important;
+        }
+
+        .st-key-selected-patient-details [class*="st-key-view-record-edit-save-"] button:hover {
+            border-color: #2dd4bf !important;
+            background: #2dd4bf !important;
+            color: #042f2e !important;
         }
 
         .st-key-selected-patient-details [class*="st-key-delete_selected_patient_"] [data-testid="stButton"] button,
@@ -1964,7 +2580,7 @@ appointments_page = st.Page(
 
 notifications_page = st.Page(
     lambda: show_notifications_page(appointments_page=appointments_page),
-    title="Notifications",
+    title="Callback Requests",
     icon=":material/notifications:",
     url_path="notifications",
 )
@@ -1976,11 +2592,14 @@ audit_page = st.Page(
 )
 
 
-notification_unread_count = 0
-notification_ids = set()
 notification_read_ids = set()
+notification_items = []
 notification_load_errors = []
 notification_read_state_error = None
+notification_data_available = False
+notification_data_error = None
+notification_snapshot_synced_at = None
+notification_feed_is_cached = False
 supabase_connection_online = is_supabase_connection_available()
 if supabase_connection_online and SUPABASE_KEY:
     notification_client = get_supabase_client()
@@ -1995,16 +2614,57 @@ if supabase_connection_online and SUPABASE_KEY:
             supabase_connection_online = False
             is_supabase_connection_available.clear()
             notification_load_errors = []
-        notification_ids = {item["id"] for item in notification_items}
-        try:
-            notification_read_ids = _load_notification_read_ids()
-        except Exception as error:
-            notification_read_state_error = error
-            notification_unread_count = len(notification_ids)
+            notification_items = []
         else:
-            notification_unread_count = len(
-                notification_ids - notification_read_ids
+            notification_data_available = not any(
+                source == "patient help requests"
+                for source, _ in notification_load_errors
             )
+
+if not notification_data_available:
+    try:
+        notification_snapshot = _load_notification_snapshot()
+    except (sqlite3.Error, ValueError) as error:
+        notification_data_error = error
+    else:
+        if notification_snapshot is not None:
+            notification_items, notification_snapshot_synced_at = (
+                notification_snapshot
+            )
+            notification_data_available = True
+            notification_feed_is_cached = True
+
+try:
+    notification_read_ids = _load_notification_read_ids()
+except Exception as error:
+    notification_read_state_error = error
+
+callback_requests_error = None
+unread_callback_requests = None
+if notification_read_state_error is not None:
+    callback_requests_error = "Unable to load saved notification read status."
+elif not notification_data_available:
+    if notification_data_error is not None:
+        callback_requests_error = (
+            f"Unable to load callback requests: {notification_data_error}"
+        )
+    elif any(
+        source == "patient help requests"
+        for source, _ in notification_load_errors
+    ):
+        callback_requests_error = "Unable to load callback requests."
+    else:
+        callback_requests_error = (
+            "Callback requests are unavailable while offline."
+        )
+else:
+    unread_callback_requests = [
+        item
+        for item in notification_items
+        if item.get("kind") == "help_request"
+        and item.get("status") == "Pending"
+        and item["id"] not in notification_read_ids
+    ]
 
 
 @st.fragment(run_every="15s")
@@ -2023,6 +2683,10 @@ def show_overview_page():
         appointments_page=appointments_page,
         search_page=search_page,
         notifications_page=notifications_page,
+        unread_callback_requests=unread_callback_requests,
+        callback_requests_error=callback_requests_error,
+        callback_requests_cached_at=notification_snapshot_synced_at,
+        mark_notifications_read=_mark_notifications_read,
     )
 
 
@@ -2046,23 +2710,6 @@ pg = st.navigation(
     position="hidden",
 )
 
-notification_mark_read_error = None
-is_notifications_page = pg == notifications_page
-if is_notifications_page:
-    if not st.session_state.get("notifications_page_active", False):
-        unread_notification_ids = notification_ids - notification_read_ids
-        if unread_notification_ids:
-            try:
-                _mark_notifications_read(unread_notification_ids)
-            except Exception as error:
-                notification_mark_read_error = error
-            else:
-                notification_read_ids.update(unread_notification_ids)
-                notification_unread_count = 0
-    st.session_state["notifications_page_active"] = True
-else:
-    st.session_state["notifications_page_active"] = False
-
 with st.sidebar:
     with st.container(key="hfrc-sidebar-layout"):
         with st.container(key="hfrc-sidebar-header"):
@@ -2077,6 +2724,11 @@ with st.sidebar:
                 """,
                 unsafe_allow_html=True,
             )
+        st.markdown(
+            '<div style="height: 155px;"></div>',
+            unsafe_allow_html=True,
+        )
+        with st.container(key="hfrc-sidebar-status"):
             render_offline_status_badge()
         with st.container(key="hfrc-sidebar-navigation"):
             for page, label, icon in (
@@ -2086,18 +2738,23 @@ with st.sidebar:
                 (appointments_page, "Appointments", ":material/calendar_month:"),
                 (
                     notifications_page,
-                    "Notification",
+                    "Callback Requests",
                     ":material/notifications:",
                 ),
                 (audit_page, "Activity History", ":material/history:"),
             ):
-                if page is notifications_page:
-                    with st.container(key="hfrc-sidebar-notification-link"):
-                        st.page_link(page, label=label, icon=icon, width="stretch")
-                else:
-                    st.page_link(page, label=label, icon=icon, width="stretch")
-            if supabase_connection_online and SUPABASE_URL and SUPABASE_KEY:
-                render_notification_alerts()
+                st.page_link(page, label=label, icon=icon, width="stretch")
+            render_notification_alerts(
+                cached_items=(
+                    notification_items if notification_feed_is_cached else None
+                ),
+                cached_read_ids=(
+                    notification_read_ids
+                    if notification_feed_is_cached
+                    and notification_read_state_error is None
+                    else None
+                ),
+            )
             for source, error in notification_load_errors:
                 st.warning(
                     f"Unread notifications could not be checked for {source}."
@@ -2108,11 +2765,10 @@ with st.sidebar:
                 st.error("Unable to load saved notification read status.")
                 with st.expander("Notification read status details"):
                     st.code(str(notification_read_state_error))
-            if notification_mark_read_error is not None:
-                st.error("Unable to mark notifications as read.")
-                with st.expander("Notification read status details"):
-                    st.code(str(notification_mark_read_error))
-
+        st.markdown(
+            '<div style="height: 85px;"></div>',
+            unsafe_allow_html=True,
+        )
         if st.button("Log out", key="hfrc-sidebar-logout"):
             st.session_state["admin_authenticated"] = False
             st.session_state.pop("admin_auth_mode", None)

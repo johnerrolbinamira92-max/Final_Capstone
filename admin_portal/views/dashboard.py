@@ -36,8 +36,8 @@ AGE_GROUPS = (
     "50+",
     "Unspecified",
 )
-GENDER_GROUPS = ("Male", "Female", "Other / Unspecified")
-GENDER_COLORS = ("#43c4b5", "#e97954", "#91aba5")
+GENDER_GROUPS = ("Male", "Female", "Others")
+GENDER_COLORS = ("#14b8a6", "#f97316", "#8b5cf6")
 STATISTICS_ANALYTICS_STYLES = """
 <style>
 .st-key-admin-statistics-page .st-key-statistics-age-summary [data-testid="stMetric"],
@@ -104,6 +104,17 @@ STATISTICS_ANALYTICS_STYLES = """
 .st-key-admin-statistics-page .statistics-analytics-table td:last-child {
     color: #f5f1e7;
     font-weight: 700;
+}
+.st-key-admin-statistics-page .statistics-category-label {
+    display: inline-flex;
+    align-items: center;
+    gap: .55rem;
+}
+.st-key-admin-statistics-page .statistics-analytics-legend-dot {
+    width: .55rem;
+    height: .55rem;
+    flex: 0 0 .55rem;
+    border-radius: 50%;
 }
 .st-key-admin-statistics-page .statistics-analytics-table tr:last-child td {
     border-bottom: 0;
@@ -192,7 +203,7 @@ def _age_group_counts(data):
 def _gender_counts(data):
     values = data["sex"].fillna("").astype(str).str.strip().str.casefold()
     groups = values.map({"male": "Male", "female": "Female"}).fillna(
-        "Other / Unspecified"
+        "Others"
     )
     return groups.value_counts().reindex(GENDER_GROUPS, fill_value=0)
 
@@ -203,18 +214,29 @@ def _render_analytics_table(
     count_column="Patient Count",
     count_label="Patient Count",
     table_label=None,
+    category_colors=None,
 ):
     table_label = table_label or f"{category_label} patient counts"
-    rows = "".join(
-        "<tr>"
-        f"<td>{escape(str(category))}</td>"
-        f"<td>{int(count):,}</td>"
-        "</tr>"
-        for category, count in zip(
-            data[category_label],
-            data[count_column],
+    rows = []
+    for category, count in zip(data[category_label], data[count_column]):
+        category_text = escape(str(category))
+        category_color = (
+            category_colors.get(category) if category_colors else None
         )
-    )
+        if category_color:
+            category_text = (
+                '<span class="statistics-category-label">'
+                '<span class="statistics-analytics-legend-dot" '
+                f'style="background:{escape(category_color)}" '
+                'aria-hidden="true"></span>'
+                f"{category_text}</span>"
+            )
+        rows.append(
+            "<tr>"
+            f"<td>{category_text}</td>"
+            f"<td>{int(count):,}</td>"
+            "</tr>"
+        )
     st.html(
         f'<table class="statistics-analytics-table" '
         f'aria-label="{escape(table_label)}">'
@@ -222,7 +244,7 @@ def _render_analytics_table(
         f"<th>{escape(category_label)}</th>"
         f"<th>{escape(count_label)}</th>"
         "</tr></thead>"
-        f"<tbody>{rows}</tbody></table>",
+        f"<tbody>{''.join(rows)}</tbody></table>",
         width="stretch",
     )
 
@@ -474,14 +496,14 @@ def _render_status_distribution(data):
             if count > 0
         ]
     )
-    chart_column, legend_column = st.columns([1.2, 1])
+    chart_column, legend_column = st.columns([1.25, 1], gap="small")
     with chart_column:
         if chart_data.empty:
             st.info("There are no patient records for this status distribution.")
         else:
             donut = (
                 alt.Chart(chart_data)
-                .mark_arc(innerRadius=65, outerRadius=108)
+                .mark_arc(innerRadius=52, outerRadius=78)
                 .encode(
                     theta=alt.Theta("Patients:Q", stack=True),
                     color=alt.Color(
@@ -497,7 +519,6 @@ def _render_status_distribution(data):
                         alt.Tooltip("Patients:Q", title="Patients", format=","),
                     ],
                 )
-                .properties(height=260)
             )
             total = (
                 alt.Chart(pd.DataFrame({"value": [len(data)]}))
@@ -519,8 +540,14 @@ def _render_status_distribution(data):
                 )
                 .encode(text="label:N")
             )
+            status_chart = (donut + total + label).properties(
+                width=170,
+                height=170,
+                padding={"left": 8, "right": 8, "top": 8, "bottom": 8},
+                background="#182523",
+            )
             st.altair_chart(
-                (donut + total + label).properties(background="#182523"),
+                status_chart,
                 width="stretch",
                 theme=None,
                 alt="Patient status distribution",
@@ -913,13 +940,13 @@ def show_dashboard_page():
                 unsafe_allow_html=True,
             )
 
-        geographical_tab, age_tab, gender_tab, engagement_tab = st.tabs(
-            ["Geographical", "Age", "Gender", "Portal Engagement"],
+        overview_tab, age_tab, gender_tab, engagement_tab = st.tabs(
+            ["Overview", "Age", "Gender", "Portal Engagement"],
             key="patient_statistics_sections",
             on_change="rerun",
         )
         show_location_filters = (
-            geographical_tab.open or age_tab.open or gender_tab.open
+            overview_tab.open or age_tab.open or gender_tab.open
         )
 
         for column in ("province", "city_municipality", "barangay", "purok"):
@@ -956,7 +983,7 @@ def show_dashboard_page():
         if show_location_filters:
             active_location_tab = next(
                 tab
-                for tab in (geographical_tab, age_tab, gender_tab)
+                for tab in (overview_tab, age_tab, gender_tab)
                 if tab.open
             )
             with active_location_tab:
@@ -1042,7 +1069,7 @@ def show_dashboard_page():
             selected_data = barangay_data
             location_label = barangay
 
-        with geographical_tab:
+        with overview_tab:
             with st.container(horizontal=True, key="statistics-kpis"):
                 st.metric(
                     f"Total Patients · {location_label}",
@@ -1194,22 +1221,34 @@ def show_dashboard_page():
 
         with gender_tab:
             gender_counts = _gender_counts(selected_data)
-            with st.container(horizontal=True, key="statistics-gender-summary"):
-                st.metric(
-                    "Total Filtered Patients",
-                    f"{len(selected_data):,}",
-                    border=True,
+            with st.container(key="statistics-gender-summary"):
+                total_column, male_column, female_column, others_column = (
+                    st.columns(4)
                 )
-                st.metric(
-                    "Male Patients",
-                    f"{int(gender_counts['Male']):,}",
-                    border=True,
-                )
-                st.metric(
-                    "Female Patients",
-                    f"{int(gender_counts['Female']):,}",
-                    border=True,
-                )
+                with total_column:
+                    st.metric(
+                        "Total Filtered Patients",
+                        f"{len(selected_data):,}",
+                        border=True,
+                    )
+                with male_column:
+                    st.metric(
+                        "Male Patients",
+                        f"{int(gender_counts['Male']):,}",
+                        border=True,
+                    )
+                with female_column:
+                    st.metric(
+                        "Female Patients",
+                        f"{int(gender_counts['Female']):,}",
+                        border=True,
+                    )
+                with others_column:
+                    st.metric(
+                        "Others",
+                        f"{int(gender_counts['Others']):,}",
+                        border=True,
+                    )
 
             with st.container(
                 border=True,
@@ -1233,7 +1272,11 @@ def show_dashboard_page():
                             ],
                         }
                     )
-                    _render_analytics_table(gender_table, "Gender")
+                    _render_analytics_table(
+                        gender_table,
+                        "Gender",
+                        category_colors=dict(zip(GENDER_GROUPS, GENDER_COLORS)),
+                    )
 
         with engagement_tab:
             if engagement_tab.open:

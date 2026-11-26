@@ -996,50 +996,57 @@ def _render_selected_day(appointments, selected_date, client):
                 border=True,
                 key=f"appointment-selected-entry-{row_key}",
             ):
-                name_column, reschedule_column, cancel_column = st.columns(
-                    [5, 0.65, 0.65],
+                patient_column, actions_column = st.columns(
+                    [1, 1],
                     vertical_alignment="center",
                     gap="small",
                 )
-                with name_column:
+                with patient_column:
                     st.markdown(
                         '<div class="appointment-detail-label">Patient</div>'
                         f'<div class="appointment-selected-name">'
                         f"{escape(patient_name)}</div>",
                         unsafe_allow_html=True,
                     )
-                with reschedule_column:
-                    if st.button(
-                        "",
-                        key=f"appointment-icon-reschedule-{row_key}",
-                        icon=":material/calendar_month:",
-                        help=(
-                            "Reschedule appointment"
-                            if client is not None
-                            else "Reschedule appointment is unavailable in offline snapshot mode."
-                        ),
-                        disabled=client is None,
-                        width="content",
+                with actions_column:
+                    with st.container(
+                        horizontal=True,
+                        wrap=False,
+                        vertical_alignment="center",
+                        horizontal_alignment="left",
+                        gap="xsmall",
+                        key=f"appointment-card-actions-{row_key}",
                     ):
-                        st.session_state[reschedule_key] = True
-                        st.session_state.pop(cancel_key, None)
-                        st.rerun()
-                with cancel_column:
-                    if st.button(
-                        "",
-                        key=f"appointment-icon-cancel-{row_key}",
-                        icon=":material/close:",
-                        help=(
-                            "Cancel appointment"
-                            if client is not None
-                            else "Cancel appointment is unavailable in offline snapshot mode."
-                        ),
-                        disabled=client is None,
-                        width="content",
-                    ):
-                        st.session_state[cancel_key] = True
-                        st.session_state.pop(reschedule_key, None)
-                        st.rerun()
+                        if st.button(
+                            "",
+                            key=f"appointment-icon-reschedule-{row_key}",
+                            icon=":material/calendar_month:",
+                            help=(
+                                "Reschedule appointment"
+                                if client is not None
+                                else "Reschedule appointment is unavailable in offline snapshot mode."
+                            ),
+                            disabled=client is None,
+                            width="content",
+                        ):
+                            st.session_state[reschedule_key] = True
+                            st.session_state.pop(cancel_key, None)
+                            st.rerun()
+                        if st.button(
+                            "",
+                            key=f"appointment-icon-cancel-{row_key}",
+                            icon=":material/close:",
+                            help=(
+                                "Cancel appointment"
+                                if client is not None
+                                else "Cancel appointment is unavailable in offline snapshot mode."
+                            ),
+                            disabled=client is None,
+                            width="content",
+                        ):
+                            st.session_state[cancel_key] = True
+                            st.session_state.pop(reschedule_key, None)
+                            st.rerun()
 
                 st.markdown(
                     f'<div class="appointment-metadata-grid">'
@@ -1874,34 +1881,11 @@ def show_appointments_page():
             '<div class="calendar-eyebrow">Appointment Management</div>',
             unsafe_allow_html=True,
         )
-        title_column, action_column = st.columns(
-            [3, 1], vertical_alignment="center"
+        st.markdown("# Calendar")
+        st.write(
+            "Plan and manage patient appointments. Dates and times use "
+            "Philippine local time."
         )
-        with title_column:
-            st.markdown("# Calendar")
-            st.write(
-                "Plan and manage patient appointments. Dates and times use "
-                "Philippine local time."
-            )
-        with action_column:
-            if st.button(
-                "Refresh data",
-                icon=":material/refresh:",
-                width="stretch",
-                key="appointment_refresh_data",
-            ):
-                is_supabase_connection_available.clear()
-                st.rerun()
-
-            if st.button(
-                "Set an Appointment",
-                type="primary",
-                icon=":material/add:",
-                width="stretch",
-                key="appointment_jump_to_form",
-            ):
-                st.query_params["focus"] = "schedule"
-                st.rerun()
 
         client = None
         if SUPABASE_KEY and is_supabase_connection_available():

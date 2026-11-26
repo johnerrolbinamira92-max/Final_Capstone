@@ -7,14 +7,21 @@ import pandas as pd
 import streamlit as st
 
 from database import get_local_connection, get_supabase_client
+from views.encode import _open_encode_dialog, show_encode_dialog
 from views.appointments import (
     CALENDAR_STATUSES,
     _appointment_summary_counts,
-    _calendar_appointment_status_label,
     _format_time,
     _load_appointments,
     _load_calendar_appointments,
 )
+from views.manage import (
+    _patient_full_name,
+    _render_patient_results_table,
+    show_patient_detail_dialog,
+)
+from views.notifications import _format_requested_date, _format_requested_time
+from views.privacy import mask_patient_name
 from views.map_utils import (
     location_key as _base_location_key,
 )
@@ -49,42 +56,72 @@ PROVINCE_COLORS = (
     "#f2a278",
     "#c8cbc5",
 )
+HOME_QUICK_SEARCH_COLUMN_WIDTHS = (112, 135, 54, 36, 72)
 
 
-def _submit_overview_search(search_page):
-    query = st.session_state.get("home_search_query", "").strip()
-    if search_page is not None:
-        year = str(datetime.now().year)
-        sequence = ""
-        name_query = ""
-        parts = query.upper().split("-")
-        if (
-            len(parts) == 3
-            and parts[0] == "BOC"
-            and len(parts[1]) == 4
-            and parts[1].isascii()
-            and parts[1].isdigit()
-            and len(parts[2]) == 4
-            and parts[2].isascii()
-            and parts[2].isdigit()
+def _search_local_patients(query):
+    normalized_query = query.strip().casefold()
+    if not normalized_query:
+        return []
+
+    conn = get_local_connection()
+    try:
+        records = conn.execute(
+            """
+            SELECT patient_id, patient_case_number, first_name, middle_name,
+                   last_name, extension_name, calculated_age, sex,
+                   city_municipality, province, status
+            FROM patients
+            ORDER BY patient_case_number COLLATE NOCASE, patient_id
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    matches = []
+    for row in records:
+        record = dict(row)
+        searchable_values = (
+            record.get("patient_case_number"),
+            record.get("first_name"),
+            record.get("middle_name"),
+            record.get("last_name"),
+            record.get("extension_name"),
+            _patient_full_name(record),
+            record.get("city_municipality"),
+            record.get("province"),
+        )
+        if any(
+            normalized_query in str(value or "").casefold()
+            for value in searchable_values
         ):
-            year, sequence = parts[1], parts[2]
-            st.session_state.pop("manage_search_notice", None)
-        elif len(query) == 4 and query.isascii() and query.isdigit():
-            sequence = query
-            st.session_state.pop("manage_search_notice", None)
-        else:
-            st.session_state.pop("manage_search_notice", None)
-            name_query = query
-        st.session_state["patient_case_search_year"] = year
-        st.session_state["patient_case_search_number"] = sequence
-        st.session_state["patient_name_lookup_query"] = name_query
-        st.switch_page(search_page)
+            matches.append(record)
+    return matches
 
 
-def _open_encode_from_home(search_page):
-    if search_page is None:
+def _select_home_patient_record(patient_id):
+    st.session_state["manage_selected_patient_id"] = patient_id
+    for key in (
+        "manage_edit_patient_id",
+        "manage_delete_patient_id",
+        "manage_return_session_patient_id",
+        "manage_edit_return_session_id",
+        "manage_delete_return_session_id",
+        "record_results_table",
+        "manage_success_message",
+    ):
+        st.session_state.pop(key, None)
+
+
+def _open_callback_request(notifications_page, notification_id):
+    if notifications_page is None:
         return
+    st.session_state["notification_selected_item:not-responded"] = notification_id
+    st.session_state["notification_opened_item:not-responded"] = notification_id
+    st.switch_page(notifications_page)
+
+
+def _open_encode_from_home():
     for key in (
         "manage_selected_patient_id",
         "manage_edit_patient_id",
@@ -93,14 +130,22 @@ def _open_encode_from_home(search_page):
         "record_results_table",
     ):
         st.session_state.pop(key, None)
-    st.session_state["show_encode_dialog"] = True
-    st.switch_page(search_page)
+    _open_encode_dialog()
 
 
 def _render_overview_toolbar(
-    search_page,
     notifications_page=None,
+    unread_callback_requests=None,
+    callback_requests_error=None,
+    callback_requests_cached_at=None,
+    mark_notifications_read=None,
 ):
+    unread_count = len(unread_callback_requests or ())
+    notification_help = (
+        "Callback requests unavailable"
+        if unread_callback_requests is None
+        else f"{unread_count} unread callback requests"
+    )
     with st.container(key="overview-toolbar"):
         title_column, search_column, notification_column = st.columns(
             [1.35, 0.85, 0.08], vertical_alignment="center"
@@ -118,43 +163,186 @@ def _render_overview_toolbar(
                     unsafe_allow_html=True,
                 )
         with search_column:
-            with st.form(key="overview-search-form", border=False):
-                with st.container(
-                    horizontal=True,
-                    wrap=False,
-                    vertical_alignment="center",
-                    gap="small",
-                ):
-                    st.text_input(
-                        "Search patient records",
-                        placeholder="Patient name or ID (BOC-2026-0001)...",
-                        icon=":material/search:",
-                        label_visibility="collapsed",
-                        key="home_search_query",
-                        type="password",
-                        autocomplete="off",
-                        width="stretch",
-                    )
-                    submitted = st.form_submit_button(
-                        "Search",
-                        key="overview-search-submit",
-                        help="Open Record Management",
-                        width="content",
-                        disabled=search_page is None,
-                    )
-            if submitted:
-                _submit_overview_search(search_page)
+            with st.container(key="home-quick-search"):
+                with st.form(key="overview-search-form", border=False):
+                    with st.container(
+                        horizontal=True,
+                        wrap=False,
+                        vertical_alignment="center",
+                        gap="small",
+                    ):
+                        st.text_input(
+                            "Search patient records",
+                            placeholder="Search name, ID, or location...",
+                            type="password",
+                            icon=":material/search:",
+                            label_visibility="collapsed",
+                            key="home_search_query",
+                            autocomplete="off",
+                            width="stretch",
+                        )
+                        submitted = st.form_submit_button(
+                            "Search",
+                            key="overview-search-submit",
+                            help="Search local patient records",
+                            width="content",
+                        )
+                if submitted:
+                    query = st.session_state.get("home_search_query", "").strip()
+                    st.session_state["home_quick_search_query"] = query
+                    st.session_state["home_quick_search_open"] = bool(query)
+                    st.session_state["home_quick_search_error"] = None
+                    if query:
+                        try:
+                            st.session_state["home_quick_search_results"] = (
+                                _search_local_patients(query)
+                            )
+                        except Exception as error:
+                            st.session_state["home_quick_search_results"] = []
+                            st.session_state["home_quick_search_error"] = str(
+                                error
+                            )
+                    else:
+                        st.session_state["home_quick_search_results"] = []
+
+                if st.session_state.get("home_quick_search_open", False):
+                    with st.container(key="home-quick-search-results"):
+                        with st.container(
+                            horizontal=True,
+                            vertical_alignment="center",
+                            horizontal_alignment="right",
+                            key="home-quick-search-close-row",
+                        ):
+                            if st.button(
+                                "✕",
+                                key="home-quick-search-close",
+                                type="tertiary",
+                                width="content",
+                                help="Close quick-search results",
+                            ):
+                                st.session_state[
+                                    "home_quick_search_open"
+                                ] = False
+                                st.rerun()
+
+                        search_error = st.session_state.get(
+                            "home_quick_search_error"
+                        )
+                        search_results = st.session_state.get(
+                            "home_quick_search_results", []
+                        )
+                        if search_error:
+                            st.error(
+                                "Unable to search local patient records: "
+                                f"{search_error}"
+                            )
+                        elif not search_results:
+                            st.caption(
+                                "No matching patient records found"
+                            )
+                        else:
+                            selected_patient_id = (
+                                _render_patient_results_table(
+                                    search_results,
+                                    column_widths=HOME_QUICK_SEARCH_COLUMN_WIDTHS,
+                                    column_gap="small",
+                                )
+                            )
+                            if selected_patient_id is not None:
+                                _select_home_patient_record(
+                                    selected_patient_id
+                                )
         with notification_column:
-            with st.container(key="overview-notifications"):
-                if notifications_page is not None:
-                    st.page_link(
-                        notifications_page,
-                        label=" ",
-                        icon=":material/notifications:",
-                        help="Open notifications",
+            with st.container(key="overview-notification-control"):
+                notification_popover = st.popover(
+                    " ",
+                    icon=":material/notifications:",
+                    help=notification_help,
+                    type="tertiary",
+                    width="content",
+                    key="overview-notifications",
+                    on_change="rerun",
+                )
+                with notification_popover:
+                    with st.container(
+                        key="overview-callback-popover-content",
+                        width=340,
+                    ):
+                        st.markdown("#### New Callback Requests")
+                        if callback_requests_error:
+                            st.error(callback_requests_error)
+                        elif unread_callback_requests is None:
+                            st.info("Callback requests are unavailable.")
+                        elif not unread_callback_requests:
+                            st.caption("No new notifications")
+                        else:
+                            if callback_requests_cached_at:
+                                st.caption(
+                                    "Showing cached requests, last synced "
+                                    f"{callback_requests_cached_at}."
+                                )
+                            with st.container(
+                                key="overview-callback-request-list",
+                                height=320,
+                            ):
+                                for index, request in enumerate(
+                                    unread_callback_requests
+                                ):
+                                    with st.container(
+                                        key=f"overview-callback-request-{index}"
+                                    ):
+                                        st.markdown(
+                                            '<div class="callback-popover-patient">'
+                                            f"{escape(str(request.get('title') or 'Patient'))}"
+                                            "</div>",
+                                            unsafe_allow_html=True,
+                                        )
+                                        st.caption(
+                                            "Preferred: "
+                                            f"{_format_requested_date(request.get('requested_date'))}"
+                                            " · "
+                                            f"{_format_requested_time(request.get('requested_time'))}"
+                                        )
+                                        st.button(
+                                            "Open in Callback Requests",
+                                            key=(
+                                                "overview-open-callback-request-"
+                                                f"{request['id']}"
+                                            ),
+                                            type="tertiary",
+                                            width="stretch",
+                                            disabled=notifications_page is None,
+                                            on_click=_open_callback_request,
+                                            args=(
+                                                notifications_page,
+                                                request["id"],
+                                            ),
+                                        )
+                if unread_count > 0:
+                    st.markdown(
+                        '<span class="overview-notification-badge" '
+                        f'aria-label="{unread_count} unread callback requests">'
+                        f"{unread_count}</span>",
+                        unsafe_allow_html=True,
                     )
-                else:
-                    st.markdown(":material/notifications:")
+                if notification_popover.open and unread_callback_requests:
+                    if mark_notifications_read is None:
+                        st.error(
+                            "Marking callback requests as read is unavailable."
+                        )
+                    else:
+                        request_ids = [
+                            request["id"]
+                            for request in unread_callback_requests
+                        ]
+                        try:
+                            mark_notifications_read(request_ids)
+                        except Exception as error:
+                            st.error("Unable to mark callback requests as read.")
+                            with st.expander("Technical details"):
+                                st.code(str(error))
+                        else:
+                            st.rerun()
 
 
 def _province_key(value):
@@ -256,23 +444,55 @@ def _render_province_breakdown(chart_data, total_bicol, dark_mode=False):
     )
 
 
+def _toggle_upcoming_names_visibility():
+    key = "home_upcoming_names_visible"
+    st.session_state[key] = not st.session_state[key]
+
+
 def _render_appointments(appointments, today, appointments_page, error=None):
+    names_visible_key = "home_upcoming_names_visible"
+    st.session_state.setdefault(names_visible_key, False)
+    names_visible = st.session_state[names_visible_key]
+
     with st.container(border=True, key="home-appointments-card"):
-        title_column, link_column = st.columns([1.5, 1], vertical_alignment="center")
-        with title_column:
+        with st.container(key="home-appointments-header", gap=None):
             st.markdown(
                 f'<div class="home-eyebrow">Today · {today.strftime("%B")} {today.day}</div>',
                 unsafe_allow_html=True,
             )
-            st.markdown("### Upcoming Appointments")
-        with link_column:
-            if appointments_page is not None:
-                st.page_link(
-                    appointments_page,
-                    label="Full Calendar",
-                    icon=":material/arrow_forward:",
-                    width="content",
+            with st.container(
+                key="home-appointments-heading-row",
+                gap=None,
+            ):
+                title_column, link_column = st.columns(
+                    [1.5, 1],
+                    vertical_alignment="center",
                 )
+                title_column.markdown("### Upcoming Appointments")
+                if appointments_page is not None:
+                    link_column.page_link(
+                        appointments_page,
+                        label="Full Calendar",
+                        icon=":material/arrow_forward:",
+                        width="content",
+                    )
+            st.button(
+                "Hide" if names_visible else "Show",
+                key="home-upcoming-names-toggle",
+                icon=(
+                    ":material/visibility_off:"
+                    if names_visible
+                    else ":material/visibility:"
+                ),
+                help=(
+                    "Hide patient names"
+                    if names_visible
+                    else "Reveal patient names"
+                ),
+                type="tertiary",
+                width="content",
+                on_click=_toggle_upcoming_names_visibility,
+            )
 
         upcoming = None
         if error is not None:
@@ -305,37 +525,24 @@ def _render_appointments(appointments, today, appointments_page, error=None):
                 for index, appointment in enumerate(
                     upcoming.to_dict(orient="records")
                 ):
-                    visit_date = pd.to_datetime(
-                        appointment["requested_date"], errors="coerce"
-                    )
-                    date_label = (
-                        "Today"
-                        if visit_date.date() == today
-                        else visit_date.strftime("%b %d")
-                    )
                     time_label = _format_time(
                         appointment.get("requested_time_slot")
                     )
                     with st.container(key=f"home-appointment-row-{index}"):
-                        time_column, icon_column, detail_column, arrow_column = (
-                            st.columns(
-                                [1.05, 0.45, 2.4, 0.25],
-                                vertical_alignment="center",
-                            )
+                        detail_column, arrow_column = st.columns(
+                            [1, 0.12],
+                            vertical_alignment="center",
                         )
-                        time_column.markdown(
-                            f'<span class="home-appointment-date">'
-                            f"{escape(date_label)}</span>",
-                            unsafe_allow_html=True,
-                        )
-                        icon_column.markdown(":material/event:")
-                        status_label = _calendar_appointment_status_label(
-                            appointment
+                        patient_name = appointment.get("patient_name")
+                        display_name = (
+                            str(patient_name or "").strip()
+                            if names_visible
+                            else mask_patient_name(patient_name)
                         )
                         detail_column.markdown(
-                            f"**{escape(str(appointment['patient_name']))}**  \n"
+                            f"**{escape(display_name)}**  \n"
                             f"<span class=\"home-appointment-detail\">"
-                            f"{escape(time_label)} · {escape(status_label)}</span>",
+                            f"{escape(time_label)}</span>",
                             unsafe_allow_html=True,
                         )
                         if appointments_page is not None:
@@ -362,7 +569,29 @@ def show_home_dashboard_page(
     appointments_page=None,
     search_page=None,
     notifications_page=None,
+    unread_callback_requests=None,
+    callback_requests_error=None,
+    callback_requests_cached_at=None,
+    mark_notifications_read=None,
 ):
+    success_message = st.session_state.pop("manage_success_message", None)
+    encode_success_toast = st.session_state.pop("encode_success_toast", None)
+    if encode_success_toast:
+        st.toast(encode_success_toast)
+    if (
+        success_message
+        and st.session_state.get("home_quick_search_open", False)
+    ):
+        query = st.session_state.get("home_quick_search_query", "")
+        try:
+            st.session_state["home_quick_search_results"] = (
+                _search_local_patients(query)
+            )
+            st.session_state["home_quick_search_error"] = None
+        except Exception as error:
+            st.session_state["home_quick_search_results"] = []
+            st.session_state["home_quick_search_error"] = str(error)
+
     today = datetime.now(ZoneInfo("Asia/Manila")).date()
     try:
         records = _get_patient_records()
@@ -397,10 +626,8 @@ def show_home_dashboard_page(
         appointment_error = error
 
     pending_count = 0
-    today_count = 0
     if calendar_appointments is not None:
         counts = _appointment_summary_counts(calendar_appointments, today)
-        today_count = counts["scheduled_today"]
         pending_count = counts["pending"]
     greeting_period = (
         "Good morning"
@@ -412,9 +639,22 @@ def show_home_dashboard_page(
 
     with st.container(key="admin-home-page"):
         _render_overview_toolbar(
-            search_page,
-            notifications_page,
+            notifications_page=notifications_page,
+            unread_callback_requests=unread_callback_requests,
+            callback_requests_error=callback_requests_error,
+            callback_requests_cached_at=callback_requests_cached_at,
+            mark_notifications_read=mark_notifications_read,
         )
+        selected_patient_id = st.session_state.get(
+            "manage_selected_patient_id"
+        )
+        if selected_patient_id is not None:
+            show_patient_detail_dialog(
+                selected_patient_id,
+                success_message,
+            )
+        elif success_message:
+            st.success(success_message)
         with st.container(key="home-dashboard-content"):
             intro_column, encode_column = st.columns(
                 [3, 1], vertical_alignment="top"
@@ -435,7 +675,7 @@ def show_home_dashboard_page(
                             key="home-encode-new-record",
                             width="stretch",
                         ):
-                            _open_encode_from_home(search_page)
+                            _open_encode_from_home()
 
             kpi_data = [
                 (
@@ -451,10 +691,12 @@ def show_home_dashboard_page(
                     "blue",
                 ),
                 (
-                    "Appointments Today",
-                    _format_count(today_count) if appointments is not None else "—",
-                    "▦",
-                    "coral",
+                    "Deceased Patients",
+                    _format_count(
+                        int((records["status"] == "Deceased").sum())
+                    ),
+                    "✚",
+                    "slate",
                 ),
                 (
                     "Pending Requests",
@@ -463,32 +705,31 @@ def show_home_dashboard_page(
                     "purple",
                 ),
             ]
-            kpi_columns = st.columns(4)
-            for column, (label, value, icon, color) in zip(
-                kpi_columns, kpi_data
-            ):
-                with column:
-                    with st.container(border=True, key=f"home-kpi-{color}"):
-                        icon_column, metric_column = st.columns(
-                            [0.35, 1.65], vertical_alignment="top"
-                        )
-                        with icon_column:
+            with st.container(key="home-kpi-row"):
+                kpi_columns = st.columns(4)
+                for column, (label, value, icon, color) in zip(
+                    kpi_columns, kpi_data
+                ):
+                    with column:
+                        with st.container(
+                            border=True,
+                            key=f"home-kpi-{color}",
+                        ):
                             st.markdown(
+                                f'<div class="home-kpi-content">'
                                 f'<div class="home-kpi-icon home-kpi-icon-{color}">'
-                                f'{icon}</div>',
-                                unsafe_allow_html=True,
-                            )
-                        with metric_column:
-                            st.markdown(
-                                f'<div class="home-kpi-label">{escape(label)}</div>',
-                                unsafe_allow_html=True,
-                            )
-                            st.markdown(
-                                f'<div class="home-kpi-value">{value}</div>',
+                                f'{icon}</div>'
+                                f'<div class="home-kpi-copy">'
+                                f'<div class="home-kpi-label">{escape(label)}</div>'
+                                f'<div class="home-kpi-value">{escape(value)}</div>'
+                                "</div></div>",
                                 unsafe_allow_html=True,
                             )
 
-            left_column, right_column = st.columns([1.55, 1.05])
+            left_column, right_column = st.columns(
+                [1.55, 1.05],
+                vertical_alignment="top",
+            )
             with left_column:
                 with st.container(border=True, key="home-regional-card"):
                     regional_title, regional_link = st.columns(
@@ -533,6 +774,12 @@ def show_home_dashboard_page(
                     )
                 except Exception as error:
                     st.error(f"Unable to display upcoming appointments: {error}")
+
+    if (
+        st.session_state.get("manage_selected_patient_id") is None
+        and st.session_state.get("show_encode_dialog")
+    ):
+        show_encode_dialog()
 
 
 if __name__ == "__main__":
