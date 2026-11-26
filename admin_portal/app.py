@@ -25,7 +25,6 @@ from views.notifications import (
     _load_notification_read_ids,
     _load_notifications,
     _load_notification_snapshot,
-    _mark_notifications_read,
     render_notification_alerts,
     show_notifications_page,
 )
@@ -1234,14 +1233,22 @@ st.markdown(
     }
 
     [data-testid="stPopoverBody"]:has(.st-key-overview-callback-popover-content) {
+        box-sizing: border-box !important;
+        width: 320px !important;
+        max-width: 90vw !important;
+        max-height: 235px !important;
+        overflow-y: auto !important;
+        padding: 12px 14px !important;
         border: 1px solid rgba(255, 255, 255, 0.14) !important;
         background: #0b211e !important;
+        scroll-behavior: smooth;
+        -webkit-overflow-scrolling: touch;
     }
 
     .st-key-overview-callback-popover-content {
         box-sizing: border-box;
-        width: 340px;
-        max-width: calc(100vw - 2rem);
+        width: 100% !important;
+        max-width: 100% !important;
         padding: 0 !important;
         border: none !important;
         border-radius: 0 !important;
@@ -1250,22 +1257,75 @@ st.markdown(
         color: #e6f4f1;
     }
 
-    .st-key-overview-callback-popover-content h4,
     .st-key-overview-callback-popover-content [data-testid="stMarkdownContainer"],
     .st-key-overview-callback-popover-content [data-testid="stCaptionContainer"] {
         color: #e6f4f1 !important;
     }
 
-    .st-key-overview-callback-popover-content .callback-popover-patient {
-        color: #f5f1e7;
-        font-size: .95rem;
-        font-weight: 700;
-        overflow-wrap: anywhere;
+    .st-key-overview-callback-popover-content .callback-popover-empty {
+        padding: .8rem .25rem;
+        color: #a9c7c1;
+        font-size: .85rem;
+        text-align: center;
     }
 
     .st-key-overview-callback-request-list [class*="st-key-overview-callback-request-"] {
-        padding: 10px 0;
-        border-bottom: 1px solid rgba(151, 190, 181, .18);
+        margin-bottom: 4px !important;
+    }
+
+    [data-testid="stPopoverBody"] button,
+    [data-testid="stPopoverBody"] button > div,
+    [data-testid="stPopoverBody"] [data-testid="stMarkdownContainer"],
+    [data-testid="stPopoverBody"] button p {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        justify-content: center !important;
+        text-align: left !important;
+        width: 100% !important;
+        margin-left: 0 !important;
+    }
+
+    [data-testid="stPopoverBody"] button {
+        padding: 8px 14px !important;
+    }
+
+    .st-key-overview-callback-request-list [class*="st-key-overview-callback-request-"] button {
+        min-height: 52px !important;
+        border: 1px solid #31534f !important;
+        border-radius: 11px !important;
+        background: #17332f !important;
+        color: #f5f1e7 !important;
+        box-shadow: none !important;
+        white-space: normal !important;
+    }
+
+    .st-key-overview-callback-request-list [class*="st-key-overview-callback-request-"] button:hover {
+        border-color: #527a73 !important;
+        background: #1b3c37 !important;
+    }
+
+    .st-key-overview-callback-request-list [class*="st-key-overview-callback-request-"] button:focus-visible {
+        outline: 2px solid #6ecfc1 !important;
+        outline-offset: 2px !important;
+    }
+
+    .st-key-overview-callback-request-list [class*="st-key-overview-callback-request-"] button p {
+        margin: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .st-key-overview-callback-request-list [class*="st-key-overview-callback-request-"] button p:first-child {
+        color: #f5f1e7;
+        font-size: .8rem;
+        font-weight: 700;
+    }
+
+    .st-key-overview-callback-request-list [class*="st-key-overview-callback-request-"] button p:last-child {
+        margin-top: 5px;
+        color: #c1d5d0;
+        font-size: .7rem;
+        line-height: 1.45;
     }
 
     .st-key-home-dashboard-content {
@@ -2686,7 +2746,6 @@ def show_overview_page():
         unread_callback_requests=unread_callback_requests,
         callback_requests_error=callback_requests_error,
         callback_requests_cached_at=notification_snapshot_synced_at,
-        mark_notifications_read=_mark_notifications_read,
     )
 
 

@@ -298,7 +298,10 @@ def _new_untoasted_notifications(items, read_ids, toasted_ids):
 
 
 def _select_notification_item(item_id, tab_key):
-    st.session_state[f"notification_selected_item:{tab_key}"] = item_id
+    selected_key = f"notification_selected_item:{tab_key}"
+    if st.session_state.get(selected_key) != item_id:
+        st.session_state["callback_action_mode"] = None
+    st.session_state[selected_key] = item_id
     st.session_state[f"notification_opened_item:{tab_key}"] = item_id
 
 
@@ -748,6 +751,7 @@ def _update_notification(client, item, updates):
 
 
 def _render_notification_actions(client, item, tab_key):
+    st.session_state.setdefault("callback_action_mode", None)
     status = item["status"]
     if status not in ("Pending", "Scheduled", "Rescheduled", "Cancelled"):
         return
@@ -797,9 +801,7 @@ def _render_notification_actions(client, item, tab_key):
             icon=":material/edit_calendar:",
             width="stretch",
         ):
-            st.session_state[
-                f"notification_rescheduling:{tab_key}:{item['id']}"
-            ] = True
+            st.session_state["callback_action_mode"] = "reschedule"
             st.rerun()
 
     if cancel_column is not None:
@@ -810,10 +812,11 @@ def _render_notification_actions(client, item, tab_key):
                 icon=":material/event_busy:",
                 width="stretch",
             ):
-                st.session_state["confirm_cancel_notification_id"] = item["id"]
+                st.session_state["callback_action_mode"] = "cancel"
                 st.rerun()
 
     if confirm_clicked:
+        st.session_state["callback_action_mode"] = None
         error = (
             "The original date or time is missing. Choose a replacement schedule."
             if requested_date is None or requested_time is None
@@ -836,8 +839,7 @@ def _render_notification_actions(client, item, tab_key):
         ):
             st.rerun()
 
-    rescheduling_key = f"notification_rescheduling:{tab_key}:{item['id']}"
-    if st.session_state.get(rescheduling_key):
+    if st.session_state.get("callback_action_mode") == "reschedule":
         st.markdown("#### Choose a New Schedule")
         try:
             fallback_date = date.fromisoformat(item.get("requested_date") or "")
@@ -890,7 +892,7 @@ def _render_notification_actions(client, item, tab_key):
                 key=f"notification_dismiss_reschedule_{tab_key}_{item['id']}",
                 width="stretch",
             ):
-                st.session_state.pop(rescheduling_key, None)
+                st.session_state["callback_action_mode"] = None
                 st.rerun()
 
         if save_reschedule:
@@ -914,10 +916,10 @@ def _render_notification_actions(client, item, tab_key):
                     ),
                 },
             ):
-                st.session_state.pop(rescheduling_key, None)
+                st.session_state["callback_action_mode"] = None
                 st.rerun()
 
-    if st.session_state.get("confirm_cancel_notification_id") == item["id"]:
+    if st.session_state.get("callback_action_mode") == "cancel":
         st.warning("Cancel this appointment request?")
         confirmed = st.checkbox(
             "Confirm cancellation",
@@ -931,7 +933,7 @@ def _render_notification_actions(client, item, tab_key):
             if _update_notification(
                 client, item, {"approval_status": "Cancelled"}
             ):
-                st.session_state.pop("confirm_cancel_notification_id", None)
+                st.session_state["callback_action_mode"] = None
                 st.rerun()
 
 

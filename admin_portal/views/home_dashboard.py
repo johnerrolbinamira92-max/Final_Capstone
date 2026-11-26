@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from html import escape
 from zoneinfo import ZoneInfo
 
@@ -20,7 +20,11 @@ from views.manage import (
     _render_patient_results_table,
     show_patient_detail_dialog,
 )
-from views.notifications import _format_requested_date, _format_requested_time
+from views.notifications import (
+    _format_requested_date,
+    _format_requested_time,
+    _mark_notifications_read,
+)
 from views.privacy import mask_patient_name
 from views.map_utils import (
     location_key as _base_location_key,
@@ -113,10 +117,70 @@ def _select_home_patient_record(patient_id):
         st.session_state.pop(key, None)
 
 
-def _open_callback_request(notifications_page, notification_id):
+def _callback_request_seen_at(requests):
+    timestamps = []
+    for request in requests:
+        value = request.get("created_at")
+        if not value:
+            continue
+        try:
+            timestamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        timestamps.append(timestamp.astimezone(timezone.utc))
+    return max(timestamps, default=datetime.now(timezone.utc)).isoformat()
+
+
+def _open_callback_request(
+    notifications_page,
+    notification_id,
+    unread_request_ids,
+    last_seen_at,
+):
     if notifications_page is None:
         return
-    st.session_state["notification_selected_item:not-responded"] = notification_id
+    seen_ids = {str(request_id) for request_id in unread_request_ids}
+    seen_ids.add(str(notification_id))
+    _mark_notifications_read(seen_ids)
+
+    profile = st.session_state.get("admin_profile") or {}
+    admin_id = str(profile.get("user_id") or "local")
+    last_seen_key = f"callback_requests_last_seen_at:{admin_id}"
+    try:
+        new_last_seen_at = datetime.fromisoformat(
+            str(last_seen_at).replace("Z", "+00:00")
+        )
+    except ValueError:
+        new_last_seen_at = datetime.now(timezone.utc)
+    if new_last_seen_at.tzinfo is None:
+        new_last_seen_at = new_last_seen_at.replace(tzinfo=timezone.utc)
+    current_last_seen_at = st.session_state.get(last_seen_key)
+    if current_last_seen_at:
+        try:
+            current_last_seen_at = datetime.fromisoformat(
+                str(current_last_seen_at).replace("Z", "+00:00")
+            )
+        except ValueError:
+            current_last_seen_at = None
+        if current_last_seen_at is not None:
+            if current_last_seen_at.tzinfo is None:
+                current_last_seen_at = current_last_seen_at.replace(
+                    tzinfo=timezone.utc
+                )
+            new_last_seen_at = max(
+                new_last_seen_at,
+                current_last_seen_at.astimezone(timezone.utc),
+            )
+    st.session_state[last_seen_key] = new_last_seen_at.astimezone(
+        timezone.utc
+    ).isoformat()
+
+    selected_key = "notification_selected_item:not-responded"
+    if st.session_state.get(selected_key) != notification_id:
+        st.session_state["callback_action_mode"] = None
+    st.session_state[selected_key] = notification_id
     st.session_state["notification_opened_item:not-responded"] = notification_id
     st.switch_page(notifications_page)
 
@@ -138,7 +202,6 @@ def _render_overview_toolbar(
     unread_callback_requests=None,
     callback_requests_error=None,
     callback_requests_cached_at=None,
-    mark_notifications_read=None,
 ):
     unread_count = len(unread_callback_requests or ())
     notification_help = (
@@ -266,15 +329,18 @@ def _render_overview_toolbar(
                 with notification_popover:
                     with st.container(
                         key="overview-callback-popover-content",
-                        width=340,
+                        width=320,
                     ):
-                        st.markdown("#### New Callback Requests")
                         if callback_requests_error:
                             st.error(callback_requests_error)
                         elif unread_callback_requests is None:
                             st.info("Callback requests are unavailable.")
                         elif not unread_callback_requests:
-                            st.caption("No new notifications")
+                            st.markdown(
+                                '<div class="callback-popover-empty">'
+                                "No new notifications</div>",
+                                unsafe_allow_html=True,
+                            )
                         else:
                             if callback_requests_cached_at:
                                 st.caption(
@@ -283,41 +349,38 @@ def _render_overview_toolbar(
                                 )
                             with st.container(
                                 key="overview-callback-request-list",
-                                height=320,
                             ):
-                                for index, request in enumerate(
+                                unread_request_ids = tuple(
+                                    str(item["id"])
+                                    for item in unread_callback_requests
+                                )
+                                last_seen_at = _callback_request_seen_at(
                                     unread_callback_requests
-                                ):
-                                    with st.container(
-                                        key=f"overview-callback-request-{index}"
-                                    ):
-                                        st.markdown(
-                                            '<div class="callback-popover-patient">'
-                                            f"{escape(str(request.get('title') or 'Patient'))}"
-                                            "</div>",
-                                            unsafe_allow_html=True,
-                                        )
-                                        st.caption(
-                                            "Preferred: "
-                                            f"{_format_requested_date(request.get('requested_date'))}"
-                                            " · "
-                                            f"{_format_requested_time(request.get('requested_time'))}"
-                                        )
-                                        st.button(
-                                            "Open in Callback Requests",
-                                            key=(
-                                                "overview-open-callback-request-"
-                                                f"{request['id']}"
-                                            ),
-                                            type="tertiary",
-                                            width="stretch",
-                                            disabled=notifications_page is None,
-                                            on_click=_open_callback_request,
-                                            args=(
-                                                notifications_page,
-                                                request["id"],
-                                            ),
-                                        )
+                                )
+                                for request in unread_callback_requests:
+                                    request_id = str(request["id"])
+                                    request_key = request_id.replace(":", "-")
+                                    title = str(request.get("title") or "Patient")
+                                    preferred_schedule = (
+                                        "Preferred: "
+                                        f"{_format_requested_date(request.get('requested_date'))}"
+                                        " · "
+                                        f"{_format_requested_time(request.get('requested_time'))}"
+                                    )
+                                    st.button(
+                                        f"**{title}**\n\n{preferred_schedule}",
+                                        key=f"overview-callback-request-{request_key}",
+                                        type="tertiary",
+                                        width="stretch",
+                                        disabled=notifications_page is None,
+                                        on_click=_open_callback_request,
+                                        args=(
+                                            notifications_page,
+                                            request_id,
+                                            unread_request_ids,
+                                            last_seen_at,
+                                        ),
+                                    )
                 if unread_count > 0:
                     st.markdown(
                         '<span class="overview-notification-badge" '
@@ -325,24 +388,6 @@ def _render_overview_toolbar(
                         f"{unread_count}</span>",
                         unsafe_allow_html=True,
                     )
-                if notification_popover.open and unread_callback_requests:
-                    if mark_notifications_read is None:
-                        st.error(
-                            "Marking callback requests as read is unavailable."
-                        )
-                    else:
-                        request_ids = [
-                            request["id"]
-                            for request in unread_callback_requests
-                        ]
-                        try:
-                            mark_notifications_read(request_ids)
-                        except Exception as error:
-                            st.error("Unable to mark callback requests as read.")
-                            with st.expander("Technical details"):
-                                st.code(str(error))
-                        else:
-                            st.rerun()
 
 
 def _province_key(value):
@@ -572,7 +617,6 @@ def show_home_dashboard_page(
     unread_callback_requests=None,
     callback_requests_error=None,
     callback_requests_cached_at=None,
-    mark_notifications_read=None,
 ):
     success_message = st.session_state.pop("manage_success_message", None)
     encode_success_toast = st.session_state.pop("encode_success_toast", None)
@@ -643,7 +687,6 @@ def show_home_dashboard_page(
             unread_callback_requests=unread_callback_requests,
             callback_requests_error=callback_requests_error,
             callback_requests_cached_at=callback_requests_cached_at,
-            mark_notifications_read=mark_notifications_read,
         )
         selected_patient_id = st.session_state.get(
             "manage_selected_patient_id"
