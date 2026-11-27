@@ -772,26 +772,30 @@ textarea::placeholder, input::placeholder { color: #759994; opacity: 1; }
 .toast-signin { color: var(--teal-bright); font-size: 12px; font-weight: 700; white-space: nowrap; }
 .toast-close { padding: 0 2px; color: var(--muted); font-size: 19px; line-height: 1; }
 
-body .care-chatbot-widget { right: 28px; bottom: 32px; }
+body .care-chatbot-widget { right: 28px; bottom: 32px; z-index: 9999; }
 .care-chatbot-widget .care-chatbot-toggle {
-  display: grid;
-  width: 58px;
-  min-width: 58px;
-  height: 58px;
-  min-height: 58px;
-  place-items: center;
-  gap: 0;
-  padding: 0;
-  border-radius: 50%;
+  position: relative;
+  z-index: 9999;
+  display: flex;
+  width: max-content;
+  min-width: 0;
+  height: auto;
+  min-height: 48px;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 18px;
+  border-radius: 999px;
   box-shadow: 0 12px 30px rgb(3 14 13 / 36%), 0 0 0 1px rgb(131 185 176 / 50%);
+  font-weight: 600;
 }
 .care-chatbot-widget .care-chatbot-toggle:hover {
   transform: translateY(-2px);
 }
 .care-chatbot-widget .care-chatbot-toggle-icon {
   display: block;
-  width: 30px;
-  height: 30px;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
   border-radius: 0;
   background: none;
   fill: none;
@@ -799,6 +803,22 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; }
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+.care-chatbot-toggle-label { position: relative; z-index: 1; font-size: 13px; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+.care-chatbot-toggle[aria-expanded="false"]::before {
+  position: absolute;
+  z-index: 0;
+  inset: -7px;
+  border: 2px solid rgb(20 184 166 / 55%);
+  border-radius: inherit;
+  box-shadow: 0 0 18px rgb(20 184 166 / 18%);
+  content: "";
+  pointer-events: none;
+  animation: chatPulse 2.6s ease-out infinite;
+}
+@keyframes chatPulse {
+  0% { opacity: .7; transform: scale(.96); }
+  70%, 100% { opacity: 0; transform: scale(1.12); }
 }
 
 .site-footer { padding: 30px 0; background: var(--teal); }
@@ -1068,4 +1088,5 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+  .care-chatbot-toggle[aria-expanded="false"]::before { animation: none; }
 }

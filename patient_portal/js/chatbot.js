@@ -69,12 +69,14 @@ document.body.insertAdjacentHTML("beforeend", `
         <path d="M27 15.3c0 6.1-5 11-11 11-1.9 0-3.7-.5-5.3-1.4L4 27l1.8-6a10.7 10.7 0 0 1-1.1-4.7c0-6.1 5-11 11-11s11.3 2.9 11.3 10Z"></path>
         <path d="M11.5 15.5h.01M16.5 15.5h.01M12 19c.8.8 1.8 1.2 3 1.2s2.2-.4 3-1.2M23 3v5M20.5 5.5h5"></path>
       </svg>
+      <span class="care-chatbot-toggle-label">Support Assistant</span>
     </button>
   </div>
 `);
 
 const panel = document.querySelector("#care-chatbot-panel");
 const toggle = document.querySelector(".care-chatbot-toggle");
+const heroOpenButton = document.querySelector("#hero-chatbot-button");
 const closeButton = document.querySelector(".care-chatbot-close");
 const messageList = document.querySelector("#care-chatbot-messages");
 const input = document.querySelector("#care-chatbot-input");
@@ -196,13 +198,20 @@ async function sendMessage(value) {
 function setOpen(open) {
   panel.hidden = !open;
   toggle.setAttribute("aria-expanded", String(open));
+  heroOpenButton.setAttribute("aria-expanded", String(open));
   if (open) input.focus();
   else toggle.focus();
 }
 
+function openChatbot() {
+  setOpen(true);
+}
+
 toggle.addEventListener("click", () => {
-  setOpen(panel.hidden);
+  if (panel.hidden) openChatbot();
+  else setOpen(false);
 });
+heroOpenButton.addEventListener("click", openChatbot);
 
 closeButton.addEventListener("click", () => {
   setOpen(false);
