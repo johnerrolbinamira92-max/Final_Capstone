@@ -12,7 +12,9 @@ from the private Streamlit admin app.
 - `js/features/callback-request.js` validates and submits callback requests.
 - `js/features/private-entries.js` manages device entries and account backups.
 - `js/ui/feedback.js` displays shared form feedback.
-- The portal uses a fixed dark-teal theme.
+- The portal defaults to the existing dark forest-green/teal theme. Use the
+  sun/moon button in the top navigation to switch to a high-contrast light
+  theme; the choice is saved in this browser under `boc_portal_theme`.
 
 The portal uses native JavaScript modules; continue serving it over HTTP as
 described below rather than opening `index.html` directly.

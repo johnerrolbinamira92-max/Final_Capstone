@@ -810,6 +810,191 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; }
 .footer-contact a:hover { text-decoration: underline; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
 
+.theme-toggle {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.theme-toggle:hover { border-color: var(--teal-bright); background: var(--surface-raised); }
+.theme-toggle svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+.theme-toggle-moon { display: none; }
+.theme-toggle:focus-visible { outline: 3px solid var(--teal-bright); outline-offset: 3px; }
+
+.light-mode {
+  color-scheme: light;
+  --page: #f8fafc;
+  --page-deep: #f1f5f9;
+  --surface: #ffffff;
+  --surface-soft: #f8fafc;
+  --surface-raised: #e2e8f0;
+  --line: #cbd5e1;
+  --text: #0f172a;
+  --muted: #334155;
+  --teal: #0f766e;
+  --teal-bright: #14b8a6;
+  --coral: #b91c1c;
+  --gold: #92400e;
+  --success: #dcfce7;
+  --error: #fef2f2;
+  --shadow: 0 16px 50px rgb(15 23 42 / 10%);
+}
+.light-mode body { color: #334155; }
+.light-mode h1,
+.light-mode h2,
+.light-mode h3,
+.light-mode h4,
+.light-mode h5,
+.light-mode .brand-copy strong { color: #0f172a; }
+.light-mode .theme-toggle-moon { display: block; }
+.light-mode .theme-toggle-sun { display: none; }
+.light-mode .theme-toggle:focus-visible { outline-color: #0f766e; }
+.light-mode .button:focus-visible,
+.light-mode button:focus-visible,
+.light-mode a:focus-visible,
+.light-mode input:focus-visible,
+.light-mode textarea:focus-visible { outline-color: #0f766e; }
+.light-mode .button-primary,
+.light-mode .view-tab[aria-selected="true"],
+.light-mode .button-submit,
+.light-mode .copy-number-button,
+.light-mode .care-chatbot-send,
+.light-mode .care-chatbot-message[data-role="user"] { color: #ffffff; }
+.light-mode .button-submit { background: #0f766e; }
+.light-mode .button-submit:hover:not(:disabled) { filter: brightness(1.08); }
+.light-mode .brand-kicker,
+.light-mode .eyebrow,
+.light-mode h1 em,
+.light-mode .trust-list li span,
+.light-mode .panel-icon,
+.light-mode .entry-badge,
+.light-mode .toast-signin,
+.light-mode .contact-link { color: #0f766e; }
+.light-mode .site-header { background: rgb(248 250 252 / 94%); }
+.light-mode .account-settings-trigger,
+.light-mode .account-signout,
+.light-mode .account-popover,
+.light-mode .notification-popover {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+}
+.light-mode .account-settings-trigger:hover,
+.light-mode .account-signout:hover { border-color: #0f766e; background: #f1f5f9; }
+.light-mode .account-icon-button.is-signed-in { color: #0f766e; }
+.light-mode .notification-badge { border-color: #ffffff; background: #b91c1c; color: #ffffff; }
+.light-mode .account-popover-label,
+.light-mode .account-email,
+.light-mode .notification-eyebrow,
+.light-mode .notification-latest-details,
+.light-mode .notification-history-heading span,
+.light-mode .request-history-item p,
+.light-mode .notification-empty { color: #334155; }
+.light-mode .notification-latest { border-color: #cbd5e1; background: #f1f5f9; }
+.light-mode .request-history-item { border-color: #cbd5e1; background: #f8fafc; }
+.light-mode .request-history-item .confirmed-schedule { color: #166534; }
+.light-mode .request-status-badge { background: #e2e8f0; color: #334155; }
+.light-mode .status-scheduled,
+.light-mode .status-confirmed,
+.light-mode .status-rescheduled { background: #dcfce7; color: #166534; }
+.light-mode .status-declined,
+.light-mode .status-cancelled,
+.light-mode .status-no-show { background: #fee2e2; color: #991b1b; }
+.light-mode .status-completed { background: #dbeafe; color: #1e40af; }
+.light-mode .notification-error { color: #991b1b; }
+.light-mode .notification-wellness-item { border-color: #cbd5e1; background: #fffbeb; }
+.light-mode .notification-wellness-item .notification-wellness-copy { color: #334155; }
+.light-mode .auth-dialog,
+.light-mode .account-settings-dialog,
+.light-mode .confirmation-dialog {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+}
+.light-mode .auth-dialog h2,
+.light-mode .account-settings-header h2,
+.light-mode .confirmation-dialog h2 { color: #0f172a; }
+.light-mode .confirmation-dialog p,
+.light-mode .account-settings-intro,
+.light-mode .account-settings-check,
+.light-mode .account-settings-status,
+.light-mode .auth-intro,
+.light-mode .auth-field-label,
+.light-mode .auth-wellness-consent,
+.light-mode .auth-privacy-note { color: #334155; }
+.light-mode .confirmation-button { border-color: #cbd5e1; }
+.light-mode .confirmation-confirm,
+.light-mode .account-settings-action,
+.light-mode .auth-submit { border-color: #0f766e; background: #0f766e; color: #ffffff; }
+.light-mode .confirmation-confirm:hover,
+.light-mode .account-settings-action:hover,
+.light-mode .auth-submit:hover:not(:disabled) { background: #115e59; }
+.light-mode .confirmation-confirm.is-danger { border-color: #b91c1c; background: #b91c1c; }
+.light-mode .account-settings-section { border-color: #cbd5e1; background: #ffffff; }
+.light-mode .account-settings-section h3 { color: #0f172a; }
+.light-mode .account-settings-signout { border-color: #cbd5e1; background: #ffffff; color: #334155; }
+.light-mode .account-settings-signout:hover { background: #f1f5f9; color: #0f766e; }
+.light-mode .auth-clinic-badge { color: #0f766e; }
+.light-mode .auth-dialog .contact-dialog-close { border-color: #cbd5e1; background: #f1f5f9; color: #334155; }
+.light-mode .auth-mode-tabs { border-color: #cbd5e1; background: #f1f5f9; }
+.light-mode .auth-mode-tab { color: #334155; }
+.light-mode .auth-mode-tab[aria-pressed="true"] { border-color: #cbd5e1; color: #0f766e; }
+.light-mode .account-settings-dialog input:not([type="checkbox"]),
+.light-mode .auth-dialog input:not([type="checkbox"]) { border-color: #cbd5e1; background: #ffffff; color: #0f172a; }
+.light-mode .auth-password-toggle { color: #475569; }
+.light-mode .auth-password-toggle:hover { background: #f1f5f9; color: #0f766e; }
+.light-mode .contact-dialog::backdrop,
+.light-mode .auth-dialog::backdrop,
+.light-mode .account-settings-dialog::backdrop,
+.light-mode .confirmation-dialog::backdrop { background: rgb(15 23 42 / 48%); }
+.light-mode .email-signup-note { border-left-color: #b45309; background: #fffbeb; color: #334155; }
+.light-mode .inline-signin,
+.light-mode .inline-signin:hover,
+.light-mode .signin-helper { color: #0f766e; }
+.light-mode .callback-fields input,
+.light-mode .writing-panel textarea { border-color: #cbd5e1; background: #ffffff; color: #0f172a; }
+.light-mode textarea::placeholder,
+.light-mode input::placeholder { color: #475569; }
+.light-mode .choice-card.is-active { background: #ccfbf1; }
+.light-mode .check-icon { background: #0f766e; }
+.light-mode .calendar-day:disabled,
+.light-mode .time-slot:disabled { color: #64748b; }
+.light-mode .form-message.error { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+.light-mode .form-message.success { border-color: #86efac; background: #f0fdf4; color: #166534; }
+.light-mode .guest-wellness-banner,
+.light-mode .guest-import-banner {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+}
+.light-mode .guest-wellness-banner .eyebrow { color: #0f766e; }
+.light-mode .guest-wellness-reminder,
+.light-mode .guest-import-dismiss { color: #334155; }
+.light-mode .guest-wellness-dismiss { border-color: #cbd5e1; background: #f8fafc; color: #334155; }
+.light-mode .guest-wellness-dismiss:hover { border-color: #94a3b8; background: #f1f5f9; color: #0f172a; }
+.light-mode .guest-import-dismiss:hover { color: #0f172a; }
+.light-mode .guest-import-status { color: #334155; }
+.light-mode .entry-badge { background: #ccfbf1; }
+.light-mode .empty-history > span { color: #92400e; }
+.light-mode .remove-entry { color: #b91c1c; }
+.light-mode .care-chatbot-header,
+.light-mode .care-chatbot-composer { background: #f1f5f9; }
+.light-mode .care-chatbot-privacy { background: #f8fafc; color: #334155; }
+.light-mode .care-chatbot-toggle { color: #ffffff; }
+.light-mode .care-chatbot-message[data-role="error"] { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+.light-mode .care-chatbot-input { border-color: #cbd5e1; background: #ffffff; color: #0f172a; }
+.light-mode .care-chatbot-input::placeholder { color: #475569; }
+.light-mode .site-footer { background: #0f766e; }
+.light-mode .footer-brand h2 { color: #ffffff; }
+.light-mode .footer-brand p,
+.light-mode .footer-contact a { color: #ffffff; }
+
 @media (max-width: 900px) {
   .form-grid { grid-template-columns: 1fr; }
   .right-column { grid-template-columns: 1fr 1fr; align-items: start; }
@@ -829,6 +1014,7 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; }
   .auth-account { gap: 5px; }
   .account-icon-button { width: 34px; height: 34px; }
   .notification-button { width: 34px; height: 34px; }
+  .theme-toggle { width: 34px; height: 34px; }
   .notification-popover { width: min(360px, calc(100vw - 32px)); padding: 15px; }
   .notification-latest { margin: -15px -15px 14px; padding: 15px; }
   .header-actions { gap: 6px; }

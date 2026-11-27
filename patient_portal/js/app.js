@@ -12,6 +12,37 @@ const LEGACY_GUEST_WELLNESS_ITEMS_KEY = "hfrc_guest_wellness_checkins";
 const LEGACY_USER_WELLNESS_ITEMS_PREFIX = "hfrc_user_checkins_";
 const LEGACY_USER_REQUEST_SEEN_PREFIX = "patient-request-seen:";
 const WELLNESS_CHECKIN_MESSAGE = "You've checked in 5 times in your Vent-Out Space. Taking time to reflect matters—if you'd ever like someone to talk to, our Care Assistant or callback team at Holy Face Center is here for you.";
+const PORTAL_THEME_KEY = "boc_portal_theme";
+
+const themeToggle = document.querySelector("#theme-toggle");
+const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+
+function applyPortalTheme(isLight) {
+  document.documentElement.classList.toggle("light-mode", isLight);
+  themeToggle.setAttribute("aria-pressed", String(isLight));
+  themeToggle.title = `Switch to ${isLight ? "dark" : "light"} mode`;
+  if (themeColorMeta) themeColorMeta.content = isLight ? "#f8fafc" : "#102321";
+}
+
+let isLightMode = document.documentElement.classList.contains("light-mode");
+try {
+  const savedTheme = localStorage.getItem(PORTAL_THEME_KEY);
+  if (savedTheme !== null) isLightMode = savedTheme === "light";
+  applyPortalTheme(isLightMode);
+} catch (error) {
+  console.error("Could not read the saved portal theme.", error);
+  applyPortalTheme(isLightMode);
+}
+
+themeToggle.addEventListener("click", () => {
+  isLightMode = !isLightMode;
+  applyPortalTheme(isLightMode);
+  try {
+    localStorage.setItem(PORTAL_THEME_KEY, isLightMode ? "light" : "dark");
+  } catch (error) {
+    console.error("Could not save the selected portal theme.", error);
+  }
+});
 
 function userNotificationStorageKey(userId, kind) {
   return `hfrc_notifications:${userId}:${kind}`;

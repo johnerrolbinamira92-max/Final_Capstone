@@ -10,7 +10,22 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=7">
+    <script>
+      (() => {
+        const root = document.documentElement;
+        try {
+          let theme = localStorage.getItem("boc_portal_theme");
+          if (theme === null) {
+            theme = "dark";
+            localStorage.setItem("boc_portal_theme", theme);
+          }
+          root.classList.toggle("light-mode", theme === "light");
+        } catch (error) {
+          console.error("Could not load the saved portal theme.", error);
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="styles.css?v=8">
     <link rel="stylesheet" href="css/chatbot.css">
   </head>
   <body>
@@ -21,6 +36,22 @@
           <span class="brand-copy"><span class="brand-kicker">Brothers of Charity</span><strong>Holy Face Center</strong></span>
         </a>
         <div class="header-actions">
+          <button
+            class="theme-toggle"
+            id="theme-toggle"
+            type="button"
+            aria-label="Toggle light or dark mode"
+            aria-pressed="false"
+            title="Switch to light mode"
+          >
+            <svg class="theme-toggle-sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="4"></circle>
+              <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path>
+            </svg>
+            <svg class="theme-toggle-moon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M20.2 15.1A8.5 8.5 0 0 1 8.9 3.8 8.6 8.6 0 1 0 20.2 15.1Z"></path>
+            </svg>
+          </button>
           <div class="notification-menu">
             <button
               class="notification-button"
@@ -418,7 +449,7 @@
     </div>
 
     <script src="config.js"></script>
-    <script type="module" src="js/app.js?v=9"></script>
+    <script type="module" src="js/app.js?v=10"></script>
     <script type="module" src="js/chatbot.js?v=3"></script>
   </body>
 </html>
