@@ -1514,13 +1514,16 @@ function setFlow(value) {
   const isHelp = value === "help";
   const isPrivate = value === "private";
   const isSelected = isHelp || isPrivate;
+  const callbackConfirmation = document.querySelector("#callback-confirmation");
+  if (isSelected) callbackConfirmation.hidden = true;
   const flowOptions = form.querySelectorAll('input[name="next-step"]');
   flowOptions.forEach((input) => {
     input.checked = input.value === value;
     input.closest(".choice-card").classList.toggle("is-active", input.checked);
   });
   updateAccountCopy();
-  document.querySelector("#flow-selection-prompt").hidden = isSelected;
+  document.querySelector("#flow-selection-prompt").hidden =
+    isSelected || !callbackConfirmation.hidden;
   document.querySelector("#callback-panel").hidden = !isHelp;
   document.querySelector("#private-note-panel").hidden = !isPrivate;
   document.querySelector(".entry-actions").hidden = !isSelected;
@@ -1608,6 +1611,7 @@ form.addEventListener("submit", async (event) => {
         }
         form.reset();
         callbackSchedule.reset();
+        document.querySelector("#callback-confirmation").hidden = false;
         setFlow(null);
         countLabel.textContent = "0 / 10,000";
         if (currentSession) {

@@ -131,7 +131,6 @@ export async function sendHelpRequest({
   try {
     await postHelpRequest(config, session, payload);
     onSuccess();
-    showFeedback("Your help request was sent securely. Center staff will contact you about the schedule you selected.", "success");
   } catch (error) {
     console.error("Could not send callback request.", error);
     showFeedback(error.message || "The request could not be sent. Please call the center for help.", "error");
@@ -140,10 +139,12 @@ export async function sendHelpRequest({
     form.querySelectorAll("input, textarea, button").forEach((field) => {
       field.disabled = false;
     });
-    submitButton.disabled = false;
-    const currentFlow = form.querySelector('input[name="next-step"]:checked').value;
+    const currentFlow = form.querySelector('input[name="next-step"]:checked')?.value;
+    submitButton.disabled = !currentFlow;
     submitButton.innerHTML = currentFlow === "help"
       ? 'Send my help request <span aria-hidden="true">›</span>'
-      : 'Store my private entry <span aria-hidden="true">›</span>';
+      : currentFlow === "private"
+        ? 'Store my private entry <span aria-hidden="true">›</span>'
+        : "Choose an option to continue";
   }
 }
