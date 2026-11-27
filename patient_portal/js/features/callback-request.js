@@ -73,6 +73,10 @@ async function postHelpRequest(config, session, payload) {
       code: error.code
     });
 
+    if (error.code === "23505" && /callback slot is already taken/i.test(error.message || "")) {
+      throw new Error("That callback time was just taken. Please choose another available time.");
+    }
+
     const missingColumn = getMissingColumn(error);
     if (
       !missingColumn ||
@@ -93,6 +97,7 @@ export async function sendHelpRequest({
   guestToken,
   showFeedback,
   hideFeedback,
+  checkSlotAvailability,
   onSuccess
 }) {
   const validationMessage = validateHelpRequest();
@@ -121,6 +126,15 @@ export async function sendHelpRequest({
     requested_time_slot: document.querySelector("#requested-time").value,
     consent_given: true
   };
+
+  const isSlotAvailable = await checkSlotAvailability(
+    payload.requested_date,
+    payload.requested_time_slot
+  );
+  if (!isSlotAvailable) {
+    showFeedback("That callback time was just taken. Please choose another available time.", "error");
+    return;
+  }
 
   form.setAttribute("aria-busy", "true");
   form.querySelectorAll("input, textarea, button").forEach((field) => {

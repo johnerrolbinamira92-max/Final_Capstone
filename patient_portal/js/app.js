@@ -1,5 +1,5 @@
-import { sendHelpRequest } from "./features/callback-request.js?v=3";
-import { initCallbackSchedule } from "./features/callback-schedule.js?v=2";
+import { sendHelpRequest } from "./features/callback-request.js?v=4";
+import { initCallbackSchedule } from "./features/callback-schedule.js?v=3";
 import { createPrivateEntries } from "./features/private-entries.js?v=6";
 import { hideFeedback, showFeedback } from "./ui/feedback.js";
 
@@ -220,7 +220,16 @@ const privateEntries = createPrivateEntries({
   }
 });
 const callbackSchedule = initCallbackSchedule({
-  onSelection: hideFeedback
+  onSelection: hideFeedback,
+  loadBookedSlots: async (dateValue) => {
+    if (!supabase) throw new Error("Supabase is unavailable.");
+    const { data, error } = await supabase.rpc(
+      "get_callback_slot_availability",
+      { target_date: dateValue }
+    );
+    if (error) throw error;
+    return data || [];
+  }
 });
 
 async function recordPortalEngagement(actionType) {
@@ -1618,6 +1627,7 @@ form.addEventListener("submit", async (event) => {
       guestToken,
       showFeedback,
       hideFeedback,
+      checkSlotAvailability: callbackSchedule.isSlotAvailable,
       onSuccess: () => {
         if (guestToken) {
           guestTokenSaveFailed = !saveGuestRequestToken(guestToken);

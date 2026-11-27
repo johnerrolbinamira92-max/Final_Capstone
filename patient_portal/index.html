@@ -264,7 +264,9 @@
                     </div>
                     <input id="requested-date" name="requested-date" type="hidden" required>
                     <div class="times-heading"><h4>Available times</h4><span id="selected-date-label">Choose a weekday</span></div>
-                    <div class="time-grid" id="time-slots" role="group" aria-label="Available callback times, excluding the 12:00 PM–1:00 PM lunch break"></div>
+                    <div class="time-grid" id="time-slots" role="group" aria-label="Callback times for the selected date, excluding the 12:00 PM–1:00 PM lunch break"></div>
+                    <p class="slot-availability-status" id="slot-availability-status" role="status" aria-live="polite" hidden>Checking available times…</p>
+                    <p class="slot-availability-note">Slots marked 'Taken' are already reserved for this date.</p>
                     <input id="requested-time" name="requested-time" type="hidden" required>
                   </div>
                   <label class="consent-row">

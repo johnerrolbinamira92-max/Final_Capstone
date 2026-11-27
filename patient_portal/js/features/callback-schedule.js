@@ -29,20 +29,27 @@ function toDateValue(date) {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
+function toTimeValue(value) {
+  const match = String(value || "").match(/^(\d{2}):(\d{2})/);
+  return match ? `${match[1]}:${match[2]}` : "";
+}
+
 function isAvailableDate(date) {
   const today = startOfDay(new Date());
   const weekday = date.getDay();
   return date >= today && weekday !== 0 && weekday !== 6;
 }
 
-export function initCallbackSchedule({ onSelection }) {
+export function initCallbackSchedule({ onSelection, loadBookedSlots }) {
   const calendarDays = document.querySelector("#calendar-days");
   const monthLabel = document.querySelector("#month-label");
   const selectedDateField = document.querySelector("#requested-date");
   const selectedTimeField = document.querySelector("#requested-time");
   const selectedDateLabel = document.querySelector("#selected-date-label");
   const timeSlots = document.querySelector("#time-slots");
+  const availabilityStatus = document.querySelector("#slot-availability-status");
   let visibleMonth = startOfMonth(new Date());
+  let availabilitySequence = 0;
 
   function renderCalendar() {
     monthLabel.textContent = visibleMonth.toLocaleDateString(undefined, {
@@ -91,17 +98,8 @@ export function initCallbackSchedule({ onSelection }) {
       visibleMonth <= startOfMonth(new Date());
   }
 
-  function renderTimes() {
+  function renderTimeSlots(hasDate, takenSlots) {
     timeSlots.replaceChildren();
-    selectedTimeField.value = "";
-    const hasDate = Boolean(selectedDateField.value);
-    selectedDateLabel.textContent = hasDate
-      ? new Date(`${selectedDateField.value}T12:00:00`).toLocaleDateString(undefined, {
-        weekday: "short",
-        month: "short",
-        day: "numeric"
-      })
-      : "Choose a weekday";
 
     CALLBACK_TIMES.forEach((time) => {
       const [hour, minute] = time.split(":").map(Number);
@@ -110,31 +108,87 @@ export function initCallbackSchedule({ onSelection }) {
         minute: "2-digit",
         hour12: true
       });
+      const isTaken = takenSlots.has(time);
       const button = document.createElement("button");
       button.type = "button";
       button.className = "time-slot";
-      button.textContent = label;
-      button.disabled = !hasDate;
-      button.setAttribute("aria-pressed", "false");
-      button.addEventListener("click", () => {
-        timeSlots.querySelectorAll(".time-slot").forEach((slot) => {
-          slot.classList.remove("selected");
-          slot.setAttribute("aria-pressed", "false");
+      button.disabled = !hasDate || isTaken;
+      const isSelected = hasDate && selectedTimeField.value === time && !isTaken;
+      button.setAttribute("aria-pressed", String(isSelected));
+
+      if (isTaken) {
+        button.classList.add("taken");
+        button.title = "Already reserved by another patient";
+        button.setAttribute("aria-label", `${label}, Taken`);
+        const timeLabel = document.createElement("span");
+        timeLabel.className = "time-slot-label";
+        timeLabel.textContent = label;
+        const badge = document.createElement("span");
+        badge.className = "time-slot-badge";
+        badge.textContent = "Taken";
+        button.append(timeLabel, badge);
+      } else {
+        button.textContent = label;
+        if (isSelected) button.classList.add("selected");
+        button.addEventListener("click", () => {
+          timeSlots.querySelectorAll(".time-slot").forEach((slot) => {
+            slot.classList.remove("selected");
+            slot.setAttribute("aria-pressed", "false");
+          });
+          button.classList.add("selected");
+          button.setAttribute("aria-pressed", "true");
+          selectedTimeField.value = time;
         });
-        button.classList.add("selected");
-        button.setAttribute("aria-pressed", "true");
-        selectedTimeField.value = time;
-      });
+      }
+
       timeSlots.append(button);
     });
   }
 
+  async function fetchTakenSlots(dateValue) {
+    try {
+      const rows = await loadBookedSlots(dateValue);
+      return new Set(
+        (rows || [])
+          .filter((row) => row.requested_date === dateValue)
+          .map((row) => toTimeValue(row.requested_time_slot))
+          .filter(Boolean)
+      );
+    } catch (error) {
+      console.warn("Could not check callback slot availability; booking remains available.", error);
+      return new Set();
+    }
+  }
+
+  async function renderTimes({ clearSelection = false } = {}) {
+    const dateValue = selectedDateField.value;
+    const requestSequence = ++availabilitySequence;
+    if (clearSelection) selectedTimeField.value = "";
+    const hasDate = Boolean(dateValue);
+    selectedDateLabel.textContent = hasDate
+      ? new Date(`${dateValue}T12:00:00`).toLocaleDateString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric"
+      })
+      : "Choose a weekday";
+    availabilityStatus.hidden = !hasDate;
+    renderTimeSlots(false, new Set());
+    if (!hasDate) return;
+
+    const takenSlots = await fetchTakenSlots(dateValue);
+    if (requestSequence !== availabilitySequence || selectedDateField.value !== dateValue) return;
+
+    availabilityStatus.hidden = true;
+    if (takenSlots.has(selectedTimeField.value)) selectedTimeField.value = "";
+    renderTimeSlots(true, takenSlots);
+  }
+
   function selectDate(date) {
     selectedDateField.value = toDateValue(date);
-    selectedTimeField.value = "";
     onSelection();
     renderCalendar();
-    renderTimes();
+    renderTimes({ clearSelection: true });
   }
 
   document.querySelector("#previous-month").addEventListener("click", () => {
@@ -149,13 +203,26 @@ export function initCallbackSchedule({ onSelection }) {
   return {
     render() {
       renderCalendar();
-      renderTimes();
+      renderTimes({ clearSelection: true });
     },
     reset() {
       selectedDateField.value = "";
-      selectedTimeField.value = "";
       renderCalendar();
-      renderTimes();
+      renderTimes({ clearSelection: true });
+    },
+    async isSlotAvailable(dateValue, timeValue) {
+      const requestSequence = ++availabilitySequence;
+      if (selectedDateField.value === dateValue) {
+        availabilityStatus.hidden = false;
+        renderTimeSlots(false, new Set());
+      }
+      const takenSlots = await fetchTakenSlots(dateValue);
+      if (requestSequence === availabilitySequence && selectedDateField.value === dateValue) {
+        if (takenSlots.has(timeValue)) selectedTimeField.value = "";
+        availabilityStatus.hidden = true;
+        renderTimeSlots(true, takenSlots);
+      }
+      return !takenSlots.has(timeValue);
     }
   };
 }
