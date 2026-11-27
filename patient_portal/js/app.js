@@ -11,7 +11,7 @@ const LEGACY_GUEST_REQUEST_SEEN_KEY = "hfrc_guest_request_seen";
 const LEGACY_GUEST_WELLNESS_ITEMS_KEY = "hfrc_guest_wellness_checkins";
 const LEGACY_USER_WELLNESS_ITEMS_PREFIX = "hfrc_user_checkins_";
 const LEGACY_USER_REQUEST_SEEN_PREFIX = "patient-request-seen:";
-const WELLNESS_CHECKIN_MESSAGE = "You've checked in 5 times in your Vent-Out Space. Taking time to reflect matters—if you'd ever like someone to talk to, our Care Assistant or callback team at Holy Face Center is here for you.";
+const WELLNESS_CHECKIN_MESSAGE = "You've checked in 5 times in your Safe Space. Taking time to reflect matters—if you'd ever like someone to talk to, our Care Assistant or callback team at Holy Face Center is here for you.";
 const PORTAL_THEME_KEY = "boc_portal_theme";
 
 const themeToggle = document.querySelector("#theme-toggle");
@@ -453,7 +453,7 @@ function renderNotificationItem(item) {
     const header = document.createElement("div");
     header.className = "request-history-item-header";
     const heading = document.createElement("strong");
-    heading.textContent = "Vent-Out Space check-in";
+    heading.textContent = "Safe Space check-in";
     const status = document.createElement("span");
     status.className = "request-status-badge";
     status.textContent = "Reflection";
@@ -539,7 +539,7 @@ function renderRequestHistory(rows) {
     latestDetails.className = "notification-latest-details";
 
     if (latest.type === "wellness") {
-      latestStatus.textContent = `${formatNotificationTimestamp(latest)} — Vent-Out Space check-in`;
+      latestStatus.textContent = `${formatNotificationTimestamp(latest)} — Safe Space check-in`;
       latestDetails.textContent = WELLNESS_CHECKIN_MESSAGE;
     } else {
       const row = latest.data;
