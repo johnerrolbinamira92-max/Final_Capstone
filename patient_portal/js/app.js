@@ -835,7 +835,7 @@ function updateAccountProfileButton() {
 function updateAccountCopy() {
   updateAccountProfileButton();
   const isGuest = !currentSession;
-  const isPrivateFlow = form.querySelector('input[name="next-step"]:checked').value === "private";
+  const isPrivateFlow = form.querySelector('input[name="next-step"]:checked')?.value === "private";
   const userMetadata = currentSession ? currentSession.user.user_metadata : null;
   document.querySelector("#entry-hint-prefix").textContent = currentSession
     ? "Your private entries are backed up to your account and are not sent to the center."
@@ -1014,7 +1014,7 @@ function clearSignedInUiState(showGuestEntries = true) {
   form.reset();
   callbackSchedule.reset();
   countLabel.textContent = "0 / 10,000";
-  setFlow("private");
+  setFlow(null);
   entryToast.hidden = true;
   window.clearTimeout(toastTimeout);
   hideFeedback();
@@ -1488,19 +1488,25 @@ document.querySelector("#copy-number-button").addEventListener("click", async ()
 
 function setFlow(value) {
   const isHelp = value === "help";
+  const isPrivate = value === "private";
+  const isSelected = isHelp || isPrivate;
   const flowOptions = form.querySelectorAll('input[name="next-step"]');
   flowOptions.forEach((input) => {
     input.checked = input.value === value;
     input.closest(".choice-card").classList.toggle("is-active", input.checked);
   });
   updateAccountCopy();
+  document.querySelector("#flow-selection-prompt").hidden = isSelected;
   document.querySelector("#callback-panel").hidden = !isHelp;
-  document.querySelector("#private-note-panel").hidden = isHelp;
+  document.querySelector("#private-note-panel").hidden = !isPrivate;
+  document.querySelector(".entry-actions").hidden = !isSelected;
   submitButton.innerHTML = isHelp
     ? 'Send my help request <span aria-hidden="true">›</span>'
-    : 'Store my private entry <span aria-hidden="true">›</span>';
-  submitButton.disabled = false;
-  submitButton.classList.toggle("private-submit", !isHelp);
+    : isPrivate
+      ? 'Store my private entry <span aria-hidden="true">›</span>'
+      : "Choose an option to continue";
+  submitButton.disabled = !isSelected;
+  submitButton.classList.toggle("private-submit", isPrivate);
   hideFeedback();
 }
 
@@ -1528,11 +1534,16 @@ messageField.addEventListener("input", () => {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const selectedFlow = form.querySelector('input[name="next-step"]:checked');
+  if (!selectedFlow) {
+    showFeedback("Please select an option above to continue.", "error");
+    return;
+  }
   if (!authReady) {
     showFeedback("Your account is still loading. Please try again in a moment.", "error");
     return;
   }
-  const mode = form.querySelector('input[name="next-step"]:checked').value;
+  const mode = selectedFlow.value;
   const text = messageField.value.trim();
   if (!text) {
     showFeedback("Write a little about what’s on your mind before continuing.", "error");
@@ -1573,7 +1584,7 @@ form.addEventListener("submit", async (event) => {
         }
         form.reset();
         callbackSchedule.reset();
-        setFlow("help");
+        setFlow(null);
         countLabel.textContent = "0 / 10,000";
         if (currentSession) {
           const session = currentSession;
@@ -1594,9 +1605,8 @@ form.addEventListener("submit", async (event) => {
   const engagementRequest = recordPortalEngagement("no_help_submitted");
   privateEntries.render();
   form.reset();
-  form.querySelector('input[name="next-step"][value="private"]').checked = true;
   countLabel.textContent = "0 / 10,000";
-  setFlow("private");
+  setFlow(null);
   showFeedback("Your private entry was saved on this device only. It will be removed from this list after 30 days.", "success");
   await engagementRequest;
   if (currentSession) {
@@ -1617,7 +1627,7 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
-setFlow(form.querySelector('input[name="next-step"]:checked').value);
+setFlow(null);
 callbackSchedule.render();
 setAuthMode("signin");
 async function initializeAuth() {

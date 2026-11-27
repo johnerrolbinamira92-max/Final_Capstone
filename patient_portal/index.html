@@ -25,7 +25,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=8">
+    <link rel="stylesheet" href="styles.css?v=9">
     <link rel="stylesheet" href="css/chatbot.css">
   </head>
   <body>
@@ -208,8 +208,8 @@
                 <fieldset class="choice-fieldset">
                   <legend>What would feel right after sharing?</legend>
                   <div class="choice-grid">
-                    <label class="choice-card is-active">
-                      <input type="radio" name="next-step" value="help" checked data-scroll-target="#callback-panel">
+                    <label class="choice-card">
+                      <input type="radio" name="next-step" value="help" data-scroll-target="#callback-panel">
                       <span class="choice-icon heart-icon" aria-hidden="true">♡</span>
                       <span><strong>I need help</strong><small>I’d like the center to contact me.</small></span>
                     </label>
@@ -223,6 +223,7 @@
               </section>
 
               <div class="right-column">
+                <p class="flow-selection-prompt" id="flow-selection-prompt">Please select an option above to continue.</p>
                 <section class="panel callback-panel" id="callback-panel" aria-labelledby="callback-title">
                   <div class="panel-icon" aria-hidden="true">♧</div>
                   <h3 id="callback-title">Request a confidential callback</h3>

@@ -612,9 +612,11 @@ textarea::placeholder, input::placeholder { color: #759994; opacity: 1; }
   cursor: pointer;
   transition: border-color 140ms ease, background-color 140ms ease;
 }
+.choice-card:not(.is-active):hover { border-color: var(--teal-bright); background: color-mix(in srgb, var(--teal) 9%, var(--surface)); }
 .choice-card.is-active { border-color: var(--teal-bright); background: color-mix(in srgb, var(--teal) 35%, var(--surface)); box-shadow: inset 0 0 0 1px var(--teal-bright); }
 .choice-card input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .choice-card:focus-within { outline: 3px solid var(--teal-bright); outline-offset: 3px; }
+.flow-selection-prompt { grid-column: 1 / -1; align-self: start; margin: 0; padding: 18px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); font-size: 13px; text-align: center; }
 .choice-icon { width: 32px; height: 32px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; color: #fff; }
 .heart-icon { background: var(--teal); font-size: 21px; }
 .check-icon { background: #a49e5c; font-weight: 700; }
@@ -994,6 +996,18 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; }
 .light-mode .footer-brand h2 { color: #ffffff; }
 .light-mode .footer-brand p,
 .light-mode .footer-contact a { color: #ffffff; }
+
+:root:not(.light-mode) .care-chatbot-widget .care-chatbot-toggle {
+  background: linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%) !important;
+  color: #042f2e !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.35) !important;
+  box-shadow: 0 8px 24px rgba(20, 184, 166, 0.45) !important;
+}
+:root:not(.light-mode) .care-chatbot-panel {
+  background: #163a35 !important;
+  border: 1px solid rgba(45, 212, 191, 0.4) !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45) !important;
+}
 
 @media (max-width: 900px) {
   .form-grid { grid-template-columns: 1fr; }
