@@ -115,14 +115,30 @@ st.markdown(
         background: var(--hfrc-page);
     }
 
-    [data-testid="stHeader"] {
-        background: #ffffff;
-        border-bottom: 1px solid var(--hfrc-line);
+    [data-testid="stHeader"],
+    [data-testid="stToolbar"],
+    [data-testid="stDecoration"] {
+        height: 0 !important;
+        min-height: 0 !important;
+        border: none !important;
+        background: transparent !important;
+        overflow: visible !important;
+        box-shadow: none !important;
     }
 
-    [data-testid="stMainBlockContainer"] {
+    [data-testid="stToolbarActions"],
+    .stDeployButton,
+    [data-testid="stAppDeployButton"],
+    [data-testid="stMainMenu"],
+    #MainMenu {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    [data-testid="stMainBlockContainer"],
+    .block-container {
         max-width: 1440px;
-        padding-top: 2rem;
+        padding-top: 1rem !important;
         padding-bottom: 3rem;
     }
 
@@ -547,6 +563,15 @@ st.markdown(
         gap: 8px;
     }
 
+    .st-key-hfrc-sidebar-header,
+    .st-key-hfrc-sidebar-header > [data-testid="stVerticalBlock"] {
+        height: 0 !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+
     .st-key-hfrc-sidebar-navigation,
     .st-key-hfrc-sidebar-navigation > [data-testid="stVerticalBlock"] {
         display: flex;
@@ -556,21 +581,17 @@ st.markdown(
     }
 
     .st-key-hfrc-sidebar-navigation {
-        margin-top: auto !important;
-        margin-bottom: auto !important;
+        flex: 0 0 auto;
+        margin: 0 !important;
         border-top: 1px solid rgba(255, 255, 255, 0.14);
         padding-top: 12px;
     }
 
-    .st-key-hfrc-sidebar-logout {
-        margin-top: auto !important;
-        padding-bottom: 16px;
-    }
-
     .st-key-hfrc-sidebar-status {
         position: static !important;
+        min-height: 24px;
         margin-top: 0 !important;
-        margin-bottom: 10px !important;
+        margin-bottom: 0 !important;
     }
 
     .hfrc-sidebar-brand {
@@ -582,11 +603,11 @@ st.markdown(
         display: flex;
         align-items: center;
         gap: 10px;
-        min-height: 3rem;
+        min-height: 3.5rem;
         margin: 0;
         padding: 0;
         color: #ffffff;
-        font-size: .95rem;
+        font-size: 1rem;
         font-weight: 700;
         line-height: 1.15;
         pointer-events: none;
@@ -595,9 +616,9 @@ st.markdown(
     .hfrc-sidebar-brand-mark {
         display: grid;
         box-sizing: border-box;
-        width: 40px;
-        height: 40px;
-        flex: 0 0 40px;
+        width: 48px;
+        height: 48px;
+        flex: 0 0 48px;
         place-items: center;
         border: 1px solid rgba(255,255,255,.55);
         border-radius: 8px;
@@ -612,7 +633,7 @@ st.markdown(
     }
 
     .hfrc-sidebar-brand strong {
-        font-size: .85rem;
+        font-size: .9rem;
         font-weight: 600;
     }
 
@@ -624,6 +645,7 @@ st.markdown(
         font-weight: 400;
     }
 
+    [data-testid="stSidebarCollapsedControl"],
     [data-testid="stSidebarCollapseButton"],
     [data-testid="collapsedControl"] {
         display: flex !important;
@@ -643,36 +665,135 @@ st.markdown(
         color: #e6f4f1;
     }
 
-    .st-key-hfrc-sidebar-navigation [data-testid="stPageLink"] {
-        margin: 0;
+    .st-key-hfrc-sidebar-nav-home,
+    .st-key-hfrc-sidebar-nav-statistics,
+    .st-key-hfrc-sidebar-nav-records,
+    .st-key-hfrc-sidebar-nav-appointments,
+    .st-key-hfrc-sidebar-nav-callbacks,
+    .st-key-hfrc-sidebar-nav-activity,
+    .st-key-hfrc-sidebar-nav-logout {
+        margin-bottom: 6px !important;
         padding: 4px 0;
         border-bottom: 1px solid rgba(255, 255, 255, 0.12);
     }
 
-    .st-key-hfrc-sidebar-navigation [data-testid="stPageLink"] a {
-        display: flex;
-        min-height: 2.5rem;
-        align-items: center;
-        gap: 10px;
-        padding: 9px 12px;
-        border-radius: 8px;
-        color: #d7ebe7;
-        font-size: .95rem;
-        font-weight: 500;
+    .st-key-hfrc-sidebar-nav-activity,
+    .st-key-hfrc-sidebar-nav-logout {
+        margin-bottom: 0 !important;
     }
 
-    .st-key-hfrc-sidebar-navigation [data-testid="stPageLink"] a svg {
+    .st-key-hfrc-sidebar-nav-home a,
+    .st-key-hfrc-sidebar-nav-statistics a,
+    .st-key-hfrc-sidebar-nav-records a,
+    .st-key-hfrc-sidebar-nav-appointments a,
+    .st-key-hfrc-sidebar-nav-callbacks a,
+    .st-key-hfrc-sidebar-nav-activity a,
+    .st-key-hfrc-sidebar-nav-logout button {
+        display: flex;
+        width: 100%;
+        min-height: 2.5rem;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 10px;
+        padding: 13px 16px !important;
+        border-radius: 8px;
+        border: none !important;
+        background: transparent !important;
+        color: #d7ebe7 !important;
+        font-size: 1.02rem !important;
+        font-weight: 500 !important;
+        text-align: left !important;
+        box-shadow: none !important;
+    }
+
+    .st-key-hfrc-sidebar-nav-logout button {
+        justify-content: flex-start !important;
+        padding-left: 16px !important;
+        border-radius: 8px !important;
+    }
+
+    .st-key-hfrc-sidebar-nav-logout button > div,
+    .st-key-hfrc-sidebar-nav-logout button > p,
+    .st-key-hfrc-sidebar-nav-logout button > span,
+    .st-key-hfrc-sidebar-nav-logout button div,
+    .st-key-hfrc-sidebar-nav-logout button p,
+    .st-key-hfrc-sidebar-nav-logout button span {
+        justify-content: flex-start !important;
+        text-align: left !important;
+    }
+
+    .st-key-hfrc-sidebar-nav-logout button > div {
+        display: flex;
+        flex: 1;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .st-key-hfrc-sidebar-nav-logout button p {
+        margin: 0;
+    }
+
+    .st-key-hfrc-sidebar-nav-home a svg,
+    .st-key-hfrc-sidebar-nav-statistics a svg,
+    .st-key-hfrc-sidebar-nav-records a svg,
+    .st-key-hfrc-sidebar-nav-appointments a svg,
+    .st-key-hfrc-sidebar-nav-callbacks a svg,
+    .st-key-hfrc-sidebar-nav-activity a svg,
+    .st-key-hfrc-sidebar-nav-logout button svg {
         width: 17px;
         height: 17px;
         flex: 0 0 17px;
     }
 
-    .st-key-hfrc-sidebar-navigation [data-testid="stPageLink"] a:hover {
-        background: rgba(0, 163, 148, .22);
-        color: #ffffff;
+    .st-key-hfrc-sidebar-nav-logout button [data-testid="stIconMaterial"] {
+        flex: 0 0 17px;
+        font-size: 17px;
     }
 
-    .st-key-hfrc-sidebar-navigation [data-testid="stPageLink"] a[aria-current="page"] {
+    [data-testid="stSidebar"] [data-testid="stSidebarNavLink"] {
+        transition: background-color 0.15s ease, color 0.15s ease !important;
+    }
+
+    .st-key-hfrc-sidebar-nav-home a,
+    .st-key-hfrc-sidebar-nav-statistics a,
+    .st-key-hfrc-sidebar-nav-records a,
+    .st-key-hfrc-sidebar-nav-appointments a,
+    .st-key-hfrc-sidebar-nav-callbacks a,
+    .st-key-hfrc-sidebar-nav-activity a {
+        transition: background-color 0.15s ease, color 0.15s ease !important;
+    }
+
+    [data-testid="stSidebar"] [data-testid="stSidebarNavLink"]:not([aria-current="page"]):hover {
+        background-color: rgba(255, 255, 255, 0.10) !important;
+    }
+
+    .st-key-hfrc-sidebar-nav-home a:not([aria-current="page"]):hover,
+    .st-key-hfrc-sidebar-nav-statistics a:not([aria-current="page"]):hover,
+    .st-key-hfrc-sidebar-nav-records a:not([aria-current="page"]):hover,
+    .st-key-hfrc-sidebar-nav-appointments a:not([aria-current="page"]):hover,
+    .st-key-hfrc-sidebar-nav-callbacks a:not([aria-current="page"]):hover,
+    .st-key-hfrc-sidebar-nav-activity a:not([aria-current="page"]):hover {
+        background-color: rgba(255, 255, 255, 0.10) !important;
+    }
+
+    .st-key-hfrc-sidebar-nav-logout button {
+        transition: background-color 0.15s ease, color 0.15s ease !important;
+    }
+
+    .st-key-hfrc-sidebar-nav-logout button:hover {
+        border: none !important;
+        border-radius: 8px !important;
+        background-color: rgba(255, 255, 255, 0.10) !important;
+        color: #d7ebe7 !important;
+        box-shadow: none !important;
+    }
+
+    .st-key-hfrc-sidebar-nav-home a[aria-current="page"],
+    .st-key-hfrc-sidebar-nav-statistics a[aria-current="page"],
+    .st-key-hfrc-sidebar-nav-records a[aria-current="page"],
+    .st-key-hfrc-sidebar-nav-appointments a[aria-current="page"],
+    .st-key-hfrc-sidebar-nav-callbacks a[aria-current="page"],
+    .st-key-hfrc-sidebar-nav-activity a[aria-current="page"] {
         border-left: 3px solid #f2a477;
         background: #006d65;
         color: #ffffff;
@@ -863,7 +984,7 @@ st.markdown(
         margin: 0 auto;
         border-bottom: 1px solid var(--hfrc-line);
         background: var(--hfrc-surface);
-        padding: .75rem clamp(1.25rem, 3vw, 2.5rem);
+        padding: 0 clamp(1.25rem, 3vw, 2.5rem) .75rem;
     }
 
     .st-key-overview-toolbar [data-testid="stHorizontalBlock"] {
@@ -1624,11 +1745,6 @@ st.markdown(
             color: var(--hfrc-text);
         }
 
-        [data-testid="stHeader"] {
-            background: #182523 !important;
-            border-bottom-color: var(--hfrc-line);
-        }
-
         [data-testid="stMainBlockContainer"] [data-testid="stMarkdownContainer"],
         [data-testid="stMainBlockContainer"] [data-testid="stWidgetLabel"],
         [data-testid="stMainBlockContainer"] [data-testid="stCaptionContainer"],
@@ -1801,7 +1917,7 @@ st.markdown(
         .st-key-admin-statistics-page {
             max-width: 1440px;
             margin-inline: auto;
-            padding: 1.75rem clamp(1.25rem, 3vw, 2.5rem) 2rem;
+            padding: 0 clamp(1.25rem, 3vw, 2.5rem) 2rem;
             color: var(--hfrc-text);
         }
 
@@ -1838,7 +1954,7 @@ st.markdown(
 
         .st-key-admin-statistics-page .st-key-statistics-intro,
         .st-key-admin-home-page .st-key-home-page-intro {
-            margin: .25rem 0 1.25rem;
+            margin: 0 0 1.25rem;
         }
 
         .st-key-admin-statistics-page .st-key-statistics-filters [data-testid="stVerticalBlockBorderWrapper"],
@@ -1894,7 +2010,7 @@ st.markdown(
         .st-key-admin-search-page {
             max-width: 1440px;
             margin-inline: auto;
-            padding: 1.75rem clamp(1.25rem, 3vw, 2.5rem) 2rem;
+            padding: 0 clamp(1.25rem, 3vw, 2.5rem) 2rem;
             color: var(--hfrc-text);
         }
 
@@ -2784,25 +2900,58 @@ with st.sidebar:
                 unsafe_allow_html=True,
             )
         st.markdown(
-            '<div style="height: 155px;"></div>',
+            '<div style="height: 106px;"></div>',
             unsafe_allow_html=True,
         )
         with st.container(key="hfrc-sidebar-status"):
             render_offline_status_badge()
         with st.container(key="hfrc-sidebar-navigation"):
-            for page, label, icon in (
-                (home_page, "Home", ":material/home:"),
-                (dashboard_page, "Patient Statistics", ":material/analytics:"),
-                (search_page, "Record Management", ":material/manage_search:"),
-                (appointments_page, "Appointments", ":material/calendar_month:"),
+            for page, label, icon, key in (
+                (home_page, "Home", ":material/home:", "hfrc-sidebar-nav-home"),
+                (
+                    dashboard_page,
+                    "Patient Statistics",
+                    ":material/analytics:",
+                    "hfrc-sidebar-nav-statistics",
+                ),
+                (
+                    search_page,
+                    "Record Management",
+                    ":material/manage_search:",
+                    "hfrc-sidebar-nav-records",
+                ),
+                (
+                    appointments_page,
+                    "Appointments",
+                    ":material/calendar_month:",
+                    "hfrc-sidebar-nav-appointments",
+                ),
                 (
                     notifications_page,
                     "Callback Requests",
                     ":material/notifications:",
+                    "hfrc-sidebar-nav-callbacks",
                 ),
-                (audit_page, "Activity History", ":material/history:"),
+                (
+                    audit_page,
+                    "Activity History",
+                    ":material/history:",
+                    "hfrc-sidebar-nav-activity",
+                ),
             ):
-                st.page_link(page, label=label, icon=icon, width="stretch")
+                with st.container(key=key):
+                    st.page_link(page, label=label, icon=icon, width="stretch")
+            with st.container(key="hfrc-sidebar-nav-logout"):
+                if st.button(
+                    "Log out",
+                    icon=":material/logout:",
+                    key="hfrc-sidebar-logout",
+                    width="stretch",
+                ):
+                    st.session_state["admin_authenticated"] = False
+                    st.session_state.pop("admin_auth_mode", None)
+                    st.session_state.pop("admin_profile", None)
+                    st.rerun()
             render_notification_alerts(
                 cached_items=(
                     notification_items if notification_feed_is_cached else None
@@ -2824,14 +2973,5 @@ with st.sidebar:
                 st.error("Unable to load saved notification read status.")
                 with st.expander("Notification read status details"):
                     st.code(str(notification_read_state_error))
-        st.markdown(
-            '<div style="height: 85px;"></div>',
-            unsafe_allow_html=True,
-        )
-        if st.button("Log out", key="hfrc-sidebar-logout"):
-            st.session_state["admin_authenticated"] = False
-            st.session_state.pop("admin_auth_mode", None)
-            st.session_state.pop("admin_profile", None)
-            st.rerun()
 
 pg.run()
