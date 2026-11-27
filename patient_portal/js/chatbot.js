@@ -60,8 +60,8 @@ document.body.insertAdjacentHTML("beforeend", `
     <button
       class="care-chatbot-toggle"
       type="button"
-      aria-label="Open Care Assistant Chat"
-      title="Care Assistant"
+      aria-label="Open support assistant"
+      title="Support Assistant"
       aria-controls="care-chatbot-panel"
       aria-expanded="false"
     >
@@ -69,7 +69,6 @@ document.body.insertAdjacentHTML("beforeend", `
         <path d="M27 15.3c0 6.1-5 11-11 11-1.9 0-3.7-.5-5.3-1.4L4 27l1.8-6a10.7 10.7 0 0 1-1.1-4.7c0-6.1 5-11 11-11s11.3 2.9 11.3 10Z"></path>
         <path d="M11.5 15.5h.01M16.5 15.5h.01M12 19c.8.8 1.8 1.2 3 1.2s2.2-.4 3-1.2M23 3v5M20.5 5.5h5"></path>
       </svg>
-      <span class="care-chatbot-toggle-label">Support Assistant</span>
     </button>
   </div>
 `);
