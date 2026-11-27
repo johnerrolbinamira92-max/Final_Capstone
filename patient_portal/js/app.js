@@ -95,6 +95,7 @@ function readNamespacedJson(key, legacyKey, fallback, isValid) {
 const form = document.querySelector("#entry-form");
 const messageField = document.querySelector("#message");
 const countLabel = document.querySelector("#character-count");
+const contactField = document.querySelector("#patient-contact");
 const submitButton = document.querySelector("#submit-button");
 const viewTabs = Array.from(document.querySelectorAll('[role="tab"]'));
 const authDialog = document.querySelector("#auth-dialog");
@@ -1557,6 +1558,26 @@ document.querySelectorAll('input[name="next-step"]').forEach((input) => {
 messageField.addEventListener("input", () => {
   countLabel.textContent = `${messageField.value.length.toLocaleString()} / 10,000`;
   hideFeedback();
+});
+
+contactField.addEventListener("input", () => {
+  const filtered = contactField.value.replace(/[^\d+]/g, "");
+  const digits = filtered.replace(/\D/g, "");
+  const value = filtered.startsWith("+") ? `+${digits}` : digits;
+  const maxLength = value.startsWith("09")
+    ? 11
+    : value.startsWith("+63")
+      ? 13
+      : value.startsWith("63")
+        ? 12
+        : 13;
+
+  contactField.maxLength = maxLength;
+  contactField.value = value.slice(0, maxLength);
+  hideFeedback();
+});
+form.addEventListener("reset", () => {
+  contactField.maxLength = 13;
 });
 
 form.addEventListener("submit", async (event) => {

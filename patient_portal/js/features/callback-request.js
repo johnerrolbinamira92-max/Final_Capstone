@@ -1,6 +1,5 @@
 function validateContact(value) {
-  const digits = value.replace(/\D/g, "");
-  return /^(09\d{9}|639\d{9}|9\d{9})$/.test(digits);
+  return /^(09\d{9}|\+639\d{9}|639\d{9})$/.test(value);
 }
 
 function validateHelpRequest() {
@@ -16,7 +15,9 @@ function validateHelpRequest() {
   if (age !== null && (!Number.isInteger(age) || age < 1 || age > 120)) {
     return "Enter a valid age between 1 and 120.";
   }
-  if (!validateContact(contact)) return "Enter a valid Philippine mobile number.";
+  if (!validateContact(contact)) {
+    return "Please enter a valid 11-digit mobile number starting with 09 (or +639XXXXXXXXX).";
+  }
   if (!date) return "Choose an available weekday for the callback.";
   if (!time) return "Choose an available callback time.";
   if (!consent) return "Please provide consent before sending your help request.";
