@@ -1,5 +1,5 @@
 import { sendHelpRequest } from "./features/callback-request.js?v=4";
-import { initCallbackSchedule } from "./features/callback-schedule.js?v=3";
+import { initCallbackSchedule } from "./features/callback-schedule.js?v=4";
 import { createPrivateEntries } from "./features/private-entries.js?v=6";
 import { hideFeedback, showFeedback } from "./ui/feedback.js";
 
@@ -224,7 +224,7 @@ const callbackSchedule = initCallbackSchedule({
   loadBookedSlots: async (dateValue) => {
     if (!supabase) throw new Error("Supabase is unavailable.");
     const { data, error } = await supabase.rpc(
-      "get_callback_slot_availability",
+      "get_taken_callback_slots",
       { target_date: dateValue }
     );
     if (error) throw error;

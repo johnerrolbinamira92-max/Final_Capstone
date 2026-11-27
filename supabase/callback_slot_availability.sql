@@ -39,6 +39,23 @@ revoke all on function public.get_callback_slot_availability(date)
 grant execute on function public.get_callback_slot_availability(date)
     to anon, authenticated;
 
+create or replace function public.get_taken_callback_slots(target_date date)
+returns table (taken_time text)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+    select distinct availability.requested_time_slot::text as taken_time
+    from public.get_callback_slot_availability(target_date) as availability
+    where availability.requested_date = target_date;
+$$;
+
+revoke all on function public.get_taken_callback_slots(date)
+    from public, anon, authenticated;
+grant execute on function public.get_taken_callback_slots(date)
+    to anon, authenticated;
+
 create or replace function public.prevent_callback_slot_conflicts()
 returns trigger
 language plpgsql

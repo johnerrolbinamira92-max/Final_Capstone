@@ -30,8 +30,25 @@ function toDateValue(date) {
 }
 
 function toTimeValue(value) {
-  const match = String(value || "").match(/^(\d{2}):(\d{2})/);
-  return match ? `${match[1]}:${match[2]}` : "";
+  const match = String(value ?? "")
+    .trim()
+    .match(/^(\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?\s*(AM|PM)?$/i);
+  if (!match) return "";
+
+  const minute = Number(match[2]);
+  const second = match[3] === undefined ? 0 : Number(match[3]);
+  const period = match[4]?.toUpperCase();
+  let hour = Number(match[1]);
+
+  if (minute > 59 || second > 59) return "";
+  if (period) {
+    if (hour < 1 || hour > 12) return "";
+    hour = (hour % 12) + (period === "PM" ? 12 : 0);
+  } else if (hour > 23) {
+    return "";
+  }
+
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 function isAvailableDate(date) {
@@ -108,12 +125,14 @@ export function initCallbackSchedule({ onSelection, loadBookedSlots }) {
         minute: "2-digit",
         hour12: true
       });
-      const isTaken = takenSlots.has(time);
+      const normalizedTime = toTimeValue(label);
+      const isTaken = takenSlots.has(normalizedTime);
       const button = document.createElement("button");
       button.type = "button";
       button.className = "time-slot";
       button.disabled = !hasDate || isTaken;
-      const isSelected = hasDate && selectedTimeField.value === time && !isTaken;
+      const isSelected =
+        hasDate && toTimeValue(selectedTimeField.value) === normalizedTime && !isTaken;
       button.setAttribute("aria-pressed", String(isSelected));
 
       if (isTaken) {
@@ -150,8 +169,7 @@ export function initCallbackSchedule({ onSelection, loadBookedSlots }) {
       const rows = await loadBookedSlots(dateValue);
       return new Set(
         (rows || [])
-          .filter((row) => row.requested_date === dateValue)
-          .map((row) => toTimeValue(row.requested_time_slot))
+          .map((row) => toTimeValue(row.taken_time ?? row.requested_time_slot))
           .filter(Boolean)
       );
     } catch (error) {
@@ -180,7 +198,9 @@ export function initCallbackSchedule({ onSelection, loadBookedSlots }) {
     if (requestSequence !== availabilitySequence || selectedDateField.value !== dateValue) return;
 
     availabilityStatus.hidden = true;
-    if (takenSlots.has(selectedTimeField.value)) selectedTimeField.value = "";
+    if (takenSlots.has(toTimeValue(selectedTimeField.value))) {
+      selectedTimeField.value = "";
+    }
     renderTimeSlots(true, takenSlots);
   }
 
@@ -211,6 +231,7 @@ export function initCallbackSchedule({ onSelection, loadBookedSlots }) {
       renderTimes({ clearSelection: true });
     },
     async isSlotAvailable(dateValue, timeValue) {
+      const normalizedTime = toTimeValue(timeValue);
       const requestSequence = ++availabilitySequence;
       if (selectedDateField.value === dateValue) {
         availabilityStatus.hidden = false;
@@ -218,11 +239,11 @@ export function initCallbackSchedule({ onSelection, loadBookedSlots }) {
       }
       const takenSlots = await fetchTakenSlots(dateValue);
       if (requestSequence === availabilitySequence && selectedDateField.value === dateValue) {
-        if (takenSlots.has(timeValue)) selectedTimeField.value = "";
+        if (takenSlots.has(normalizedTime)) selectedTimeField.value = "";
         availabilityStatus.hidden = true;
         renderTimeSlots(true, takenSlots);
       }
-      return !takenSlots.has(timeValue);
+      return Boolean(normalizedTime) && !takenSlots.has(normalizedTime);
     }
   };
 }

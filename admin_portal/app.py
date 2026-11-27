@@ -111,8 +111,9 @@ st.markdown(
         min-width: 0 !important;
     }
 
+    [data-testid="stApp"],
     [data-testid="stAppViewContainer"] {
-        background: var(--hfrc-page);
+        background: var(--hfrc-page) !important;
     }
 
     [data-testid="stHeader"],
@@ -121,7 +122,8 @@ st.markdown(
         height: 0 !important;
         min-height: 0 !important;
         border: none !important;
-        background: transparent !important;
+        border-bottom: none !important;
+        background: var(--hfrc-page) !important;
         overflow: visible !important;
         box-shadow: none !important;
     }
@@ -1727,7 +1729,7 @@ st.markdown(
         <style>
         :root {
             color-scheme: dark;
-            --hfrc-page: #101a19;
+            --hfrc-page: #081715;
             --hfrc-page-deep: #003f3b;
             --hfrc-surface: #182523;
             --hfrc-surface-raised: #202f2d;
@@ -1738,6 +1740,7 @@ st.markdown(
             --hfrc-teal-bright: #43c4b5;
         }
 
+        [data-testid="stApp"],
         [data-testid="stAppViewContainer"],
         [data-testid="stMain"],
         [data-testid="stMainBlockContainer"] {
