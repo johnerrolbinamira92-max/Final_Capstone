@@ -1,10 +1,11 @@
 const MAX_MESSAGES = 8;
 const MAX_USER_MESSAGE_LENGTH = 500;
+const WELCOME_MESSAGE = "Hi! I'm your Holy Face Center Support Guide. How can I help you today? You can ask me about booking an appointment, requesting a callback, using your private journal, or calming exercises.";
 const BOC_INFORMATION_FALLBACK = "BOC is the Congregation of the Brothers of Charity (Fratres a Caritate), an international Catholic religious congregation founded in 1807 in Ghent, Belgium, by Fr. Peter Joseph Triest. It is dedicated to compassionate care for people experiencing mental health challenges and vulnerability.\n\nBrothers of Charity – Holy Face Center for Mental Health, also known as Holy Face Rehabilitation Center for Mental Health, is a non-profit mental health facility at Nazareth Complex, Zone 6, Tabiguian, Tabaco City, Albay, serving individuals and families across the Bicol Region. Its services include outpatient psychiatric consultations, psychological counseling, medication follow-ups, and community-based mental health support. It is open Monday–Friday, 8:00 AM–4:00 PM; phone 0920-691-5015; email holyfacecenter@gmail.com.\n\nWould you like to know more about its services or how to contact the center?";
 const STARTER_PROMPTS = [
-  "How do I request a callback?",
-  "Clinic hours & contact",
-  "Help me calm down (grounding)"
+  "How do I book an appointment?",
+  "Request a callback",
+  "Quick calming exercise"
 ];
 
 const messages = [];
@@ -29,19 +30,21 @@ document.body.insertAdjacentHTML("beforeend", `
         <button class="care-chatbot-close" type="button" aria-label="Close Care Assistant">×</button>
       </header>
       <p class="care-chatbot-privacy">Session-only chat • Not saved to your journal or visible to staff</p>
-      <div class="care-chatbot-starters" role="group" aria-label="Suggested questions">
-        ${STARTER_PROMPTS.map((prompt) =>
-          `<button class="care-chatbot-chip" type="button">${prompt}</button>`
-        ).join("")}
+      <div class="care-chatbot-messages" id="care-chatbot-messages">
+        <div
+          class="care-chatbot-message-log"
+          id="care-chatbot-message-log"
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions"
+          aria-label="Care Assistant conversation"
+        ></div>
+        <div class="care-chatbot-starters" role="group" aria-label="Suggested questions" hidden>
+          ${STARTER_PROMPTS.map((prompt) =>
+            `<button class="care-chatbot-chip" type="button">${prompt}</button>`
+          ).join("")}
+        </div>
       </div>
-      <div
-        class="care-chatbot-messages"
-        id="care-chatbot-messages"
-        role="log"
-        aria-live="polite"
-        aria-relevant="additions"
-        aria-label="Care Assistant conversation"
-      ></div>
       <form class="care-chatbot-composer">
         <label class="sr-only" for="care-chatbot-input">Your message</label>
         <input
@@ -76,7 +79,9 @@ document.body.insertAdjacentHTML("beforeend", `
 const panel = document.querySelector("#care-chatbot-panel");
 const toggle = document.querySelector(".care-chatbot-toggle");
 const closeButton = document.querySelector(".care-chatbot-close");
-const messageList = document.querySelector("#care-chatbot-messages");
+const messageScroller = document.querySelector("#care-chatbot-messages");
+const messageList = document.querySelector("#care-chatbot-message-log");
+const starterGroup = document.querySelector(".care-chatbot-starters");
 const input = document.querySelector("#care-chatbot-input");
 const sendButton = document.querySelector(".care-chatbot-send");
 const starterButtons = [...document.querySelectorAll(".care-chatbot-chip")];
@@ -88,7 +93,7 @@ function renderMessage(role, text) {
   message.dataset.role = role;
   message.textContent = text;
   messageList.append(message);
-  messageList.scrollTop = messageList.scrollHeight;
+  messageScroller.scrollTop = messageScroller.scrollHeight;
   return message;
 }
 
@@ -96,6 +101,8 @@ function clearConversation() {
   conversationVersion += 1;
   messages.length = 0;
   messageList.replaceChildren();
+  starterGroup.hidden = true;
+  messageScroller.scrollTop = 0;
   input.value = "";
   sendButton.disabled = false;
   starterButtons.forEach((button) => {
@@ -125,6 +132,7 @@ async function sendMessage(value) {
   if (!text || text.length > MAX_USER_MESSAGE_LENGTH || sendButton.disabled) return;
 
   const requestVersion = conversationVersion;
+  starterGroup.hidden = true;
   messages.push({ role: "user", text });
   trimConversation();
   renderMessage("user", text);
@@ -188,20 +196,26 @@ async function sendMessage(value) {
         button.disabled = false;
       });
       input.disabled = false;
-      input.focus();
     }
   }
 }
 
 function setOpen(open) {
+  if (open && document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
   panel.hidden = !open;
   toggle.setAttribute("aria-expanded", String(open));
-  if (open) input.focus();
-  else toggle.focus();
+  if (!open) toggle.focus();
 }
 
 function openChatbot() {
   setOpen(true);
+  if (!messages.length) {
+    messages.push({ role: "assistant", text: WELCOME_MESSAGE });
+    renderMessage("assistant", WELCOME_MESSAGE);
+    starterGroup.hidden = false;
+  }
 }
 
 toggle.addEventListener("click", () => {

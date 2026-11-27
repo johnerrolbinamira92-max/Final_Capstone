@@ -44,6 +44,30 @@ themeToggle.addEventListener("click", () => {
   }
 });
 
+window.addEventListener("load", () => {
+  const chatbotToggle = document.querySelector(".care-chatbot-toggle");
+  if (!chatbotToggle) return;
+
+  const prefersReducedMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)"
+  ).matches;
+  chatbotToggle.addEventListener("animationend", (event) => {
+    if (event.animationName === "chatbotPopIn") {
+      chatbotToggle.classList.remove("is-entering");
+      if (chatbotToggle.getAttribute("aria-expanded") === "false") {
+        chatbotToggle.classList.add("is-intro-pulsing");
+      }
+    } else if (event.animationName === "chatDoublePulse") {
+      chatbotToggle.classList.remove("is-intro-pulsing");
+    }
+  });
+
+  window.setTimeout(() => {
+    chatbotToggle.classList.add("is-visible");
+    if (!prefersReducedMotion) chatbotToggle.classList.add("is-entering");
+  }, 1200);
+}, { once: true });
+
 function userNotificationStorageKey(userId, kind) {
   return `hfrc_notifications:${userId}:${kind}`;
 }

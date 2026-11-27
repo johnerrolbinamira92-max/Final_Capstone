@@ -791,6 +791,19 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; z-index: 9999; }
   color: #1a2e05 !important;
   box-shadow: 0 8px 24px rgba(132, 204, 22, 0.45) !important;
   font-weight: 600;
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(.3) translateY(20px);
+  pointer-events: none;
+}
+.care-chatbot-widget .care-chatbot-toggle.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  pointer-events: auto;
+}
+.care-chatbot-widget .care-chatbot-toggle.is-entering {
+  animation: chatbotPopIn 700ms cubic-bezier(.2, .8, .2, 1) both;
 }
 .care-chatbot-widget .care-chatbot-toggle:hover {
   transform: translateY(-2px) scale(1.04);
@@ -819,9 +832,25 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; z-index: 9999; }
   pointer-events: none;
   animation: chatPulse 2.6s ease-out infinite;
 }
+.care-chatbot-widget .care-chatbot-toggle.is-intro-pulsing[aria-expanded="false"]::before {
+  animation: chatDoublePulse 1.6s ease-out both;
+}
+@keyframes chatbotPopIn {
+  0% { opacity: 0; transform: scale(.3) translateY(20px); pointer-events: none; }
+  65% { opacity: 1; transform: scale(1.12) translateY(0); pointer-events: auto; }
+  82% { transform: scale(.98) translateY(0); }
+  100% { opacity: 1; transform: scale(1) translateY(0); pointer-events: auto; }
+}
 @keyframes chatPulse {
   0% { opacity: .7; transform: scale(.96); }
   70%, 100% { opacity: 0; transform: scale(1.12); }
+}
+@keyframes chatDoublePulse {
+  0%, 42%, 100% { opacity: 0; transform: scale(.96); }
+  12% { opacity: .8; transform: scale(1); }
+  30% { opacity: 0; transform: scale(1.12); }
+  58% { opacity: .65; transform: scale(1); }
+  78% { opacity: 0; transform: scale(1.12); }
 }
 
 .site-footer { padding: 30px 0; background: var(--teal); }
@@ -1088,5 +1117,7 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; z-index: 9999; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
-  .care-chatbot-toggle[aria-expanded="false"]::before { animation: none; }
+  .care-chatbot-widget .care-chatbot-toggle[aria-expanded="false"]::before,
+  .care-chatbot-widget .care-chatbot-toggle.is-entering,
+  .care-chatbot-widget .care-chatbot-toggle.is-intro-pulsing[aria-expanded="false"]::before { animation: none; }
 }

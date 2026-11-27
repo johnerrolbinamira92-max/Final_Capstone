@@ -143,6 +143,12 @@
   overscroll-behavior: contain;
 }
 
+.care-chatbot-message-log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .care-chatbot-message {
   max-width: 88%;
   padding: 9px 12px;
