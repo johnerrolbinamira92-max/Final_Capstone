@@ -1029,6 +1029,12 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; z-index: 9999; }
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45) !important;
 }
 
+@media (max-width: 480px) {
+  body .care-chatbot-widget { right: 16px; bottom: 16px; }
+  .care-chatbot-widget .care-chatbot-toggle { padding: 10px 14px; font-size: .82rem; }
+  .care-chatbot-widget .care-chatbot-toggle-label { font-size: .82rem; }
+}
+
 @media (max-width: 900px) {
   .form-grid { grid-template-columns: 1fr; }
   .right-column { grid-template-columns: 1fr 1fr; align-items: start; }

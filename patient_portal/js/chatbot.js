@@ -76,7 +76,6 @@ document.body.insertAdjacentHTML("beforeend", `
 
 const panel = document.querySelector("#care-chatbot-panel");
 const toggle = document.querySelector(".care-chatbot-toggle");
-const heroOpenButton = document.querySelector("#hero-chatbot-button");
 const closeButton = document.querySelector(".care-chatbot-close");
 const messageList = document.querySelector("#care-chatbot-messages");
 const input = document.querySelector("#care-chatbot-input");
@@ -198,7 +197,6 @@ async function sendMessage(value) {
 function setOpen(open) {
   panel.hidden = !open;
   toggle.setAttribute("aria-expanded", String(open));
-  heroOpenButton.setAttribute("aria-expanded", String(open));
   if (open) input.focus();
   else toggle.focus();
 }
@@ -211,7 +209,6 @@ toggle.addEventListener("click", () => {
   if (panel.hidden) openChatbot();
   else setOpen(false);
 });
-heroOpenButton.addEventListener("click", openChatbot);
 
 closeButton.addEventListener("click", () => {
   setOpen(false);
