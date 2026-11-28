@@ -156,56 +156,80 @@ st.markdown(
         display: none !important;
     }
 
-    [data-testid="stAppViewContainer"]:has(.st-key-admin-login-page),
-    [data-testid="stMain"]:has(.st-key-admin-login-page) {
-        min-height: 100dvh;
-        height: 100dvh;
+    body:has(.st-key-admin-login-page) {
+        height: 100vh !important;
+        max-height: 100vh !important;
+        overflow: hidden !important;
+    }
+
+    body:has(.st-key-admin-login-page) [data-testid="stAppViewContainer"],
+    body:has(.st-key-admin-login-page) [data-testid="stMain"],
+    body:has(.st-key-admin-login-page) .main,
+    body:has(.st-key-admin-login-page) [data-testid="stMainBlockContainer"],
+    body:has(.st-key-admin-login-page) .st-key-admin-login-page,
+    body:has(.st-key-admin-login-page) .st-key-admin-login-page [data-testid="stHorizontalBlock"] {
+        min-height: 100vh !important;
+        height: 100vh !important;
+        max-height: 100vh !important;
+        overflow: hidden !important;
     }
 
     [data-testid="stMainBlockContainer"]:has(.st-key-admin-login-page) {
         width: 100%;
         max-width: none;
-        min-height: 100dvh;
-        height: 100dvh;
+        min-height: 100vh;
+        height: 100vh;
         padding: 0 !important;
     }
 
     [data-testid="stMainBlockContainer"]:has(.st-key-admin-login-page) > [data-testid="stVerticalBlock"] {
-        min-height: 100%;
-        height: 100%;
+        min-height: 100vh;
+        height: 100vh;
+        max-height: 100vh;
+        overflow: hidden;
         gap: 0;
     }
 
     .st-key-admin-login-page {
         width: 100%;
-        min-height: 100dvh;
-        height: 100%;
+        min-height: 100vh;
+        height: 100vh;
+        max-height: 100vh;
+        overflow: hidden;
     }
 
     .st-key-admin-login-page > [data-testid="stVerticalBlock"] {
-        min-height: 100%;
-        height: 100%;
+        min-height: 100vh;
+        height: 100vh;
+        max-height: 100vh;
+        overflow: hidden;
         gap: 0;
     }
 
     .st-key-admin-login-page [data-testid="stHorizontalBlock"] {
-        min-height: 100%;
-        height: 100%;
+        min-height: 100vh;
+        height: 100vh;
+        max-height: 100vh;
+        overflow: hidden;
         gap: 0;
         align-items: stretch;
     }
 
     .st-key-admin-login-page [data-testid="stColumn"] {
-        min-height: 100%;
-        height: 100%;
+        min-height: 100vh;
+        height: 100vh;
+        max-height: 100vh;
+        overflow: hidden;
         padding: 0;
     }
 
     .st-key-admin-login-page [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) {
         position: relative;
         isolation: isolate;
-        min-height: 100dvh;
-        height: 100dvh;
+        min-height: 100vh;
+        height: 100vh;
+        max-height: 100vh;
+        overflow: hidden;
         align-self: stretch;
         background: #ffffff;
     }
@@ -223,8 +247,10 @@ st.markdown(
         position: relative;
         display: flex;
         box-sizing: border-box;
-        min-height: 100dvh;
+        min-height: 0;
         height: 100%;
+        max-height: 100%;
+        overflow: hidden;
         flex-direction: column;
         justify-content: space-between;
         overflow: hidden;
@@ -234,18 +260,29 @@ st.markdown(
             linear-gradient(155deg, #064c46, #003a36 76%);
     }
 
+    .st-key-admin-login-page [data-testid="stColumn"] > [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"]:has(> .st-key-admin-login-hero) {
+        flex: 1 1 0%;
+        min-height: 0;
+        height: 100%;
+        max-height: 100%;
+    }
+
     .st-key-admin-login-hero > [data-testid="stVerticalBlock"] {
         position: relative;
         z-index: 1;
-        min-height: calc(100dvh - 4rem);
+        min-height: 0;
         height: 100%;
+        max-height: 100%;
+        overflow: hidden;
         justify-content: space-between;
     }
 
     .st-key-admin-login-hero [data-testid="stMarkdownContainer"] {
         display: flex;
-        min-height: calc(100dvh - 4rem);
+        min-height: 0;
         height: 100%;
+        max-height: 100%;
+        overflow: hidden;
         flex-direction: column;
         justify-content: space-between;
         color: #e6f4f1;
@@ -326,8 +363,10 @@ st.markdown(
         z-index: 1;
         display: flex;
         box-sizing: border-box;
-        min-height: 100dvh;
-        height: 100dvh;
+        min-height: 100vh;
+        height: 100vh;
+        max-height: 100vh;
+        overflow: hidden;
         align-items: center;
         justify-content: center;
         padding: clamp(2rem, 6vw, 5rem);
@@ -439,28 +478,39 @@ st.markdown(
     }
 
     @media (max-width: 640px) {
-        [data-testid="stAppViewContainer"]:has(.st-key-admin-login-page),
-        [data-testid="stMain"]:has(.st-key-admin-login-page),
-        [data-testid="stMainBlockContainer"]:has(.st-key-admin-login-page) {
-            height: auto;
-            min-height: 100dvh;
+        body:has(.st-key-admin-login-page) [data-testid="stAppViewContainer"],
+        body:has(.st-key-admin-login-page) [data-testid="stMain"],
+        body:has(.st-key-admin-login-page) .main,
+        body:has(.st-key-admin-login-page) [data-testid="stMainBlockContainer"],
+        body:has(.st-key-admin-login-page) .st-key-admin-login-page,
+        body:has(.st-key-admin-login-page) .st-key-admin-login-page [data-testid="stHorizontalBlock"] {
+            min-height: 100vh !important;
+            height: 100vh !important;
+            max-height: 100vh !important;
+            overflow: hidden !important;
         }
 
         .st-key-admin-login-page [data-testid="stHorizontalBlock"] {
             flex-direction: column;
-            height: auto;
+            height: 100vh;
+            max-height: 100vh;
+            overflow: hidden;
         }
 
         .st-key-admin-login-page [data-testid="stColumn"],
         .st-key-admin-login-hero,
         .st-key-admin-login-hero > [data-testid="stVerticalBlock"] {
-            height: auto;
+            height: 45vh;
+            max-height: 45vh;
             min-height: 45vh;
+            overflow: hidden;
         }
 
         .st-key-admin-login-page [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) {
             min-height: 55vh;
-            height: auto;
+            height: 55vh;
+            max-height: 55vh;
+            overflow: hidden;
         }
 
         .st-key-admin-login-page [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2)::before {
@@ -468,21 +518,79 @@ st.markdown(
         }
 
         .st-key-admin-login-hero {
-            padding: 1.75rem;
+            padding: 1rem;
         }
 
         .st-key-admin-login-hero-copy {
-            padding-block: 2.5rem;
+            margin-block: 0;
+            padding-block: .5rem;
+        }
+
+        .st-key-admin-login-hero-copy .login-eyebrow {
+            margin-bottom: .5rem;
         }
 
         .st-key-admin-login-hero-copy h1 {
-            font-size: clamp(2.5rem, 11vw, 3.5rem);
+            margin-bottom: .55rem;
+            font-size: clamp(1.7rem, 8vw, 2.3rem);
+        }
+
+        .st-key-admin-login-hero-copy .login-description {
+            font-size: .85rem;
+            line-height: 1.35;
+        }
+
+        .st-key-admin-login-footer {
+            display: none;
         }
 
         .st-key-admin-login-panel {
-            height: auto;
+            height: 55vh;
+            max-height: 55vh;
             min-height: 55vh;
-            padding: 2.5rem 1.5rem;
+            overflow: hidden;
+            padding: 1.5rem 1rem;
+        }
+    }
+
+    @media (max-height: 600px) {
+        .st-key-admin-login-hero {
+            padding: 1rem;
+        }
+
+        .st-key-admin-login-hero-copy {
+            margin-block: 0;
+            padding-block: .65rem;
+        }
+
+        .st-key-admin-login-hero-copy .login-eyebrow {
+            margin-bottom: .55rem;
+        }
+
+        .st-key-admin-login-hero-copy h1 {
+            margin-bottom: .6rem;
+            font-size: clamp(1.7rem, 3vw, 2.2rem);
+        }
+
+        .st-key-admin-login-hero-copy .login-description {
+            font-size: .86rem;
+            line-height: 1.35;
+        }
+
+        .st-key-admin-login-footer {
+            font-size: .75rem;
+        }
+
+        .st-key-admin-login-panel {
+            padding: 1rem;
+        }
+
+        .st-key-admin-login-panel h2 {
+            font-size: 1.6rem;
+        }
+
+        .st-key-admin-login-panel .login-panel-description {
+            margin-bottom: .75rem;
         }
     }
 
@@ -2769,7 +2877,7 @@ notifications_page = st.Page(
 
 audit_page = st.Page(
     show_audit_page,
-    title="Activity History",
+    title="Audit Trail",
     icon=":material/history:",
 )
 
@@ -2939,7 +3047,7 @@ with st.sidebar:
                 ),
                 (
                     audit_page,
-                    "Activity History",
+                    "Audit Trail",
                     ":material/history:",
                     "hfrc-sidebar-nav-activity",
                 ),

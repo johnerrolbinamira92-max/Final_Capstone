@@ -45,6 +45,12 @@ PORTAL_ENGAGEMENT_TIMEFRAMES = (
     "All Time",
 )
 PORTAL_ENGAGEMENT_TIMEZONE = ZoneInfo("Asia/Manila")
+REGISTRATION_TIMEFRAMES = ("Daily", "Weekly", "Monthly")
+REGISTRATION_TITLES = {
+    "Daily": "Daily Registrations",
+    "Weekly": "Weekly Registrations",
+    "Monthly": "Monthly Registrations",
+}
 PORTAL_ENGAGEMENT_EVENT_TYPES = {
     "need_help": "need_help_submitted",
     "no_help": "no_help_submitted",
@@ -473,45 +479,126 @@ def _render_distribution_chart(chart_data, category_label, total_patients):
     )
 
 
-def _render_registration_chart(data):
-    registration_dates = pd.to_datetime(
-        data["date_registered"], errors="coerce"
-    )
-    if not registration_dates.notna().any():
-        st.info("Registration dates are not available in these archived records.")
-        return
+def _patient_registration_date_in_manila(value):
+    try:
+        timestamp = pd.Timestamp(value)
+    except (TypeError, ValueError):
+        return None
+    if pd.isna(timestamp):
+        return None
+    if timestamp.tzinfo is not None:
+        timestamp = timestamp.tz_convert(PORTAL_ENGAGEMENT_TIMEZONE)
+    return timestamp.date()
 
-    current_month = pd.Timestamp.now().to_period("M").to_timestamp()
-    months = pd.date_range(end=current_month, periods=6, freq="MS")
-    monthly_counts = (
-        registration_dates.dropna()
-        .dt.to_period("M")
-        .value_counts()
-    )
-    trend = pd.DataFrame(
+
+def _registration_trend_data(data, timeframe, now=None):
+    if timeframe not in REGISTRATION_TIMEFRAMES:
+        raise ValueError(f"Unknown registration timeframe: {timeframe}")
+
+    registration_dates = [
+        local_date
+        for local_date in data["date_registered"].map(
+            _patient_registration_date_in_manila
+        )
+        if local_date is not None
+    ]
+    if not registration_dates:
+        return pd.DataFrame(
+            columns=["Period", "Label", "Registrations"]
+        )
+
+    local_now = now or datetime.datetime.now(PORTAL_ENGAGEMENT_TIMEZONE)
+    if local_now.tzinfo is None:
+        local_now = local_now.replace(tzinfo=PORTAL_ENGAGEMENT_TIMEZONE)
+    else:
+        local_now = local_now.astimezone(PORTAL_ENGAGEMENT_TIMEZONE)
+    today = local_now.date()
+
+    if timeframe == "Daily":
+        periods = list(
+            pd.date_range(end=pd.Timestamp(today), periods=14, freq="D").date
+        )
+        labels = [f"{period:%b} {period.day}" for period in periods]
+        period_details = [
+            f"{period:%B} {period.day}, {period:%Y}" for period in periods
+        ]
+    elif timeframe == "Weekly":
+        current_monday = today - datetime.timedelta(days=today.weekday())
+        periods = list(
+            pd.date_range(
+                end=pd.Timestamp(current_monday),
+                periods=8,
+                freq="W-MON",
+            ).date
+        )
+        labels = [f"{period:%b} {period.day}" for period in periods]
+        period_details = [
+            f"Week of {period:%B} {period.day}, {period:%Y}"
+            for period in periods
+        ]
+    else:
+        current_month = today.replace(day=1)
+        periods = list(
+            pd.date_range(
+                end=pd.Timestamp(current_month),
+                periods=6,
+                freq="MS",
+            ).date
+        )
+        labels = [period.strftime("%b") for period in periods]
+        period_details = [period.strftime("%B %Y") for period in periods]
+
+    counts = {}
+    for registration_date in registration_dates:
+        if timeframe == "Daily":
+            period = registration_date
+        elif timeframe == "Weekly":
+            period = registration_date - datetime.timedelta(
+                days=registration_date.weekday()
+            )
+        else:
+            period = registration_date.replace(day=1)
+        counts[period] = counts.get(period, 0) + 1
+
+    return pd.DataFrame(
         {
-            "Month": months,
-            "Registrations": [
-                int(monthly_counts.get(month.to_period("M"), 0))
-                for month in months
-            ],
+            "Period": period_details,
+            "Label": labels,
+            "Registrations": [counts.get(period, 0) for period in periods],
         }
     )
 
+
+def _render_registration_chart(data, timeframe):
+    trend = _registration_trend_data(data, timeframe)
+    if trend.empty:
+        st.info("Registration dates are not available in these archived records.")
+        return
+
     base = alt.Chart(trend).encode(
         x=alt.X(
-            "Month:T",
+            "Label:N",
+            sort=trend["Label"].tolist(),
             title=None,
-            axis=alt.Axis(format="%b", labelColor="#a7bbb7", tickColor="#344945"),
+            axis=alt.Axis(
+                labelAngle=-45 if timeframe != "Monthly" else 0,
+                labelColor="#a7bbb7",
+                labelOverlap=False,
+                tickColor="#344945",
+            ),
         ),
         y=alt.Y(
             "Registrations:Q",
             title=None,
             scale=alt.Scale(domainMin=0),
-            axis=alt.Axis(labelColor="#a7bbb7", gridColor="#344945"),
+            axis=alt.Axis(
+                format="d",
+                labelColor="#a7bbb7",
+                gridColor="#344945",
+            ),
         ),
         tooltip=[
-            alt.Tooltip("Month:T", title="Month", format="%B %Y"),
+            alt.Tooltip("Period:N", title="Period"),
             alt.Tooltip("Registrations:Q", title="New patient records", format=","),
         ],
     )
@@ -531,7 +618,7 @@ def _render_registration_chart(data):
         chart,
         width="stretch",
         theme=None,
-        alt="Monthly patient registrations over the last six months",
+        alt=f"{timeframe} patient registrations",
     )
 
 
@@ -1640,12 +1727,40 @@ def show_dashboard_page():
             growth_column, status_column = st.columns([1.55, 1])
             with growth_column:
                 with st.container(border=True, key="statistics-growth-card"):
-                    st.markdown(
-                        '<div class="statistics-card-eyebrow">Patient Growth</div>',
-                        unsafe_allow_html=True,
+                    registration_timeframe = st.session_state.get(
+                        "patient_growth_timeframe",
+                        "Monthly",
                     )
-                    st.markdown("### Monthly Registrations")
-                    _render_registration_chart(selected_data)
+                    if registration_timeframe not in REGISTRATION_TIMEFRAMES:
+                        registration_timeframe = "Monthly"
+                    growth_title_column, timeframe_column = st.columns(
+                        [1.45, 1],
+                        vertical_alignment="center",
+                    )
+                    with growth_title_column:
+                        st.markdown(
+                            '<div class="statistics-card-eyebrow">'
+                            "Patient Growth</div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.markdown(
+                            f"### {REGISTRATION_TITLES[registration_timeframe]}"
+                        )
+                    with timeframe_column:
+                        selected_timeframe = st.segmented_control(
+                            "Registration timeframe",
+                            REGISTRATION_TIMEFRAMES,
+                            default="Monthly",
+                            label_visibility="collapsed",
+                            key="patient_growth_timeframe",
+                            wrap=False,
+                        )
+                    if selected_timeframe in REGISTRATION_TIMEFRAMES:
+                        registration_timeframe = selected_timeframe
+                    _render_registration_chart(
+                        selected_data,
+                        registration_timeframe,
+                    )
             with status_column:
                 with st.container(border=True, key="statistics-status-card"):
                     st.markdown(

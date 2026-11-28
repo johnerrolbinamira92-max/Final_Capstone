@@ -135,11 +135,11 @@ last synced snapshot read-only with its sync time, then resumes live data
 automatically after connectivity returns. Calendar hover tooltips list the
 scheduled patients and times for that date.
 
-**Activity History** records completed changes to patient records and
-appointments: records added, edited, or deleted; appointments scheduled,
-rescheduled, or cancelled; and appointment statuses or attendance outcomes
-updated. Searches and navigation are not logged. The history is stored in the
-local archive and displayed in Philippine Standard Time.
+**Audit Trail** records completed changes to patient records and appointments:
+records added, edited, or deleted; appointments scheduled, rescheduled, or
+cancelled; and appointment statuses or attendance outcomes updated. Searches
+and navigation are not logged. The trail is stored in the local archive and
+displayed in Philippine Standard Time.
 
 The Encode form's patient and guardian addresses use searchable, cascading
 province, city / municipality, and barangay selectors. Their Bicol location
