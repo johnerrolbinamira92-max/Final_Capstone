@@ -3,7 +3,12 @@ from html import escape
 import mimetypes
 import os
 import sqlite3
+import sys
 from pathlib import Path
+
+ADMIN_PORTAL_DIR = Path(__file__).resolve().parent
+if str(ADMIN_PORTAL_DIR) not in sys.path:
+    sys.path.insert(0, str(ADMIN_PORTAL_DIR))
 
 import streamlit as st
 from database import (
