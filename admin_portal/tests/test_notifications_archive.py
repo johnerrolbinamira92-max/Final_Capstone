@@ -3,7 +3,7 @@ import sys
 import unittest
 from datetime import date
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from streamlit.testing.v1 import AppTest
 
@@ -13,6 +13,28 @@ notifications = importlib.import_module("views.notifications")
 
 
 class NotificationArchiveTests(unittest.TestCase):
+    def test_mark_all_read_clears_streamlit_data_cache(self):
+        connection = Mock()
+        with (
+            patch.object(
+                notifications,
+                "get_local_connection",
+                return_value=connection,
+            ),
+            patch.object(
+                notifications.st.cache_data,
+                "clear",
+            ) as clear_all,
+        ):
+            notifications._mark_notifications_read(
+                {"appointment:17"},
+                invalidate_cache=True,
+            )
+
+        connection.executemany.assert_called_once()
+        connection.commit.assert_called_once_with()
+        clear_all.assert_called_once_with()
+
     def test_notification_reads_cache_for_twenty_seconds_and_can_be_cleared(self):
         notifications._clear_notification_cache()
         client = Mock()

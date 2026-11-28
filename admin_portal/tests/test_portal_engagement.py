@@ -168,27 +168,36 @@ class PortalEngagementTests(unittest.TestCase):
             },
         )
 
-    def test_daily_request_filter_uses_created_at_in_manila_time(self):
+    def test_daily_request_filter_uses_latest_activity_in_manila_time(self):
         rows = [
             {
-                "id": "local-midnight",
-                "created_at": "2026-11-27T16:00:00Z",
+                "id": "updated-old-request",
+                "created_at": "2026-11-01T00:00:00Z",
+                "updated_at": "2026-11-27T16:00:00Z",
             },
             {
-                "id": "earlier-in-manila",
+                "id": "activity-before-today",
                 "created_at": "2026-11-27T15:59:59Z",
+                "updated_at": None,
             },
             {
-                "id": "later-today",
+                "id": "updated-today",
+                "created_at": "2026-11-01T00:00:00Z",
+                "updated_at": "2026-11-28T03:29:00Z",
+            },
+            {
+                "id": "created-today-updated-yesterday",
                 "created_at": "2026-11-28T03:29:00Z",
+                "updated_at": "2026-11-27T15:59:59Z",
             },
             {
                 "id": "future-in-manila",
-                "created_at": "2026-11-28T03:31:00Z",
+                "created_at": "2026-11-01T00:00:00Z",
+                "updated_at": "2026-11-28T03:31:00Z",
             },
         ]
 
-        filtered_rows = dashboard._filter_portal_request_rows_by_created_at(
+        filtered_rows = dashboard._filter_portal_request_rows_by_activity_at(
             rows,
             "Daily",
             self.now,
@@ -196,7 +205,63 @@ class PortalEngagementTests(unittest.TestCase):
 
         self.assertEqual(
             [row["id"] for row in filtered_rows],
-            ["local-midnight", "later-today"],
+            ["updated-old-request", "updated-today"],
+        )
+
+    def test_latest_activity_is_used_for_each_request_timeframe(self):
+        rows = [
+            {
+                "id": "updated-old-request",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-11-28T00:01:00+08:00",
+            }
+        ]
+
+        for timeframe in ("Daily", "Weekly", "Monthly", "Yearly"):
+            with self.subTest(timeframe=timeframe):
+                filtered_rows = (
+                    dashboard._filter_portal_request_rows_by_activity_at(
+                        rows,
+                        timeframe,
+                        self.now,
+                    )
+                )
+                self.assertEqual(
+                    [row["id"] for row in filtered_rows],
+                    ["updated-old-request"],
+                )
+
+    def test_request_outcome_status_aliases_are_case_insensitive(self):
+        statuses = (
+            "CONFIRMED",
+            "scheduled",
+            "Appointed",
+            "RESCHEDULED",
+            "Resched",
+            "DONE",
+            "completed",
+            "CANCELLED",
+            "declined",
+            "No-show",
+            "NO_SHOW",
+        )
+        summary = dashboard._summarize_portal_request_rows(
+            [
+                {"approval_status": status, "created_at": "2026-11-28T00:00:00Z"}
+                for status in statuses
+            ]
+        )
+
+        self.assertEqual(
+            summary["outcomes"],
+            {
+                "Pending / Awaiting": 0,
+                "Confirmed / Scheduled": 3,
+                "Rescheduled": 2,
+                "Done": 2,
+                "Cancelled": 2,
+                "No-show": 2,
+            },
         )
 
     def test_request_analytics_normalize_status_and_schedule_values(self):
@@ -205,26 +270,31 @@ class PortalEngagementTests(unittest.TestCase):
                 {
                     "approval_status": "Pending",
                     "created_at": "2026-11-28T00:10:00+08:00",
+                    "requested_date": "2026-11-30",
                     "requested_time_slot": "08:00:00",
                 },
                 {
                     "approval_status": "Scheduled",
                     "created_at": "2026-11-28T01:10:00+08:00",
+                    "requested_date": "2026-11-30",
                     "requested_time_slot": "8:00 AM",
                 },
                 {
                     "approval_status": "Completed",
                     "created_at": "2026-11-29T01:10:00+08:00",
+                    "requested_date": "2026-12-01",
                     "requested_time_slot": "13:00:00",
                 },
                 {
                     "approval_status": "Declined",
                     "created_at": "2026-11-28T02:10:00+08:00",
+                    "requested_date": "2026-12-02",
                     "requested_time_slot": "08:00",
                 },
                 {
                     "approval_status": "No-show",
                     "created_at": "2026-11-27T02:10:00+08:00",
+                    "requested_date": "2026-12-04",
                     "requested_time_slot": None,
                 },
             ]
@@ -242,7 +312,40 @@ class PortalEngagementTests(unittest.TestCase):
             },
         )
         self.assertEqual(summary["peak_slots"], [("8:00 AM", 3), ("1:00 PM", 1)])
-        self.assertEqual(summary["busiest_day"], ("Saturday", 3))
+        self.assertEqual(summary["most_requested_day"], ("Monday", 2))
+        self.assertEqual(summary["requested_date_count"], 4)
+
+    def test_daily_requested_day_caption_avoids_single_date_comparison(self):
+        self.assertEqual(
+            dashboard._format_most_requested_day(
+                {
+                    "most_requested_day": ("Monday", 3),
+                    "requested_date_count": 1,
+                },
+                "Daily",
+            ),
+            "Scheduled weekday: Monday · 3 requests",
+        )
+        self.assertEqual(
+            dashboard._format_most_requested_day(
+                {
+                    "most_requested_day": None,
+                    "requested_date_count": 0,
+                },
+                "Daily",
+            ),
+            "Scheduled weekday: No scheduled dates · 0 requests",
+        )
+        self.assertEqual(
+            dashboard._format_most_requested_day(
+                {
+                    "most_requested_day": ("Thursday", 4),
+                    "requested_date_count": 2,
+                },
+                "Daily",
+            ),
+            "Most requested day: Thursday · 4 requests",
+        )
 
     def test_engagement_panel_switches_from_singleton_to_period_counts(self):
         source = "\n".join(
@@ -260,7 +363,8 @@ class PortalEngagementTests(unittest.TestCase):
                 "lambda _timeframe: ({'outcomes': {"
                 "'Pending / Awaiting': 0, 'Confirmed / Scheduled': 0, "
                 "'Rescheduled': 0, 'Done': 0, 'Cancelled': 0, 'No-show': 0"
-                "}, 'peak_slots': [], 'busiest_day': None}, None)",
+                "}, 'peak_slots': [], 'most_requested_day': None, "
+                "'requested_date_count': 0}, None)",
                 "dashboard._render_portal_engagement({",
                 "    'counts': {'need_help_submitted': 10, "
                 "'no_help_submitted': 9},",

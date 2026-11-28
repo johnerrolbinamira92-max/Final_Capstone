@@ -755,6 +755,7 @@ def _load_appointment_summary_counts(_client, today):
 
 
 def _invalidate_schedule_data_caches():
+    st.cache_data.clear()
     _load_appointments.clear()
     _load_help_request_rows.clear()
     _load_appointment_summary_counts.clear()

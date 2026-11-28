@@ -56,7 +56,7 @@ PORTAL_ENGAGEMENT_EVENT_TYPES = {
     "no_help": "no_help_submitted",
 }
 PORTAL_REQUEST_QUERY_COLUMNS = (
-    "approval_status,created_at,requested_time_slot"
+    "approval_status,created_at,updated_at,requested_date,requested_time_slot"
 )
 PORTAL_REQUEST_PAGE_SIZE = 1000
 PORTAL_REQUEST_OUTCOMES = (
@@ -262,6 +262,12 @@ def _top_age_group_summary(data):
     top_group = str(known_age_counts.idxmax())
     share = known_age_counts[top_group] / len(data) * 100
     return f"{top_group} yrs · {share:.0f}%", known_age_total
+
+
+def _minor_age_summary(age_counts, total_patients):
+    minor_count = int(age_counts["Under 18"])
+    percentage = minor_count / total_patients * 100 if total_patients else 0
+    return f"{minor_count:,} · {percentage:.0f}%"
 
 
 def _gender_counts(data):
@@ -1070,8 +1076,7 @@ def _load_portal_engagement_event_counts(timeframe):
         return None, f"Could not load timestamped engagement events: {error}"
 
 
-def _fetch_portal_request_rows(client, timeframe, now=None):
-    start, end = _portal_engagement_time_window(timeframe, now)
+def _fetch_portal_request_rows(client):
     rows = []
     for table_name in ("patient_help_requests", "appointments"):
         offset = 0
@@ -1079,10 +1084,7 @@ def _fetch_portal_request_rows(client, timeframe, now=None):
             query = (
                 client.table(table_name)
                 .select(PORTAL_REQUEST_QUERY_COLUMNS)
-                .lte("created_at", end.isoformat())
             )
-            if start is not None:
-                query = query.gte("created_at", start.isoformat())
             response = query.range(
                 offset,
                 offset + PORTAL_REQUEST_PAGE_SIZE - 1,
@@ -1118,12 +1120,12 @@ def _parse_portal_request_time(value):
     return None
 
 
-def _parse_portal_created_at_local(value):
+def _parse_portal_timestamp_local(value):
     if isinstance(value, datetime.datetime):
-        created_at = value
+        timestamp = value
     elif isinstance(value, str):
         try:
-            created_at = datetime.datetime.fromisoformat(
+            timestamp = datetime.datetime.fromisoformat(
                 value.strip().replace("Z", "+00:00")
             )
         except ValueError:
@@ -1131,19 +1133,39 @@ def _parse_portal_created_at_local(value):
     else:
         return None
 
-    if created_at.tzinfo is None:
-        created_at = created_at.replace(tzinfo=datetime.timezone.utc)
-    return created_at.astimezone(PORTAL_ENGAGEMENT_TIMEZONE)
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=datetime.timezone.utc)
+    return timestamp.astimezone(PORTAL_ENGAGEMENT_TIMEZONE)
 
 
-def _filter_portal_request_rows_by_created_at(rows, timeframe, now=None):
+def _parse_portal_requested_date(value):
+    if isinstance(value, datetime.datetime):
+        return value.date()
+    if isinstance(value, datetime.date):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.date.fromisoformat(value.strip()[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _portal_request_activity_at_local(row):
+    timestamp = row.get("updated_at")
+    if timestamp is None:
+        timestamp = row.get("created_at")
+    return _parse_portal_timestamp_local(timestamp)
+
+
+def _filter_portal_request_rows_by_activity_at(rows, timeframe, now=None):
     start, end = _portal_engagement_local_time_window(timeframe, now)
     filtered_rows = []
     for row in rows:
-        created_at = _parse_portal_created_at_local(row.get("created_at"))
-        if created_at is None:
+        activity_at = _portal_request_activity_at_local(row)
+        if activity_at is None:
             continue
-        if (start is None or created_at >= start) and created_at <= end:
+        if (start is None or activity_at >= start) and activity_at <= end:
             filtered_rows.append(row)
     return filtered_rows
 
@@ -1151,21 +1173,22 @@ def _filter_portal_request_rows_by_created_at(rows, timeframe, now=None):
 def _summarize_portal_request_rows(rows):
     outcome_counts = {outcome: 0 for outcome in PORTAL_REQUEST_OUTCOMES}
     slot_counts = {}
-    weekday_counts = {}
+    requested_weekday_counts = {}
+    requested_dates = set()
 
     for row in rows:
         status = str(row.get("approval_status") or "Pending").strip().casefold()
         if status in {"pending", "awaiting"}:
             outcome = "Pending / Awaiting"
-        elif status in {"confirmed", "scheduled"}:
+        elif status in {"confirmed", "scheduled", "appointed"}:
             outcome = "Confirmed / Scheduled"
-        elif status == "rescheduled":
+        elif status in {"rescheduled", "resched"}:
             outcome = "Rescheduled"
         elif status in {"done", "completed"}:
             outcome = "Done"
         elif status in {"cancelled", "canceled", "declined"}:
             outcome = "Cancelled"
-        elif status in {"no-show", "no show", "noshow"}:
+        elif status in {"no-show", "no_show", "no show", "noshow"}:
             outcome = "No-show"
         else:
             continue
@@ -1178,26 +1201,50 @@ def _summarize_portal_request_rows(rows):
             slot_label = request_time.strftime("%I:%M %p").lstrip("0")
             slot_counts[slot_label] = slot_counts.get(slot_label, 0) + 1
 
-        created_at = _parse_portal_created_at_local(row.get("created_at"))
-        if created_at is not None:
-            weekday = created_at.strftime("%A")
-            weekday_counts[weekday] = weekday_counts.get(weekday, 0) + 1
+        requested_date = _parse_portal_requested_date(
+            row.get("requested_date")
+        )
+        if requested_date is not None:
+            requested_dates.add(requested_date)
+            weekday = requested_date.strftime("%A")
+            requested_weekday_counts[weekday] = (
+                requested_weekday_counts.get(weekday, 0) + 1
+            )
 
     peak_slots = sorted(
         slot_counts.items(),
         key=lambda item: (-item[1], _parse_portal_request_time(item[0])),
     )
-    busiest_day = None
-    if weekday_counts:
-        busiest_day = sorted(
-            weekday_counts.items(),
+    most_requested_day = None
+    if requested_weekday_counts:
+        most_requested_day = sorted(
+            requested_weekday_counts.items(),
             key=lambda item: (-item[1], item[0]),
         )[0]
     return {
         "outcomes": outcome_counts,
         "peak_slots": peak_slots[:5],
-        "busiest_day": busiest_day,
+        "most_requested_day": most_requested_day,
+        "requested_date_count": len(requested_dates),
     }
+
+
+def _format_most_requested_day(analytics, timeframe):
+    most_requested_day = analytics.get("most_requested_day")
+    requested_date_count = analytics.get("requested_date_count", 0)
+    if timeframe == "Daily" and requested_date_count <= 1:
+        if most_requested_day is None:
+            return "Scheduled weekday: No scheduled dates · 0 requests"
+        return (
+            f"Scheduled weekday: {most_requested_day[0]} · "
+            f"{most_requested_day[1]:,} requests"
+        )
+    if most_requested_day is None:
+        return "Most requested day: No scheduled dates · 0 requests"
+    return (
+        f"Most requested day: {most_requested_day[0]} · "
+        f"{most_requested_day[1]:,} requests"
+    )
 
 
 @st.cache_data(ttl=20, show_spinner=False)
@@ -1212,8 +1259,8 @@ def _load_portal_request_analytics(timeframe):
         return None, "Supabase is unavailable for request analytics."
 
     try:
-        rows = _fetch_portal_request_rows(client, timeframe)
-        rows = _filter_portal_request_rows_by_created_at(rows, timeframe)
+        rows = _fetch_portal_request_rows(client)
+        rows = _filter_portal_request_rows_by_activity_at(rows, timeframe)
         return _summarize_portal_request_rows(rows), None
     except (httpx.RequestError, PostgrestAPIError) as error:
         if is_supabase_connection_error(error):
@@ -1493,7 +1540,6 @@ def _render_portal_engagement(snapshot):
             if request_error:
                 st.warning(request_error)
             elif request_analytics is not None:
-                busiest_day = request_analytics["busiest_day"]
                 if request_analytics["peak_slots"]:
                     peak_slots = pd.DataFrame(
                         [
@@ -1553,13 +1599,12 @@ def _render_portal_engagement(snapshot):
                 else:
                     st.info("No requested time slots in this period.")
 
-                if busiest_day:
-                    st.caption(
-                        f"Busiest day: {busiest_day[0]} · "
-                        f"{busiest_day[1]:,} requests"
+                st.caption(
+                    _format_most_requested_day(
+                        request_analytics,
+                        timeframe,
                     )
-                else:
-                    st.caption("Busiest day: No requested dates in this period.")
+                )
 
 
 def show_dashboard_page():
@@ -1839,7 +1884,7 @@ def show_dashboard_page():
 
         with age_tab:
             age_counts = _age_group_counts(selected_data)
-            top_age_group, known_age_total = _top_age_group_summary(selected_data)
+            top_age_group, _ = _top_age_group_summary(selected_data)
             with st.container(horizontal=True, key="statistics-age-summary"):
                 st.metric(
                     "Total Filtered Patients",
@@ -1852,8 +1897,8 @@ def show_dashboard_page():
                     border=True,
                 )
                 st.metric(
-                    "Records with Age Data",
-                    f"{known_age_total:,}",
+                    "Minors (< 18)",
+                    _minor_age_summary(age_counts, len(selected_data)),
                     border=True,
                 )
 

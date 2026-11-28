@@ -902,7 +902,9 @@ st.markdown(
     .st-key-hfrc-sidebar-nav-appointments button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover,
     .st-key-hfrc-sidebar-nav-callbacks button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover,
     .st-key-hfrc-sidebar-nav-activity button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover {
-        background-color: rgba(255, 255, 255, 0.10) !important;
+        background-color: rgba(255, 255, 255, 0.08) !important;
+        border-radius: 10px !important;
+        color: #ffffff !important;
     }
 
     .st-key-hfrc-sidebar-nav-logout button {
@@ -911,9 +913,9 @@ st.markdown(
 
     .st-key-hfrc-sidebar-nav-logout button:hover {
         border: none !important;
-        border-radius: 8px !important;
-        background-color: rgba(255, 255, 255, 0.10) !important;
-        color: #d7ebe7 !important;
+        border-radius: 10px !important;
+        background-color: rgba(255, 255, 255, 0.08) !important;
+        color: #ffffff !important;
         box-shadow: none !important;
     }
 
@@ -1117,7 +1119,7 @@ st.markdown(
         max-width: 1440px;
         margin: 0 auto;
         border-bottom: 1px solid var(--hfrc-line);
-        background: var(--hfrc-surface);
+        background: var(--hfrc-page);
         padding: 0 clamp(1.25rem, 3vw, 2.5rem) .75rem;
     }
 
@@ -1545,6 +1547,33 @@ st.markdown(
         padding: 8px 14px !important;
     }
 
+    .st-key-overview-mark-all-as-read button {
+        display: inline-flex !important;
+        width: auto !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 5px 12px !important;
+        border: 1px solid rgba(255, 255, 255, 0.16) !important;
+        border-radius: 8px !important;
+        background: rgba(255, 255, 255, 0.06) !important;
+        color: #e6f4f1 !important;
+        box-shadow: none !important;
+    }
+
+    .st-key-overview-mark-all-as-read button > div,
+    .st-key-overview-mark-all-as-read button p {
+        display: block !important;
+        width: auto !important;
+        margin: 0 !important;
+        text-align: center !important;
+    }
+
+    .st-key-overview-mark-all-as-read button:hover {
+        border-color: rgba(255, 255, 255, 0.28) !important;
+        background: rgba(255, 255, 255, 0.12) !important;
+        color: #ffffff !important;
+    }
+
     .st-key-overview-callback-request-list [class*="st-key-overview-callback-request-"] button {
         min-height: 52px !important;
         border: 1px solid #31534f !important;
@@ -1639,6 +1668,24 @@ st.markdown(
     .st-key-home-encode-action [data-testid="stPageLink"] a:hover {
         border-color: var(--hfrc-teal-bright);
         background: var(--hfrc-teal-bright);
+        color: #ffffff !important;
+    }
+
+    .st-key-home-add-appointment-action [data-testid="stPageLink"] a {
+        min-height: 2.6rem;
+        padding: 6px 12px !important;
+        border: 1px solid rgba(45, 212, 191, 0.4) !important;
+        border-radius: 8px !important;
+        background: rgba(20, 184, 166, 0.14) !important;
+        color: #e6f4f1 !important;
+        font-weight: 600 !important;
+        box-shadow: none !important;
+        transition: background-color 0.12s ease, border-color 0.12s ease;
+    }
+
+    .st-key-home-add-appointment-action [data-testid="stPageLink"] a:hover {
+        border-color: rgba(45, 212, 191, 0.7) !important;
+        background: rgba(20, 184, 166, 0.24) !important;
         color: #ffffff !important;
     }
 

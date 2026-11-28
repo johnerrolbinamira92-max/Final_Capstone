@@ -42,6 +42,36 @@ class PatientStatisticsTests(unittest.TestCase):
             ("No age data", 0),
         )
 
+    def test_minor_summary_counts_under_eighteen_and_uses_filtered_total(self):
+        data = pd.DataFrame({"calculated_age": [12, 17, 18, None, -1, 42, 63]})
+        empty_data = pd.DataFrame(
+            {"calculated_age": pd.Series(dtype="float64")}
+        )
+
+        self.assertEqual(
+            dashboard._minor_age_summary(
+                dashboard._age_group_counts(data),
+                len(data),
+            ),
+            "2 · 29%",
+        )
+        self.assertEqual(
+            dashboard._minor_age_summary(
+                dashboard._age_group_counts(empty_data),
+                len(empty_data),
+            ),
+            "0 · 0%",
+        )
+        self.assertEqual(
+            dashboard._minor_age_summary(
+                dashboard._age_group_counts(
+                    pd.DataFrame({"calculated_age": [None, -1]})
+                ),
+                2,
+            ),
+            "0 · 0%",
+        )
+
     def test_registration_trends_use_manila_dates_and_monday_weeks(self):
         data = pd.DataFrame(
             {

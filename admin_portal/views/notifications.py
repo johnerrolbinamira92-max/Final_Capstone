@@ -189,6 +189,18 @@ NOTIFICATION_STYLES = """
     color: #9bd9ce;
     font-size: .62rem;
 }
+.st-key-admin-notifications-page .st-key-notification-mark-all-read-row [data-testid="stButton"] button {
+    padding: 6px 14px !important;
+    border: 1px solid rgba(255, 255, 255, .16) !important;
+    border-radius: 8px !important;
+    background: rgba(255, 255, 255, .06) !important;
+    color: #e6f4f1 !important;
+    box-shadow: none !important;
+}
+.st-key-admin-notifications-page .st-key-notification-mark-all-read-row [data-testid="stButton"] button:hover {
+    border-color: rgba(255, 255, 255, .28) !important;
+    background: rgba(255, 255, 255, .1) !important;
+}
 .st-key-admin-notifications-page [class*="st-key-notification-message-quote-"] {
     display: flex;
     align-items: center;
@@ -241,7 +253,12 @@ def _load_notification_read_ids(admin_user_id=None):
         conn.close()
 
 
-def _mark_notifications_read(notification_ids, admin_user_id=None):
+def _mark_notifications_read(
+    notification_ids,
+    admin_user_id=None,
+    *,
+    invalidate_cache=False,
+):
     notification_ids = {
         str(notification_id) for notification_id in notification_ids
     }
@@ -261,6 +278,8 @@ def _mark_notifications_read(notification_ids, admin_user_id=None):
         conn.commit()
     finally:
         conn.close()
+    if invalidate_cache:
+        st.cache_data.clear()
 
 
 def _format_requested_time(value):
@@ -1391,6 +1410,7 @@ def _render_notification_items(items, client):
             horizontal=True,
             horizontal_alignment="right",
             vertical_alignment="center",
+            key="notification-mark-all-read-row",
         ):
             if st.button(
                 "Mark all as read",
@@ -1399,7 +1419,10 @@ def _render_notification_items(items, client):
                 width="content",
             ):
                 try:
-                    _mark_notifications_read(unread_ids)
+                    _mark_notifications_read(
+                        unread_ids,
+                        invalidate_cache=True,
+                    )
                 except Exception as error:
                     st.error("Unable to mark notifications as read.")
                     with st.expander("Technical details"):

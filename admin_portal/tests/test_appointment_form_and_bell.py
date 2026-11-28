@@ -2,7 +2,9 @@ import importlib
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+
+from streamlit.testing.v1 import AppTest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 appointments = importlib.import_module("views.appointments")
@@ -10,6 +12,28 @@ home_dashboard = importlib.import_module("views.home_dashboard")
 
 
 class AppointmentFormAndBellTests(unittest.TestCase):
+    def test_home_search_runs_from_text_input_change(self):
+        app = AppTest.from_string(
+            "\n".join(
+                [
+                    "import streamlit as st",
+                    "import views.home_dashboard as home",
+                    "home._search_local_patients = lambda query: [{'query': query}]",
+                    "st.text_input('Search', key='home_search_query', on_change=home._submit_home_quick_search)",
+                ]
+            )
+        )
+        app.run()
+
+        app.text_input(key="home_search_query").set_value("Maria").run()
+
+        self.assertEqual(app.session_state["home_quick_search_query"], "Maria")
+        self.assertTrue(app.session_state["home_quick_search_open"])
+        self.assertEqual(
+            app.session_state["home_quick_search_results"],
+            [{"query": "Maria"}],
+        )
+
     def test_appointment_reads_are_cached_and_invalidated_after_writes(self):
         appointments._invalidate_schedule_data_caches()
         client = Mock()
@@ -30,6 +54,12 @@ class AppointmentFormAndBellTests(unittest.TestCase):
             self.assertEqual(client.table.call_count, 2)
         finally:
             appointments._invalidate_schedule_data_caches()
+
+    def test_schedule_cache_invalidation_clears_all_streamlit_data(self):
+        with patch.object(appointments.st.cache_data, "clear") as clear_all:
+            appointments._invalidate_schedule_data_caches()
+
+        clear_all.assert_called_once_with()
 
     def test_contact_number_requires_exactly_eleven_ascii_digits(self):
         self.assertTrue(appointments._is_valid_contact_number("09123456789"))

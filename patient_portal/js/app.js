@@ -13,6 +13,17 @@ const LEGACY_USER_WELLNESS_ITEMS_PREFIX = "hfrc_user_checkins_";
 const LEGACY_USER_REQUEST_SEEN_PREFIX = "patient-request-seen:";
 const WELLNESS_CHECKIN_MESSAGE = "You've checked in 5 times in your Safe Space. Taking time to reflect matters—if you'd ever like someone to talk to, our Care Assistant or callback team at Holy Face Center is here for you.";
 const PORTAL_THEME_KEY = "boc_portal_theme";
+const JOURNAL_SAVE_LAST_MESSAGE_KEY = "hfrc_journal_save:last_message_index";
+const JOURNAL_SAVE_MESSAGES = [
+  "Your entry is safely saved. Thank you for giving yourself space to pause and breathe today.",
+  "Putting feelings into words takes courage. Take things one gentle step at a time.",
+  "Saved privately. You don't have to carry everything all at once - rest when you need to.",
+  "You made room for your thoughts today. That small pause can be enough.",
+  "Thank you for showing up for yourself. Let this moment be a gentle starting point.",
+  "Your words are here when you need them. You can return to them in your own time.",
+  "It's okay if things feel unfinished. You gave yourself a little space today.",
+  "A quiet moment for yourself matters. Take a breath and move at your own pace."
+];
 
 const themeToggle = document.querySelector("#theme-toggle");
 const themeColorMeta = document.querySelector('meta[name="theme-color"]');
@@ -164,6 +175,25 @@ const privateEntrySigninHelper = document.querySelector("#private-entry-signin-h
 const privateEntrySigninCopy = document.querySelector("#private-entry-signin-copy");
 const privateEntrySigninLink = document.querySelector("#private-entry-signin-link");
 const entryToast = document.querySelector("#entry-toast");
+const entryToastCopy = entryToast.querySelector("span");
+const entryToastSignin = document.querySelector("#toast-signin");
+const entryToastFooter = document.createElement("p");
+entryToastFooter.className = "journal-save-toast-footer";
+entryToastFooter.appendChild(document.createTextNode("Want to talk to someone? "));
+const callbackLink = document.createElement("a");
+callbackLink.href = "#callback-panel";
+callbackLink.textContent = "Request a callback";
+entryToastFooter.appendChild(callbackLink);
+entryToastFooter.appendChild(document.createTextNode(" or call "));
+const ncmhLink = document.createElement("a");
+ncmhLink.href = "tel:1553";
+ncmhLink.textContent = "NCMH 1553";
+entryToastFooter.appendChild(ncmhLink);
+entryToastFooter.appendChild(document.createTextNode("."));
+entryToast.insertBefore(entryToastFooter, entryToastSignin);
+entryToast.classList.add("journal-save-confirmation");
+entryToast.setAttribute("aria-atomic", "true");
+form.insertAdjacentElement("afterend", entryToast);
 const config = window.PATIENT_PORTAL_CONFIG || {};
 let supabase = null;
 let authUnavailable = false;
@@ -171,6 +201,8 @@ let currentSession = null;
 let authReady = !config.supabaseUrl || !config.supabaseAnonKey;
 let authMode = "signin";
 let toastTimeout;
+let toastFadeTimeout;
+let lastJournalSaveMessageIndex = -1;
 let requestPollingTimer = null;
 let requestLoadSequence = 0;
 let requestRows = [];
@@ -181,6 +213,79 @@ let guestImportDismissed = false;
 let requestHistoryLoaded = false;
 let requestHistoryError = false;
 let confirmationResolver = null;
+
+function hideJournalSaveConfirmation() {
+  window.clearTimeout(toastTimeout);
+  window.clearTimeout(toastFadeTimeout);
+  toastTimeout = null;
+  toastFadeTimeout = null;
+  entryToast.hidden = true;
+  entryToast.classList.remove("is-visible", "is-fading");
+}
+
+function dismissJournalSaveConfirmation() {
+  window.clearTimeout(toastTimeout);
+  toastTimeout = null;
+  window.clearTimeout(toastFadeTimeout);
+  if (entryToast.hidden) return;
+
+  entryToast.classList.remove("is-visible");
+  entryToast.classList.add("is-fading");
+  toastFadeTimeout = window.setTimeout(() => {
+    entryToast.hidden = true;
+    entryToast.classList.remove("is-fading");
+    toastFadeTimeout = null;
+  }, 500);
+}
+
+function showJournalSaveConfirmation() {
+  let lastMessageIndex = lastJournalSaveMessageIndex;
+  try {
+    const savedIndex = window.sessionStorage.getItem(
+      JOURNAL_SAVE_LAST_MESSAGE_KEY
+    );
+    const parsedIndex = savedIndex === null ? -1 : Number(savedIndex);
+    if (
+      Number.isInteger(parsedIndex)
+      && parsedIndex >= 0
+      && parsedIndex < JOURNAL_SAVE_MESSAGES.length
+    ) {
+      lastMessageIndex = parsedIndex;
+    }
+  } catch (error) {
+    console.error("Could not read the previous journal save message.", error);
+  }
+
+  const availableIndexes = JOURNAL_SAVE_MESSAGES
+    .map((_message, index) => index)
+    .filter((index) => index !== lastMessageIndex);
+  const nextMessageIndex = availableIndexes[
+    Math.floor(Math.random() * availableIndexes.length)
+  ];
+
+  lastJournalSaveMessageIndex = nextMessageIndex;
+  entryToastCopy.textContent = JOURNAL_SAVE_MESSAGES[nextMessageIndex];
+  entryToastSignin.hidden = Boolean(currentSession);
+  entryToastSignin.textContent = "Sign in for private backup";
+  try {
+    window.sessionStorage.setItem(
+      JOURNAL_SAVE_LAST_MESSAGE_KEY,
+      String(nextMessageIndex)
+    );
+  } catch (error) {
+    console.error("Could not save the journal confirmation message.", error);
+  }
+
+  window.clearTimeout(toastTimeout);
+  window.clearTimeout(toastFadeTimeout);
+  toastFadeTimeout = null;
+  entryToast.classList.remove("is-fading", "is-visible");
+  entryToast.hidden = false;
+  window.requestAnimationFrame(() => {
+    if (!entryToast.hidden) entryToast.classList.add("is-visible");
+  });
+  toastTimeout = window.setTimeout(dismissJournalSaveConfirmation, 8000);
+}
 
 const privateEntries = createPrivateEntries({
   historyElement: document.querySelector("#entry-history"),
@@ -1102,8 +1207,7 @@ function clearSignedInUiState(showGuestEntries = true) {
   callbackSchedule.reset();
   countLabel.textContent = "0 / 10,000";
   setFlow(null);
-  entryToast.hidden = true;
-  window.clearTimeout(toastTimeout);
+  hideJournalSaveConfirmation();
   hideFeedback();
 
   authForm.reset();
@@ -1226,7 +1330,7 @@ async function handleSignedInSession(session, forceSync = false) {
   historySigninBanner.hidden = true;
   guestWellnessBanner.hidden = true;
   refreshGuestImportBanner();
-  entryToast.hidden = true;
+  hideJournalSaveConfirmation();
 
   loadSeenRequestStates(session.user.id);
   updateNotificationBadge();
@@ -1517,8 +1621,7 @@ async function signOutCurrentUser() {
 document.querySelector("#auth-signout").addEventListener("click", signOutCurrentUser);
 document.querySelector("#account-settings-signout").addEventListener("click", signOutCurrentUser);
 document.querySelector("#toast-close").addEventListener("click", () => {
-  window.clearTimeout(toastTimeout);
-  entryToast.hidden = true;
+  dismissJournalSaveConfirmation();
 });
 
 authForm.addEventListener("submit", async (event) => {
@@ -1723,6 +1826,7 @@ form.addEventListener("submit", async (event) => {
   form.reset();
   countLabel.textContent = "0 / 10,000";
   setFlow(null);
+  showJournalSaveConfirmation();
   showFeedback("Your private entry was saved on this device only. It will be removed from this list after 30 days.", "success");
   await engagementRequest;
   if (currentSession) {
@@ -1734,12 +1838,6 @@ form.addEventListener("submit", async (event) => {
       console.error("Could not back up the new journal entry.", error);
       showFeedback("Your entry is saved on this device, but couldn’t be backed up just now. It will remain here for 30 days.", "error");
     }
-  } else {
-    entryToast.hidden = false;
-    window.clearTimeout(toastTimeout);
-    toastTimeout = window.setTimeout(() => {
-      entryToast.hidden = true;
-    }, 8000);
   }
 });
 

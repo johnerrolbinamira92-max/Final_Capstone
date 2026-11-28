@@ -220,6 +220,23 @@ def _open_encode_from_home():
     _open_encode_dialog()
 
 
+def _submit_home_quick_search():
+    query = st.session_state.get("home_search_query", "").strip()
+    st.session_state["home_quick_search_query"] = query
+    st.session_state["home_quick_search_open"] = bool(query)
+    st.session_state["home_quick_search_error"] = None
+    if query:
+        try:
+            st.session_state["home_quick_search_results"] = _search_local_patients(
+                query
+            )
+        except Exception as error:
+            st.session_state["home_quick_search_results"] = []
+            st.session_state["home_quick_search_error"] = str(error)
+    else:
+        st.session_state["home_quick_search_results"] = []
+
+
 def _render_overview_toolbar(
     notifications_page=None,
     unread_callback_requests=None,
@@ -256,46 +273,17 @@ def _render_overview_toolbar(
                 )
         with search_column:
             with st.container(key="home-quick-search"):
-                with st.form(key="overview-search-form", border=False):
-                    with st.container(
-                        horizontal=True,
-                        wrap=False,
-                        vertical_alignment="center",
-                        gap="small",
-                    ):
-                        st.text_input(
-                            "Search patient records",
-                            placeholder="Search name, ID, or location...",
-                            type="password",
-                            icon=":material/search:",
-                            label_visibility="collapsed",
-                            key="home_search_query",
-                            autocomplete="off",
-                            width="stretch",
-                        )
-                        submitted = st.form_submit_button(
-                            "Search",
-                            key="overview-search-submit",
-                            help="Search local patient records",
-                            width="content",
-                        )
-                if submitted:
-                    query = st.session_state.get("home_search_query", "").strip()
-                    st.session_state["home_quick_search_query"] = query
-                    st.session_state["home_quick_search_open"] = bool(query)
-                    st.session_state["home_quick_search_error"] = None
-                    if query:
-                        try:
-                            st.session_state["home_quick_search_results"] = (
-                                _search_local_patients(query)
-                            )
-                        except Exception as error:
-                            st.session_state["home_quick_search_results"] = []
-                            st.session_state["home_quick_search_error"] = str(
-                                error
-                            )
-                    else:
-                        st.session_state["home_quick_search_results"] = []
+                st.text_input(
+                    "Search patient records",
+                    placeholder="Search name, ID, or location...",
+                    type="password",
+                    icon=":material/search:",
+                    label_visibility="collapsed",
+                    key="home_search_query",
+                    autocomplete="off",
+                    width="stretch",
+                    on_change=_submit_home_quick_search,
+                )
 
                 if st.session_state.get("home_quick_search_open", False):
                     with st.container(key="home-quick-search-results"):
@@ -371,6 +359,29 @@ def _render_overview_toolbar(
                                 unsafe_allow_html=True,
                             )
                         else:
+                            unread_request_ids = tuple(
+                                str(item["id"])
+                                for item in unread_callback_requests
+                            )
+                            if st.button(
+                                "Mark all as read",
+                                key="overview-mark-all-as-read",
+                                type="tertiary",
+                                width="content",
+                            ):
+                                try:
+                                    _mark_notifications_read(
+                                        unread_request_ids,
+                                        invalidate_cache=True,
+                                    )
+                                except Exception as error:
+                                    st.error(
+                                        "Unable to mark notifications as read."
+                                    )
+                                    with st.expander("Technical details"):
+                                        st.code(str(error))
+                                else:
+                                    st.rerun()
                             if callback_requests_cached_at:
                                 st.caption(
                                     "Showing cached requests, last synced "
@@ -379,10 +390,6 @@ def _render_overview_toolbar(
                             with st.container(
                                 key="overview-callback-request-list",
                             ):
-                                unread_request_ids = tuple(
-                                    str(item["id"])
-                                    for item in unread_callback_requests
-                                )
                                 last_seen_at = _callback_request_seen_at(
                                     unread_callback_requests
                                 )
@@ -634,13 +641,14 @@ def _render_appointments(appointments, today, appointments_page, error=None):
 
         st.space("stretch")
         if appointments_page is not None:
-            st.page_link(
-                appointments_page,
-                label="Add Appointment",
-                icon=":material/add:",
-                width="stretch",
-                query_params={"focus": "schedule"},
-            )
+            with st.container(key="home-add-appointment-action"):
+                st.page_link(
+                    appointments_page,
+                    label="Add Appointment",
+                    icon=":material/add:",
+                    width="stretch",
+                    query_params={"focus": "schedule"},
+                )
 
 
 def show_home_dashboard_page(
