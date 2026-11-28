@@ -159,7 +159,7 @@ export async function sendHelpRequest({
     submitButton.innerHTML = currentFlow === "help"
       ? 'Send my help request <span aria-hidden="true">›</span>'
       : currentFlow === "private"
-        ? 'Store my private entry <span aria-hidden="true">›</span>'
+        ? 'Store my Safe Space entry <span aria-hidden="true">›</span>'
         : "Choose an option to continue";
   }
 }

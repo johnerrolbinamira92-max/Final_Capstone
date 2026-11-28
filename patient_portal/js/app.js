@@ -1,4 +1,4 @@
-import { sendHelpRequest } from "./features/callback-request.js?v=4";
+import { sendHelpRequest } from "./features/callback-request.js?v=5";
 import { initCallbackSchedule } from "./features/callback-schedule.js?v=4";
 import { createPrivateEntries } from "./features/private-entries.js?v=6";
 import { hideFeedback, showFeedback } from "./ui/feedback.js";
@@ -286,7 +286,7 @@ const privateEntries = createPrivateEntries({
     title: "Remove saved entry?",
     message: entry.cloudSynced
       ? "This entry will be removed from your account and this device. This cannot be undone."
-      : "This private entry will be removed from this device. This cannot be undone.",
+      : "This Safe Space entry will be removed from this device. This cannot be undone.",
     confirmText: "Remove Entry",
     danger: true
   }),
@@ -1704,7 +1704,7 @@ function setFlow(value) {
   submitButton.innerHTML = isHelp
     ? 'Send my help request <span aria-hidden="true">›</span>'
     : isPrivate
-      ? 'Store my private entry <span aria-hidden="true">›</span>'
+      ? 'Store my Safe Space entry <span aria-hidden="true">›</span>'
       : "Choose an option to continue";
   submitButton.disabled = !isSelected;
   submitButton.classList.toggle("private-submit", isPrivate);
@@ -1835,13 +1835,13 @@ form.addEventListener("submit", async (event) => {
   countLabel.textContent = "0 / 10,000";
   setFlow(null);
   showJournalSaveConfirmation();
-  showFeedback("Your private entry was saved on this device only. It will be removed from this list after 30 days.", "success");
+  showFeedback("Your Safe Space entry was saved on this device only. It will be removed from this list after 30 days.", "success");
   await engagementRequest;
   if (currentSession) {
     try {
       await privateEntries.sync(supabase, currentSession.user.id);
       privateEntries.render();
-      showFeedback("Your private entry was saved and backed up to your account.", "success");
+      showFeedback("Your Safe Space entry was saved and backed up to your account.", "success");
     } catch (error) {
       console.error("Could not back up the new journal entry.", error);
       showFeedback("Your entry is saved on this device, but couldn’t be backed up just now. It will remain here for 30 days.", "error");
