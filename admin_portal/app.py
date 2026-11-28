@@ -892,8 +892,9 @@ st.markdown(
     .st-key-hfrc-sidebar-nav-records button,
     .st-key-hfrc-sidebar-nav-appointments button,
     .st-key-hfrc-sidebar-nav-callbacks button,
-    .st-key-hfrc-sidebar-nav-activity button {
-        transition: background-color 0.1s ease !important;
+    .st-key-hfrc-sidebar-nav-activity button,
+    .st-key-hfrc-sidebar-nav-logout button {
+        transition: background-color 0.1s ease, color 0.1s ease !important;
     }
 
     .st-key-hfrc-sidebar-nav-home button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover,
@@ -901,22 +902,11 @@ st.markdown(
     .st-key-hfrc-sidebar-nav-records button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover,
     .st-key-hfrc-sidebar-nav-appointments button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover,
     .st-key-hfrc-sidebar-nav-callbacks button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover,
-    .st-key-hfrc-sidebar-nav-activity button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover {
+    .st-key-hfrc-sidebar-nav-activity button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover,
+    .st-key-hfrc-sidebar-nav-logout button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover {
         background-color: rgba(255, 255, 255, 0.08) !important;
         border-radius: 10px !important;
         color: #ffffff !important;
-    }
-
-    .st-key-hfrc-sidebar-nav-logout button {
-        transition: background-color 0.1s ease !important;
-    }
-
-    .st-key-hfrc-sidebar-nav-logout button:hover {
-        border: none !important;
-        border-radius: 10px !important;
-        background-color: rgba(255, 255, 255, 0.08) !important;
-        color: #ffffff !important;
-        box-shadow: none !important;
     }
 
     [data-testid="stSidebar"] button[kind="primary"],

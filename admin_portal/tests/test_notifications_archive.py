@@ -70,7 +70,9 @@ class NotificationArchiveTests(unittest.TestCase):
                 [
                     "import streamlit as st",
                     "from views.notifications import _clear_notification_filters",
+                    "st.selectbox('Date applies to', ['Requested Date', 'Date Sent (Received)'], key='notification-date-field')",
                     "st.date_input('Requested date', value=st.session_state.get('notification-requested-date-filter-value'), key='notification-requested-date-filter')",
+                    "st.selectbox('Sort / Order', ['Newest Sent First', 'Oldest Sent First', 'Soonest Requested Date'], key='notification-sort-order')",
                     "st.text_input('Search requests', key='notification-request-search')",
                     "st.button('✕', key='clear-filters', help='Clear search', on_click=_clear_notification_filters)",
                 ]
@@ -80,6 +82,8 @@ class NotificationArchiveTests(unittest.TestCase):
         app.session_state["notification-requested-date-filter-value"] = date(
             2026, 3, 2
         )
+        app.session_state["notification-date-field"] = "Date Sent (Received)"
+        app.session_state["notification-sort-order"] = "Soonest Requested Date"
         app.session_state["notification-request-search"] = "Jordan"
         app.run()
 
@@ -90,6 +94,14 @@ class NotificationArchiveTests(unittest.TestCase):
             app.session_state["notification-requested-date-filter-value"]
         )
         self.assertEqual(app.session_state["notification-request-search"], "")
+        self.assertEqual(
+            app.session_state["notification-date-field"],
+            "Requested Date",
+        )
+        self.assertEqual(
+            app.session_state["notification-sort-order"],
+            "Newest Sent First",
+        )
 
     def test_partitions_requests_and_enforces_archive_retention(self):
         today = date(2026, 3, 2)
@@ -166,6 +178,78 @@ class NotificationArchiveTests(unittest.TestCase):
         self.assertIs(
             notifications._filter_notification_items_by_date(items, None),
             items,
+        )
+
+    def test_date_filter_can_match_received_timestamp_in_manila_time(self):
+        items = [
+            {"id": "sent", "created_at": "2026-03-01T16:30:00Z"},
+            {"id": "other", "created_at": "2026-03-02T16:30:00Z"},
+            {"id": "invalid", "created_at": None},
+        ]
+
+        self.assertEqual(
+            [
+                item["id"]
+                for item in notifications._filter_notification_items_by_date_field(
+                    items,
+                    date(2026, 3, 2),
+                    "Date Sent (Received)",
+                )
+            ],
+            ["sent"],
+        )
+
+    def test_notification_sort_orders_use_received_and_requested_schedule(self):
+        items = [
+            {
+                "id": "later-sent",
+                "created_at": "2026-03-02T10:00:00+08:00",
+                "requested_date": "2026-03-05",
+                "requested_time": "09:00:00",
+            },
+            {
+                "id": "earlier-sent",
+                "created_at": "2026-03-01T10:00:00+08:00",
+                "requested_date": "2026-03-04",
+                "requested_time": "10:00:00",
+            },
+            {
+                "id": "same-day-earlier-time",
+                "created_at": None,
+                "requested_date": "2026-03-04",
+                "requested_time": "08:00:00",
+            },
+        ]
+
+        self.assertEqual(
+            [
+                item["id"]
+                for item in notifications._sort_notification_items(
+                    items,
+                    "Newest Sent First",
+                )
+            ],
+            ["later-sent", "earlier-sent", "same-day-earlier-time"],
+        )
+        self.assertEqual(
+            [
+                item["id"]
+                for item in notifications._sort_notification_items(
+                    items,
+                    "Oldest Sent First",
+                )
+            ],
+            ["earlier-sent", "later-sent", "same-day-earlier-time"],
+        )
+        self.assertEqual(
+            [
+                item["id"]
+                for item in notifications._sort_notification_items(
+                    items,
+                    "Soonest Requested Date",
+                )
+            ],
+            ["same-day-earlier-time", "earlier-sent", "later-sent"],
         )
 
     def test_search_matches_patient_name_and_contact_case_insensitively(self):

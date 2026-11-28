@@ -52,7 +52,6 @@ REGISTRATION_TITLES = {
     "Monthly": "Monthly Registrations",
 }
 PORTAL_ENGAGEMENT_EVENT_TYPES = {
-    "need_help": "need_help_submitted",
     "no_help": "no_help_submitted",
 }
 PORTAL_REQUEST_QUERY_COLUMNS = (
@@ -1027,7 +1026,7 @@ def _portal_engagement_time_window(timeframe, now=None):
 
 def _fetch_portal_engagement_event_counts(client, timeframe, now=None):
     start, end = _portal_engagement_time_window(timeframe, now)
-    counts = {action_type: 0 for action_type in PORTAL_ENGAGEMENT_ACTIONS}
+    counts = {"no_help_submitted": 0}
     for event_type, action_type in PORTAL_ENGAGEMENT_EVENT_TYPES.items():
         query = (
             client.table("portal_engagement_events")
@@ -1046,6 +1045,25 @@ def _fetch_portal_engagement_event_counts(client, timeframe, now=None):
             )
         counts[action_type] = count
     return counts
+
+
+def _fetch_patient_help_request_count(client, timeframe, now=None):
+    start, end = _portal_engagement_time_window(timeframe, now)
+    query = (
+        client.table("patient_help_requests")
+        .select("request_id", count="exact", head=True)
+        .lte("created_at", end.isoformat())
+    )
+    if start is not None:
+        query = query.gte("created_at", start.isoformat())
+
+    response = query.execute()
+    count = response.count
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+        raise ValueError(
+            "Supabase returned an invalid patient help request count."
+        )
+    return count
 
 
 @st.cache_data(ttl=20, show_spinner=False)
@@ -1076,24 +1094,44 @@ def _load_portal_engagement_event_counts(timeframe):
         return None, f"Could not load timestamped engagement events: {error}"
 
 
-def _fetch_portal_request_rows(client):
+def _load_patient_help_request_count(timeframe):
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return None, "Supabase is not configured for patient help requests."
+    if not is_supabase_connection_available():
+        return None, "Supabase is unavailable for patient help requests."
+
+    client = get_supabase_client()
+    if client is None:
+        return None, "Supabase is unavailable for patient help requests."
+
+    try:
+        return _fetch_patient_help_request_count(client, timeframe), None
+    except (httpx.RequestError, PostgrestAPIError) as error:
+        if is_supabase_connection_error(error):
+            is_supabase_connection_available.clear()
+            return None, "Supabase is unavailable for patient help requests."
+        return None, f"Could not load patient help requests: {error}"
+    except (KeyError, TypeError, ValueError) as error:
+        return None, f"Could not load patient help requests: {error}"
+
+
+def _fetch_portal_request_rows_for_table(client, table_name):
     rows = []
-    for table_name in ("patient_help_requests", "appointments"):
-        offset = 0
-        while True:
-            query = (
-                client.table(table_name)
-                .select(PORTAL_REQUEST_QUERY_COLUMNS)
-            )
-            response = query.range(
-                offset,
-                offset + PORTAL_REQUEST_PAGE_SIZE - 1,
-            ).execute()
-            page = response.data or []
-            rows.extend(page)
-            if len(page) < PORTAL_REQUEST_PAGE_SIZE:
-                break
-            offset += PORTAL_REQUEST_PAGE_SIZE
+    offset = 0
+    while True:
+        query = (
+            client.table(table_name)
+            .select(PORTAL_REQUEST_QUERY_COLUMNS)
+        )
+        response = query.range(
+            offset,
+            offset + PORTAL_REQUEST_PAGE_SIZE - 1,
+        ).execute()
+        page = response.data or []
+        rows.extend(page)
+        if len(page) < PORTAL_REQUEST_PAGE_SIZE:
+            break
+        offset += PORTAL_REQUEST_PAGE_SIZE
     return rows
 
 
@@ -1170,6 +1208,18 @@ def _filter_portal_request_rows_by_activity_at(rows, timeframe, now=None):
     return filtered_rows
 
 
+def _filter_patient_help_requests_by_created_at(rows, timeframe, now=None):
+    start, end = _portal_engagement_local_time_window(timeframe, now)
+    filtered_rows = []
+    for row in rows:
+        created_at = _parse_portal_timestamp_local(row.get("created_at"))
+        if created_at is None:
+            continue
+        if (start is None or created_at >= start) and created_at <= end:
+            filtered_rows.append(row)
+    return filtered_rows
+
+
 def _summarize_portal_request_rows(rows):
     outcome_counts = {outcome: 0 for outcome in PORTAL_REQUEST_OUTCOMES}
     slot_counts = {}
@@ -1229,6 +1279,76 @@ def _summarize_portal_request_rows(rows):
     }
 
 
+def _summarize_patient_help_request_schedules(rows):
+    slot_counts = {}
+    requested_weekday_counts = {}
+    requested_dates = set()
+
+    for row in rows:
+        request_time = _parse_portal_request_time(
+            row.get("requested_time_slot")
+        )
+        slot_label = (
+            request_time.strftime("%I:%M %p").lstrip("0")
+            if request_time is not None
+            else "Unspecified"
+        )
+        slot_counts[slot_label] = slot_counts.get(slot_label, 0) + 1
+
+        requested_date = _parse_portal_requested_date(
+            row.get("requested_date")
+        )
+        if requested_date is not None:
+            requested_dates.add(requested_date)
+            weekday = requested_date.strftime("%A")
+            requested_weekday_counts[weekday] = (
+                requested_weekday_counts.get(weekday, 0) + 1
+            )
+
+    peak_slots = sorted(
+        slot_counts.items(),
+        key=lambda item: (
+            -item[1],
+            _parse_portal_request_time(item[0]) is None,
+            _parse_portal_request_time(item[0]) or datetime.time.max,
+        ),
+    )
+    most_requested_day = None
+    if requested_weekday_counts:
+        most_requested_day = sorted(
+            requested_weekday_counts.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[0]
+    return {
+        "peak_slots": peak_slots,
+        "most_requested_day": most_requested_day,
+        "requested_date_count": len(requested_dates),
+    }
+
+
+def _summarize_portal_request_analytics(
+    help_request_rows,
+    appointment_rows,
+    timeframe,
+    now=None,
+):
+    activity_rows = _filter_portal_request_rows_by_activity_at(
+        [*help_request_rows, *appointment_rows],
+        timeframe,
+        now,
+    )
+    analytics = _summarize_portal_request_rows(activity_rows)
+    schedule_rows = _filter_patient_help_requests_by_created_at(
+        help_request_rows,
+        timeframe,
+        now,
+    )
+    analytics.update(
+        _summarize_patient_help_request_schedules(schedule_rows)
+    )
+    return analytics
+
+
 def _format_most_requested_day(analytics, timeframe):
     most_requested_day = analytics.get("most_requested_day")
     requested_date_count = analytics.get("requested_date_count", 0)
@@ -1259,9 +1379,22 @@ def _load_portal_request_analytics(timeframe):
         return None, "Supabase is unavailable for request analytics."
 
     try:
-        rows = _fetch_portal_request_rows(client)
-        rows = _filter_portal_request_rows_by_activity_at(rows, timeframe)
-        return _summarize_portal_request_rows(rows), None
+        help_request_rows = _fetch_portal_request_rows_for_table(
+            client,
+            "patient_help_requests",
+        )
+        appointment_rows = _fetch_portal_request_rows_for_table(
+            client,
+            "appointments",
+        )
+        return (
+            _summarize_portal_request_analytics(
+                help_request_rows,
+                appointment_rows,
+                timeframe,
+            ),
+            None,
+        )
     except (httpx.RequestError, PostgrestAPIError) as error:
         if is_supabase_connection_error(error):
             is_supabase_connection_available.clear()
@@ -1283,24 +1416,49 @@ def _render_portal_engagement(snapshot):
     st.caption(_portal_engagement_range_caption(timeframe))
 
     event_error = None
+    help_request_count_error = None
     if timeframe == "All Time" and snapshot:
         counts = snapshot["counts"]
     else:
-        counts, event_error = _load_portal_engagement_event_counts(timeframe)
+        event_counts, event_error = _load_portal_engagement_event_counts(
+            timeframe
+        )
+        need_help_count, help_request_count_error = (
+            _load_patient_help_request_count(timeframe)
+        )
+        counts = {
+            "need_help_submitted": need_help_count,
+            "no_help_submitted": (
+                event_counts.get("no_help_submitted")
+                if event_counts is not None
+                else None
+            ),
+        }
+    _load_portal_request_analytics.clear()
     request_analytics, request_error = _load_portal_request_analytics(timeframe)
 
     journal_accounts = snapshot["journal_accounts"] if snapshot else None
-    if counts is not None and timeframe != "All Time" and not any(counts.values()):
-        st.caption("No timestamped choices have been recorded for this period.")
+    if (
+        timeframe != "All Time"
+        and event_error is None
+        and help_request_count_error is None
+        and counts["need_help_submitted"] == 0
+        and counts["no_help_submitted"] == 0
+    ):
+        st.caption(
+            "No help requests or no-help choices have been recorded for this period."
+        )
     if event_error:
         st.warning(event_error)
+    if help_request_count_error:
+        st.warning(help_request_count_error)
 
     with st.container(horizontal=True, key="statistics-engagement-kpis"):
         st.metric(
             "I Need Help",
             (
                 f'{counts["need_help_submitted"]:,}'
-                if counts is not None
+                if counts["need_help_submitted"] is not None
                 else "—"
             ),
             border=True,
@@ -1309,7 +1467,7 @@ def _render_portal_engagement(snapshot):
             "I Don't Need Help",
             (
                 f'{counts["no_help_submitted"]:,}'
-                if counts is not None
+                if counts["no_help_submitted"] is not None
                 else "—"
             ),
             border=True,
@@ -1322,7 +1480,10 @@ def _render_portal_engagement(snapshot):
     st.caption("Choice counts include both guest and signed-in portal users.")
 
     comparison_chart = None
-    if counts is not None:
+    if (
+        counts["need_help_submitted"] is not None
+        and counts["no_help_submitted"] is not None
+    ):
         comparison_data = pd.DataFrame(
             [
                 {

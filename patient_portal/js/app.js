@@ -175,8 +175,9 @@ const privateEntrySigninHelper = document.querySelector("#private-entry-signin-h
 const privateEntrySigninCopy = document.querySelector("#private-entry-signin-copy");
 const privateEntrySigninLink = document.querySelector("#private-entry-signin-link");
 const entryToast = document.querySelector("#entry-toast");
+const entryToastClose = document.querySelector("#toast-close");
+const entryToastCard = entryToast.querySelector(".journal-save-modal");
 const entryToastCopy = entryToast.querySelector("span");
-const entryToastSignin = document.querySelector("#toast-signin");
 const entryToastFooter = document.createElement("p");
 entryToastFooter.className = "journal-save-toast-footer";
 entryToastFooter.appendChild(document.createTextNode("Want to talk to someone? "));
@@ -190,19 +191,17 @@ ncmhLink.href = "tel:1553";
 ncmhLink.textContent = "NCMH 1553";
 entryToastFooter.appendChild(ncmhLink);
 entryToastFooter.appendChild(document.createTextNode("."));
-entryToast.insertBefore(entryToastFooter, entryToastSignin);
+entryToastCard.appendChild(entryToastFooter);
 entryToast.classList.add("journal-save-confirmation");
-entryToast.setAttribute("aria-atomic", "true");
-form.insertAdjacentElement("afterend", entryToast);
+document.body.appendChild(entryToast);
 const config = window.PATIENT_PORTAL_CONFIG || {};
 let supabase = null;
 let authUnavailable = false;
 let currentSession = null;
 let authReady = !config.supabaseUrl || !config.supabaseAnonKey;
 let authMode = "signin";
-let toastTimeout;
-let toastFadeTimeout;
 let lastJournalSaveMessageIndex = -1;
+let journalSavePreviousFocus = null;
 let requestPollingTimer = null;
 let requestLoadSequence = 0;
 let requestRows = [];
@@ -214,28 +213,21 @@ let requestHistoryLoaded = false;
 let requestHistoryError = false;
 let confirmationResolver = null;
 
-function hideJournalSaveConfirmation() {
-  window.clearTimeout(toastTimeout);
-  window.clearTimeout(toastFadeTimeout);
-  toastTimeout = null;
-  toastFadeTimeout = null;
-  entryToast.hidden = true;
-  entryToast.classList.remove("is-visible", "is-fading");
-}
-
 function dismissJournalSaveConfirmation() {
-  window.clearTimeout(toastTimeout);
-  toastTimeout = null;
-  window.clearTimeout(toastFadeTimeout);
   if (entryToast.hidden) return;
-
   entryToast.classList.remove("is-visible");
-  entryToast.classList.add("is-fading");
-  toastFadeTimeout = window.setTimeout(() => {
+  const finishDismissal = (event) => {
+    if (event.target !== entryToast || event.propertyName !== "opacity") return;
+    entryToast.removeEventListener("transitionend", finishDismissal);
     entryToast.hidden = true;
-    entryToast.classList.remove("is-fading");
-    toastFadeTimeout = null;
-  }, 500);
+    document.body.classList.remove("journal-save-modal-open");
+    const focusTarget = journalSavePreviousFocus;
+    journalSavePreviousFocus = null;
+    if (focusTarget instanceof HTMLElement && focusTarget.isConnected) {
+      focusTarget.focus({ preventScroll: true });
+    }
+  };
+  entryToast.addEventListener("transitionend", finishDismissal);
 }
 
 function showJournalSaveConfirmation() {
@@ -265,8 +257,6 @@ function showJournalSaveConfirmation() {
 
   lastJournalSaveMessageIndex = nextMessageIndex;
   entryToastCopy.textContent = JOURNAL_SAVE_MESSAGES[nextMessageIndex];
-  entryToastSignin.hidden = Boolean(currentSession);
-  entryToastSignin.textContent = "Sign in for private backup";
   try {
     window.sessionStorage.setItem(
       JOURNAL_SAVE_LAST_MESSAGE_KEY,
@@ -276,15 +266,16 @@ function showJournalSaveConfirmation() {
     console.error("Could not save the journal confirmation message.", error);
   }
 
-  window.clearTimeout(toastTimeout);
-  window.clearTimeout(toastFadeTimeout);
-  toastFadeTimeout = null;
-  entryToast.classList.remove("is-fading", "is-visible");
+  journalSavePreviousFocus = document.activeElement;
+  document.body.classList.add("journal-save-modal-open");
+  entryToast.classList.remove("is-visible");
   entryToast.hidden = false;
   window.requestAnimationFrame(() => {
-    if (!entryToast.hidden) entryToast.classList.add("is-visible");
+    if (!entryToast.hidden) {
+      entryToast.classList.add("is-visible");
+      entryToastClose.focus();
+    }
   });
-  toastTimeout = window.setTimeout(dismissJournalSaveConfirmation, 8000);
 }
 
 const privateEntries = createPrivateEntries({
@@ -1207,7 +1198,6 @@ function clearSignedInUiState(showGuestEntries = true) {
   callbackSchedule.reset();
   countLabel.textContent = "0 / 10,000";
   setFlow(null);
-  hideJournalSaveConfirmation();
   hideFeedback();
 
   authForm.reset();
@@ -1330,8 +1320,6 @@ async function handleSignedInSession(session, forceSync = false) {
   historySigninBanner.hidden = true;
   guestWellnessBanner.hidden = true;
   refreshGuestImportBanner();
-  hideJournalSaveConfirmation();
-
   loadSeenRequestStates(session.user.id);
   updateNotificationBadge();
   startRequestPolling(session);
@@ -1620,7 +1608,27 @@ async function signOutCurrentUser() {
 }
 document.querySelector("#auth-signout").addEventListener("click", signOutCurrentUser);
 document.querySelector("#account-settings-signout").addEventListener("click", signOutCurrentUser);
-document.querySelector("#toast-close").addEventListener("click", () => {
+entryToastClose.addEventListener("click", dismissJournalSaveConfirmation);
+entryToast.addEventListener("keydown", (event) => {
+  if (event.key !== "Tab") return;
+  const focusable = Array.from(
+    entryToast.querySelectorAll("a[href], button:not([disabled])")
+  ).filter((element) => !element.hidden);
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || entryToast.hidden) return;
+  if (document.querySelector("dialog[open]")) return;
+  event.preventDefault();
   dismissJournalSaveConfirmation();
 });
 

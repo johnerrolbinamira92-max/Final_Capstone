@@ -820,42 +820,56 @@ textarea::placeholder, input::placeholder { color: #759994; opacity: 1; }
 .remove-entry { border: 0; background: transparent; color: var(--coral); font-size: 12px; font-weight: 700; cursor: pointer; }
 .remove-entry:hover { text-decoration: underline; }
 .entry-toast.journal-save-confirmation {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    "copy dismiss"
-    "footer dismiss"
-    "signin dismiss";
-  gap: 5px 12px;
-  width: 100%;
-  max-width: none;
-  margin-top: 2px;
-  padding: 14px 16px;
-  border: 1px solid color-mix(in srgb, var(--teal-bright) 40%, var(--line));
-  border-radius: 16px;
-  background: var(--success);
-  color: var(--text);
-  box-shadow: 0 6px 18px rgb(3 14 13 / 10%);
-  font-size: 12px;
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(4, 15, 13, 0.62);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   opacity: 0;
-  transform: translateY(-4px);
-  transition: opacity 350ms ease, transform 350ms ease;
+  transition: opacity 200ms ease;
 }
-.entry-toast.journal-save-confirmation.is-visible { opacity: 1; transform: translateY(0); }
-.entry-toast.journal-save-confirmation.is-fading { opacity: 0; transform: translateY(-4px); pointer-events: none; }
-.entry-toast.journal-save-confirmation > span {
-  grid-area: copy;
+.entry-toast.journal-save-confirmation.is-visible { opacity: 1; }
+.journal-save-modal {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "copy"
+    "footer";
+  gap: 0;
+  width: 100%;
+  max-width: 520px;
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
   color: var(--text);
-  font-size: 13px;
+  box-shadow: 0 24px 70px rgb(3 14 13 / 28%);
+  transform: translateY(8px) scale(.98);
+  transition: transform 200ms ease;
+}
+.entry-toast.journal-save-confirmation.is-visible .journal-save-modal {
+  transform: translateY(0) scale(1);
+}
+.entry-toast.journal-save-confirmation .journal-save-modal > span {
+  grid-area: copy;
+  margin-top: 24px;
+  color: #f0fdf9;
+  font-size: 1.25rem;
   font-weight: 600;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 .journal-save-toast-footer {
   grid-area: footer;
-  margin: 0;
+  margin: 18px 0 0;
   color: var(--muted);
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: 1rem;
+  line-height: 1.6;
 }
 .journal-save-toast-footer a {
   color: var(--teal-bright);
@@ -864,26 +878,26 @@ textarea::placeholder, input::placeholder { color: #759994; opacity: 1; }
   text-underline-offset: 2px;
 }
 .journal-save-toast-footer a:hover { color: var(--text); }
-.toast-signin, .toast-close { border: 0; background: transparent; cursor: pointer; }
-.entry-toast.journal-save-confirmation .toast-signin {
-  grid-area: signin;
-  justify-self: start;
-  padding: 0;
-  color: var(--teal-bright);
-  font-size: 11px;
-  font-weight: 700;
-  text-align: left;
-}
+.toast-close { border: 0; background: transparent; cursor: pointer; }
 .entry-toast.journal-save-confirmation .toast-close {
-  grid-area: dismiss;
-  align-self: start;
-  padding: 0 2px;
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
   color: var(--muted);
-  font-size: 19px;
+  font-size: 18px;
   line-height: 1;
 }
-.entry-toast.journal-save-confirmation .toast-close:hover,
-.entry-toast.journal-save-confirmation .toast-signin:hover { color: var(--text); }
+.entry-toast.journal-save-confirmation .toast-close:hover { color: var(--text); }
+body.journal-save-modal-open { overflow: hidden; }
+body.journal-save-modal-open .care-chatbot-widget { z-index: 1100; }
 
 body .care-chatbot-widget { right: 28px; bottom: 32px; z-index: 9999; }
 .care-chatbot-widget .care-chatbot-toggle {
@@ -900,9 +914,9 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; z-index: 9999; }
   padding: 0;
   border: 2px solid rgba(255, 255, 255, 0.55) !important;
   border-radius: 50%;
-  background: linear-gradient(135deg, #bef264 0%, #84cc16 100%) !important;
-  color: #1a2e05 !important;
-  box-shadow: 0 8px 24px rgba(132, 204, 22, 0.45) !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.38) !important;
   font-weight: 600;
   opacity: 0;
   visibility: hidden;
@@ -919,6 +933,8 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; z-index: 9999; }
   animation: chatbotPopIn 700ms cubic-bezier(.2, .8, .2, 1) both;
 }
 .care-chatbot-widget .care-chatbot-toggle:hover {
+  background: #1d4ed8 !important;
+  filter: none;
   transform: translateY(-2px) scale(1.04);
 }
 .care-chatbot-widget .care-chatbot-toggle-icon {
@@ -928,8 +944,8 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; z-index: 9999; }
   flex: 0 0 auto;
   border-radius: 0;
   background: none;
-  fill: none;
-  stroke: currentColor;
+  fill: #ffffff;
+  stroke: #ffffff;
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -938,9 +954,9 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; z-index: 9999; }
   position: absolute;
   z-index: 0;
   inset: -7px;
-  border: 2px solid rgb(132 204 22 / 55%);
+  border: 2px solid rgb(37 99 235 / 55%);
   border-radius: inherit;
-  box-shadow: 0 0 18px rgb(132 204 22 / 22%);
+  box-shadow: 0 0 18px rgb(37 99 235 / 22%);
   content: "";
   pointer-events: none;
   animation: chatPulse 2.6s ease-out infinite;
@@ -1058,8 +1074,9 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; z-index: 9999; }
 .light-mode .trust-list li span,
 .light-mode .panel-icon,
 .light-mode .entry-badge,
-.light-mode .toast-signin,
 .light-mode .contact-link { color: #0f766e; }
+.light-mode .entry-toast.journal-save-confirmation .journal-save-modal > span { color: #0f172a; }
+.light-mode .journal-save-toast-footer a { color: #0f766e; }
 .light-mode .site-header { background: rgb(248 250 252 / 94%); }
 .light-mode .account-settings-trigger,
 .light-mode .account-signout,
@@ -1240,7 +1257,7 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; z-index: 9999; }
   .history-section { padding: 50px 0; }
   .history-heading { grid-template-columns: 1fr; gap: 8px; }
   .history-heading > p { justify-self: start; }
-  .entry-toast.journal-save-confirmation { gap: 6px 10px; padding: 12px; font-size: 12px; }
+  .journal-save-modal { padding: 24px; }
   .footer-inner { align-items: flex-start; flex-direction: column; }
   .footer-contact { justify-items: start; padding-left: 50px; }
 }

@@ -39,6 +39,12 @@ UNRESPONDED_STATUSES = {
     "unresponded",
 }
 ARCHIVED_STATUSES = {"cancelled", "canceled", "declined"}
+NOTIFICATION_DATE_FIELDS = ("Requested Date", "Date Sent (Received)")
+NOTIFICATION_SORT_ORDERS = (
+    "Newest Sent First",
+    "Oldest Sent First",
+    "Soonest Requested Date",
+)
 NOTIFICATION_STYLES = """
 <style>
 .st-key-admin-notifications-page [class*="st-key-notification-row-"] {
@@ -50,7 +56,7 @@ NOTIFICATION_STYLES = """
     background: #112926;
     box-shadow: 0 8px 20px rgba(0, 0, 0, .12);
 }
-.st-key-admin-notifications-page .st-key-notification-date-filter-row {
+.st-key-admin-notifications-page .st-key-notification-shared-filter-row {
     margin-bottom: .45rem;
 }
 .st-key-admin-notifications-page .notification-archive-divider {
@@ -328,6 +334,10 @@ def _parse_notification_date(value):
 
 
 def _parse_notification_updated_date(value):
+    return _parse_notification_timestamp_date(value)
+
+
+def _parse_notification_timestamp_date(value):
     if not value:
         return None
     try:
@@ -374,13 +384,73 @@ def _partition_notification_items(items, today=None):
 
 
 def _filter_notification_items_by_date(items, requested_date):
-    if requested_date is None:
+    return _filter_notification_items_by_date_field(
+        items,
+        requested_date,
+        "Requested Date",
+    )
+
+
+def _filter_notification_items_by_date_field(items, selected_date, date_field):
+    if selected_date is None:
         return items
+    date_parser = (
+        _parse_notification_timestamp_date
+        if date_field == "Date Sent (Received)"
+        else _parse_notification_date
+    )
+    item_date_field = (
+        "created_at"
+        if date_field == "Date Sent (Received)"
+        else "requested_date"
+    )
     return [
         item
         for item in items
-        if _parse_notification_date(item.get("requested_date")) == requested_date
+        if date_parser(item.get(item_date_field)) == selected_date
     ]
+
+
+def _parse_notification_created_at(value):
+    if not value:
+        return None
+    try:
+        created_at = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if created_at.tzinfo is None:
+        return created_at.replace(tzinfo=MANILA_TZ)
+    return created_at.astimezone(MANILA_TZ)
+
+
+def _sort_notification_items(items, sort_order):
+    if sort_order == "Soonest Requested Date":
+        return sorted(
+            items,
+            key=lambda item: (
+                _parse_notification_date(item.get("requested_date"))
+                or date.max,
+                _parse_requested_time(item.get("requested_time")) or time.max,
+                str(item.get("id") or ""),
+            ),
+        )
+
+    dated_items = []
+    undated_items = []
+    for item in items:
+        created_at = _parse_notification_created_at(item.get("created_at"))
+        if created_at is None:
+            undated_items.append(item)
+        else:
+            dated_items.append((item, created_at))
+
+    reverse = sort_order == "Newest Sent First"
+    dated_items.sort(
+        key=lambda entry: (entry[1], str(entry[0].get("id") or "")),
+        reverse=reverse,
+    )
+    undated_items.sort(key=lambda item: str(item.get("id") or ""))
+    return [item for item, _ in dated_items] + undated_items
 
 
 def _filter_notification_items_by_search(items, query):
@@ -409,7 +479,7 @@ def _past_unanswered_sort_key(item):
     )
 
 
-def _partition_archived_notification_items(items, today=None):
+def _partition_archived_notification_items(items, today=None, sort_order=None):
     today = today or date.today()
     past_unanswered = []
     cancelled_requests = []
@@ -427,11 +497,21 @@ def _partition_archived_notification_items(items, today=None):
         ):
             past_unanswered.append(item)
 
-    past_unanswered.sort(key=_past_unanswered_sort_key, reverse=True)
-    cancelled_requests.sort(
-        key=_latest_activity_sort_key,
-        reverse=True,
-    )
+    if sort_order is None:
+        past_unanswered.sort(key=_past_unanswered_sort_key, reverse=True)
+        cancelled_requests.sort(
+            key=_latest_activity_sort_key,
+            reverse=True,
+        )
+    else:
+        past_unanswered = _sort_notification_items(
+            past_unanswered,
+            sort_order,
+        )
+        cancelled_requests = _sort_notification_items(
+            cancelled_requests,
+            sort_order,
+        )
     return past_unanswered, cancelled_requests
 
 
@@ -685,6 +765,8 @@ def _clear_notification_filters():
     st.session_state["notification-request-search"] = ""
     st.session_state["notification-requested-date-filter"] = None
     st.session_state["notification-requested-date-filter-value"] = None
+    st.session_state["notification-date-field"] = NOTIFICATION_DATE_FIELDS[0]
+    st.session_state["notification-sort-order"] = NOTIFICATION_SORT_ORDERS[0]
 
 
 def _save_notification_date_filter():
@@ -750,60 +832,30 @@ def _render_notification_request_rows(
             )
 
 
-def _render_notification_list(items, read_ids, tab_key, client):
+def _render_notification_list(
+    items,
+    read_ids,
+    tab_key,
+    client,
+    sort_order,
+    filters_active,
+):
     st.session_state.setdefault("callback_list_revealed", False)
     st.session_state.setdefault("callback_detail_revealed", False)
     list_revealed = st.session_state["callback_list_revealed"]
     detail_revealed = st.session_state["callback_detail_revealed"]
-    list_column, detail_column = st.columns([1.05, 1.35], gap="large")
+    list_column, detail_column = st.columns(
+        [1.05, 1.35],
+        gap="large",
+        vertical_alignment="top",
+    )
     with list_column:
-        with st.container(key="notification-date-filter-row"):
-            date_column, search_column, clear_column = st.columns(
-                [1.2, 1.15, 0.22],
-                gap="small",
-                vertical_alignment="bottom",
-            )
-            with date_column:
-                requested_date_filter = st.date_input(
-                    "Requested date",
-                    value=st.session_state.get(
-                        "notification-requested-date-filter-value"
-                    ),
-                    key="notification-requested-date-filter",
-                    help="Filter this tab by the requested date.",
-                    on_change=_save_notification_date_filter,
-                )
-            with search_column:
-                search_query = st.text_input(
-                    "Search requests",
-                    placeholder="Search name or contact...",
-                    key="notification-request-search",
-                    label_visibility="collapsed",
-                    autocomplete="off",
-                )
-            with clear_column:
-                st.button(
-                    "✕",
-                    key="notification-clear-requested-date-filter",
-                    help="Clear search",
-                    type="tertiary",
-                    width="content",
-                    disabled=(
-                        not search_query.strip()
-                        and requested_date_filter is None
-                    ),
-                    on_click=_clear_notification_filters,
-                )
-        visible_items = _filter_notification_items_by_date(
-            items, requested_date_filter
-        )
-        visible_items = _filter_notification_items_by_search(
-            visible_items, search_query
-        )
+        visible_items = items
         archived_groups = None
         if tab_key == "archived":
             archived_groups = _partition_archived_notification_items(
-                visible_items
+                visible_items,
+                sort_order=sort_order,
             )
             visible_items = [
                 *archived_groups[0],
@@ -839,8 +891,7 @@ def _render_notification_list(items, read_ids, tab_key, client):
                 if archived_groups is None:
                     st.info(
                         "There are no requests matching the selected filters."
-                        if requested_date_filter is not None
-                        or search_query.strip()
+                        if filters_active
                         else "There are no notifications in this category."
                     )
                 else:
@@ -1383,15 +1434,29 @@ def _render_notification_detail(item, client, tab_key, detail_revealed):
             _render_notification_actions(client, item, tab_key)
 
 
-def _render_notification_tab(items, category, read_ids, tab_key, client):
+def _render_notification_tab(
+    items,
+    category,
+    read_ids,
+    tab_key,
+    client,
+    sort_order,
+    filters_active,
+):
     filtered_items = [
         item for item in items if category is None or category in item["categories"]
     ]
-    _render_notification_list(filtered_items, read_ids, tab_key, client)
+    _render_notification_list(
+        filtered_items,
+        read_ids,
+        tab_key,
+        client,
+        sort_order,
+        filters_active,
+    )
 
 
 def _render_notification_items(items, client):
-    items.sort(key=_latest_activity_sort_key, reverse=True)
     try:
         read_ids = _load_notification_read_ids()
     except Exception as error:
@@ -1400,7 +1465,83 @@ def _render_notification_items(items, client):
             st.code(str(error))
         return
 
-    not_responded, responded, archived = _partition_notification_items(items)
+    with st.container(key="notification-shared-filter-row"):
+        date_field_column, date_column, sort_column, search_column = st.columns(
+            [1.05, 1.05, 1.65, 1.6],
+            gap="small",
+            vertical_alignment="bottom",
+        )
+        with date_field_column:
+            date_field = st.selectbox(
+                "Date applies to",
+                NOTIFICATION_DATE_FIELDS,
+                key="notification-date-field",
+            )
+        with date_column:
+            requested_date_filter = st.date_input(
+                "Date Filter",
+                value=st.session_state.get(
+                    "notification-requested-date-filter-value"
+                ),
+                key="notification-requested-date-filter",
+                help="Filter by requested schedule date or when the request was received.",
+                on_change=_save_notification_date_filter,
+            )
+        with sort_column:
+            sort_order = st.selectbox(
+                "Sort / Order",
+                NOTIFICATION_SORT_ORDERS,
+                key="notification-sort-order",
+            )
+        with search_column:
+            search_input_column, clear_column = st.columns(
+                [1, 0.18],
+                gap="small",
+                vertical_alignment="bottom",
+            )
+            with search_input_column:
+                search_query = st.text_input(
+                    "Search requests",
+                    placeholder="Search name or contact...",
+                    key="notification-request-search",
+                    label_visibility="collapsed",
+                    autocomplete="off",
+                )
+            with clear_column:
+                st.button(
+                    "✕",
+                    key="notification-clear-requested-date-filter",
+                    help="Clear search, date, and sort filters",
+                    type="tertiary",
+                    width="content",
+                    disabled=(
+                        not search_query.strip()
+                        and requested_date_filter is None
+                        and date_field == NOTIFICATION_DATE_FIELDS[0]
+                        and sort_order == NOTIFICATION_SORT_ORDERS[0]
+                    ),
+                    on_click=_clear_notification_filters,
+                )
+
+    filtered_items = _filter_notification_items_by_date_field(
+        items,
+        requested_date_filter,
+        date_field,
+    )
+    filtered_items = _filter_notification_items_by_search(
+        filtered_items,
+        search_query,
+    )
+    filters_active = (
+        requested_date_filter is not None
+        or bool(search_query.strip())
+    )
+    not_responded, responded, archived = _partition_notification_items(
+        filtered_items
+    )
+    not_responded = _sort_notification_items(not_responded, sort_order)
+    responded = _sort_notification_items(responded, sort_order)
+    archived = _sort_notification_items(archived, sort_order)
     visible_items = [*not_responded, *responded, *archived]
     unread_ids = {
         item["id"] for item in visible_items if item["id"] not in read_ids
@@ -1446,6 +1587,8 @@ def _render_notification_items(items, client):
                 read_ids,
                 "not-responded",
                 client,
+                sort_order,
+                filters_active,
             )
     if responded_tab.open:
         with responded_tab:
@@ -1455,6 +1598,8 @@ def _render_notification_items(items, client):
                 read_ids,
                 "responded",
                 client,
+                sort_order,
+                filters_active,
             )
     if archived_tab.open:
         with archived_tab:
@@ -1464,6 +1609,8 @@ def _render_notification_items(items, client):
                 read_ids,
                 "archived",
                 client,
+                sort_order,
+                filters_active,
             )
 
 

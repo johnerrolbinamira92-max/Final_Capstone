@@ -51,9 +51,56 @@ class _Query:
 class _Client:
     def __init__(self, events):
         self.events = events
+        self.tables = []
 
-    def table(self, _table_name):
+    def table(self, table_name):
+        self.tables.append(table_name)
         return _Query(self.events)
+
+
+class _HelpRequestQuery:
+    def __init__(self, rows):
+        self.rows = rows
+        self.start = None
+        self.end = None
+
+    def select(self, _column, *, count, head):
+        if count != "exact" or not head:
+            raise AssertionError("Expected an exact-count head query.")
+        return self
+
+    def gte(self, _column, value):
+        self.start = datetime.datetime.fromisoformat(value)
+        return self
+
+    def lte(self, _column, value):
+        self.end = datetime.datetime.fromisoformat(value)
+        return self
+
+    def execute(self):
+        count = sum(
+            1
+            for row in self.rows
+            if (
+                self.start is None
+                or datetime.datetime.fromisoformat(row["created_at"])
+                >= self.start
+            )
+            and datetime.datetime.fromisoformat(row["created_at"]) <= self.end
+        )
+        return _Response(count)
+
+
+class _HelpRequestClient:
+    def __init__(self, rows):
+        self.rows = rows
+        self.tables = []
+
+    def table(self, table_name):
+        self.tables.append(table_name)
+        if table_name != "patient_help_requests":
+            raise AssertionError("Help request counts must use the request table.")
+        return _HelpRequestQuery(self.rows)
 
 
 class PortalEngagementTests(unittest.TestCase):
@@ -153,20 +200,116 @@ class PortalEngagementTests(unittest.TestCase):
             ("no_help", self.now - datetime.timedelta(days=2)),
             ("no_help", self.now + datetime.timedelta(hours=1)),
         ]
+        client = _Client(events)
 
         counts = dashboard._fetch_portal_engagement_event_counts(
-            _Client(events),
+            client,
             "Weekly",
             self.now,
         )
 
-        self.assertEqual(
-            counts,
+        self.assertEqual(counts, {"no_help_submitted": 1})
+        self.assertEqual(client.tables, ["portal_engagement_events"])
+
+    def test_help_request_count_uses_created_at_in_manila_time(self):
+        rows = [
+            {"created_at": "2026-11-27T16:00:00+00:00"},
+            {"created_at": "2026-11-28T02:30:00+00:00"},
+            {"created_at": "2026-11-27T23:59:59+08:00"},
+            {"created_at": "2026-11-23T00:00:00+08:00"},
+            {"created_at": "2026-11-22T23:59:59+08:00"},
+            {"created_at": "2026-11-01T00:00:00+08:00"},
+            {"created_at": "2026-10-31T23:59:59+08:00"},
+            {"created_at": "2026-01-01T00:00:00+08:00"},
+            {"created_at": "2025-12-31T23:59:59+08:00"},
+            {"created_at": "2026-11-28T11:31:00+08:00"},
+        ]
+        expected_counts = {
+            "Daily": 2,
+            "Weekly": 4,
+            "Monthly": 6,
+            "Yearly": 8,
+        }
+
+        for timeframe, expected in expected_counts.items():
+            with self.subTest(timeframe=timeframe):
+                client = _HelpRequestClient(rows)
+                count = dashboard._fetch_patient_help_request_count(
+                    client,
+                    timeframe,
+                    self.now,
+                )
+                self.assertEqual(count, expected)
+                self.assertEqual(client.tables, ["patient_help_requests"])
+                filtered_rows = (
+                    dashboard._filter_patient_help_requests_by_created_at(
+                        rows,
+                        timeframe,
+                        self.now,
+                    )
+                )
+                schedule_summary = (
+                    dashboard._summarize_patient_help_request_schedules(
+                        filtered_rows
+                    )
+                )
+                self.assertEqual(len(filtered_rows), expected)
+                self.assertEqual(
+                    sum(count for _, count in schedule_summary["peak_slots"]),
+                    count,
+                )
+
+    def test_schedule_analytics_use_help_request_created_at_rows_only(self):
+        help_request_rows = [
             {
-                "need_help_submitted": 1,
-                "no_help_submitted": 1,
+                "created_at": "2026-11-27T16:00:00Z",
+                "updated_at": "2026-11-20T00:00:00Z",
+                "approval_status": "Declined",
+                "requested_date": "2026-11-30",
+                "requested_time_slot": "08:00:00",
             },
+            {
+                "created_at": "2026-11-28T02:30:00Z",
+                "updated_at": None,
+                "approval_status": "Pending",
+                "requested_date": "2026-12-01",
+                "requested_time_slot": None,
+            },
+            {
+                "created_at": "2026-11-27T15:59:59Z",
+                "updated_at": "2026-11-28T03:00:00Z",
+                "approval_status": "Pending",
+                "requested_date": "2026-12-02",
+                "requested_time_slot": "09:00:00",
+            },
+        ]
+        appointment_rows = [
+            {
+                "created_at": "2026-11-28T02:30:00Z",
+                "updated_at": None,
+                "approval_status": "Scheduled",
+                "requested_date": "2026-12-03",
+                "requested_time_slot": "10:00:00",
+            }
+        ]
+
+        analytics = dashboard._summarize_portal_request_analytics(
+            help_request_rows,
+            appointment_rows,
+            "Daily",
+            self.now,
         )
+
+        self.assertEqual(
+            sum(count for _, count in analytics["peak_slots"]),
+            2,
+        )
+        self.assertEqual(
+            analytics["peak_slots"],
+            [("8:00 AM", 1), ("Unspecified", 1)],
+        )
+        self.assertEqual(analytics["most_requested_day"], ("Monday", 1))
+        self.assertEqual(analytics["requested_date_count"], 2)
 
     def test_daily_request_filter_uses_latest_activity_in_manila_time(self):
         rows = [
@@ -357,14 +500,17 @@ class PortalEngagementTests(unittest.TestCase):
                 ),
                 "from views import dashboard",
                 "dashboard._load_portal_engagement_event_counts = "
-                "lambda _timeframe: ({'need_help_submitted': 3, "
-                "'no_help_submitted': 2}, None)",
+                "lambda _timeframe: ({'no_help_submitted': 2}, None)",
+                "dashboard._load_patient_help_request_count = "
+                "lambda _timeframe: (3, None)",
                 "dashboard._load_portal_request_analytics = "
                 "lambda _timeframe: ({'outcomes': {"
                 "'Pending / Awaiting': 0, 'Confirmed / Scheduled': 0, "
                 "'Rescheduled': 0, 'Done': 0, 'Cancelled': 0, 'No-show': 0"
                 "}, 'peak_slots': [], 'most_requested_day': None, "
                 "'requested_date_count': 0}, None)",
+                "dashboard._load_portal_request_analytics.clear = "
+                "lambda: None",
                 "dashboard._render_portal_engagement({",
                 "    'counts': {'need_help_submitted': 10, "
                 "'no_help_submitted': 9},",
