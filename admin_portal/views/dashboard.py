@@ -907,6 +907,7 @@ def _fetch_portal_engagement_snapshot(client):
     return _normalize_portal_engagement_snapshot(snapshot)
 
 
+@st.cache_data(ttl=20, show_spinner=False)
 def _load_portal_engagement_snapshot():
     try:
         cached_snapshot = _read_portal_engagement_cache()
@@ -1041,6 +1042,7 @@ def _fetch_portal_engagement_event_counts(client, timeframe, now=None):
     return counts
 
 
+@st.cache_data(ttl=20, show_spinner=False)
 def _load_portal_engagement_event_counts(timeframe):
     if not SUPABASE_URL or not SUPABASE_KEY:
         return None, "Supabase is not configured for timestamped engagement events."
@@ -1198,6 +1200,7 @@ def _summarize_portal_request_rows(rows):
     }
 
 
+@st.cache_data(ttl=20, show_spinner=False)
 def _load_portal_request_analytics(timeframe):
     if not SUPABASE_URL or not SUPABASE_KEY:
         return None, "Supabase is not configured for request analytics."

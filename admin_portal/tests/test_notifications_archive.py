@@ -3,6 +3,7 @@ import sys
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest.mock import Mock
 
 from streamlit.testing.v1 import AppTest
 
@@ -12,6 +13,35 @@ notifications = importlib.import_module("views.notifications")
 
 
 class NotificationArchiveTests(unittest.TestCase):
+    def test_notification_reads_cache_for_twenty_seconds_and_can_be_cleared(self):
+        notifications._clear_notification_cache()
+        client = Mock()
+        query = Mock()
+        query.select.return_value = query
+        query.order.return_value = query
+        query.limit.return_value = query
+        query.execute.return_value = Mock(
+            data=[{"appointment_id": 17, "patient_name": "Example"}]
+        )
+        client.table.return_value = query
+
+        try:
+            first = notifications._load_notification_table(
+                client, "appointments"
+            )
+            second = notifications._load_notification_table(
+                client, "appointments"
+            )
+
+            self.assertEqual(first, second)
+            self.assertEqual(client.table.call_count, 1)
+
+            appointments._invalidate_schedule_data_caches()
+            notifications._load_notification_table(client, "appointments")
+            self.assertEqual(client.table.call_count, 2)
+        finally:
+            notifications._clear_notification_cache()
+
     def test_clear_control_resets_search_and_requested_date(self):
         app = AppTest.from_string(
             "\n".join(

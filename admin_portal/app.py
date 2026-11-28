@@ -833,6 +833,17 @@ st.markdown(
         border-radius: 8px !important;
     }
 
+    [data-testid="stSidebar"] button,
+    [data-testid="stSidebar"] button > div,
+    [data-testid="stSidebar"] button p {
+        justify-content: flex-start !important;
+        text-align: left !important;
+    }
+
+    [data-testid="stSidebar"] button {
+        padding-left: 16px !important;
+    }
+
     .st-key-hfrc-sidebar-nav-logout button > div,
     .st-key-hfrc-sidebar-nav-logout button > p,
     .st-key-hfrc-sidebar-nav-logout button > span,
@@ -871,17 +882,13 @@ st.markdown(
         font-size: 17px;
     }
 
-    [data-testid="stSidebar"] [data-testid="stSidebarNavLink"] {
-        transition: background-color 0.15s ease, color 0.15s ease !important;
-    }
-
     .st-key-hfrc-sidebar-nav-home button,
     .st-key-hfrc-sidebar-nav-statistics button,
     .st-key-hfrc-sidebar-nav-records button,
     .st-key-hfrc-sidebar-nav-appointments button,
     .st-key-hfrc-sidebar-nav-callbacks button,
     .st-key-hfrc-sidebar-nav-activity button {
-        transition: background-color 0.15s ease, color 0.15s ease !important;
+        transition: background-color 0.1s ease !important;
     }
 
     .st-key-hfrc-sidebar-nav-home button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover,
@@ -894,7 +901,7 @@ st.markdown(
     }
 
     .st-key-hfrc-sidebar-nav-logout button {
-        transition: background-color 0.15s ease, color 0.15s ease !important;
+        transition: background-color 0.1s ease !important;
     }
 
     .st-key-hfrc-sidebar-nav-logout button:hover {
@@ -906,13 +913,20 @@ st.markdown(
     }
 
     [data-testid="stSidebar"] button[kind="primary"],
-    [data-testid="stSidebar"] button[data-testid="stBaseButton-primary"] {
-        background-color: #071916 !important;
-        border: 1px solid rgba(20, 184, 166, 0.35) !important;
-        border-left: 3px solid #14b8a6 !important;
+    [data-testid="stSidebar"] button[data-testid="stBaseButton-primary"],
+    [data-testid="stSidebar"] button[kind="primary"]:hover,
+    [data-testid="stSidebar"] button[data-testid="stBaseButton-primary"]:hover {
+        background-color: rgba(20, 184, 166, 0.24) !important;
+        border: 1px solid rgba(45, 212, 191, 0.45) !important;
+        border-left: 4px solid #2dd4bf !important;
         border-radius: 10px !important;
         color: #ffffff !important;
         font-weight: 600 !important;
+        box-shadow: none !important;
+        backdrop-filter: none !important;
+        filter: none !important;
+        transform: none !important;
+        transition: background-color 0.1s ease !important;
     }
 
     [data-testid="stSidebar"] button[kind="secondary"] {
@@ -2979,6 +2993,12 @@ def render_offline_status_badge():
         )
 
 
+def _logout_admin():
+    st.session_state["admin_authenticated"] = False
+    st.session_state.pop("admin_auth_mode", None)
+    st.session_state.pop("admin_profile", None)
+
+
 def show_overview_page():
     show_home_dashboard_page(
         statistics_page=dashboard_page,
@@ -3079,17 +3099,14 @@ with st.sidebar:
                     ) and not is_active_page:
                         st.switch_page(page)
             with st.container(key="hfrc-sidebar-nav-logout"):
-                if st.button(
+                st.button(
                     "Log out",
                     icon=":material/logout:",
                     key="hfrc-sidebar-logout",
                     type="secondary",
                     width="stretch",
-                ):
-                    st.session_state["admin_authenticated"] = False
-                    st.session_state.pop("admin_auth_mode", None)
-                    st.session_state.pop("admin_profile", None)
-                    st.rerun()
+                    on_click=_logout_admin,
+                )
             render_notification_alerts(
                 cached_items=(
                     notification_items if notification_feed_is_cached else None

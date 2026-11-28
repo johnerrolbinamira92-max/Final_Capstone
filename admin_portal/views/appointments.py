@@ -513,12 +513,13 @@ def _sort_appointments_by_latest_activity(appointments):
     return appointments.iloc[ordered_indexes].reset_index(drop=True)
 
 
-def _load_appointments(client):
+@st.cache_data(ttl=20, show_spinner=False)
+def _load_appointments(_client):
     records = []
     offset = 0
     while True:
         response = (
-            client.table("appointments")
+            _client.table("appointments")
             .select(", ".join(APPOINTMENT_COLUMNS))
             .order("updated_at", desc=True)
             .order("created_at", desc=True)
@@ -539,19 +540,13 @@ def _load_appointments(client):
     return _sort_appointments_by_latest_activity(appointments)
 
 
-def _load_calendar_appointments(client, appointments=None):
-    if appointments is None:
-        appointments = _load_appointments(client)
-    appointments = appointments.copy()
-    appointments["event_source"] = "appointment"
-    appointments["patient_age"] = None
-    appointments["message"] = None
-
-    request_records = []
+@st.cache_data(ttl=20, show_spinner=False)
+def _load_help_request_rows(_client):
+    records = []
     offset = 0
     while True:
         response = (
-            client.table("patient_help_requests")
+            _client.table("patient_help_requests")
             .select(
                 "request_id, patient_name, patient_age, patient_email, "
                 "contact_number, message, requested_date, requested_time_slot, "
@@ -565,10 +560,22 @@ def _load_calendar_appointments(client, appointments=None):
             .execute()
         )
         page = response.data or []
-        request_records.extend(page)
+        records.extend(page)
         if len(page) < PAGE_SIZE:
             break
         offset += PAGE_SIZE
+    return records
+
+
+def _load_calendar_appointments(client, appointments=None):
+    if appointments is None:
+        appointments = _load_appointments(client)
+    appointments = appointments.copy()
+    appointments["event_source"] = "appointment"
+    appointments["patient_age"] = None
+    appointments["message"] = None
+
+    request_records = _load_help_request_rows(client)
     request_rows = [
         {
             "appointment_id": f"help_request:{request['request_id']}",
@@ -721,13 +728,14 @@ def _appointment_summary_counts(appointments, today):
     }
 
 
-def _load_appointment_summary_counts(client, today):
+@st.cache_data(ttl=20, show_spinner=False)
+def _load_appointment_summary_counts(_client, today):
     records = []
     for table_name in ("appointments", "patient_help_requests"):
         offset = 0
         while True:
             response = (
-                client.table(table_name)
+                _client.table(table_name)
                 .select("requested_date, approval_status")
                 .in_("approval_status", [*ACTIVE_STATUSES, "Completed"])
                 .range(offset, offset + PAGE_SIZE - 1)
@@ -744,6 +752,18 @@ def _load_appointment_summary_counts(client, today):
         columns=["requested_date", "approval_status"],
     )
     return _appointment_summary_counts(active_visits, today)
+
+
+def _invalidate_schedule_data_caches():
+    _load_appointments.clear()
+    _load_help_request_rows.clear()
+    _load_appointment_summary_counts.clear()
+
+    from views.dashboard import _load_portal_request_analytics
+    from views.notifications import _clear_notification_cache
+
+    _load_portal_request_analytics.clear()
+    _clear_notification_cache()
 
 
 @st.fragment(run_every="30s")
@@ -1321,6 +1341,8 @@ def _update_appointment_outcome(
             st.code(str(error))
         return False
 
+    _invalidate_schedule_data_caches()
+
     try:
         _log_appointment_action(
             "APPOINTMENT OUTCOME",
@@ -1378,6 +1400,8 @@ def _reschedule_appointment(client, appointment, new_date, new_time):
         with st.expander("Technical details"):
             st.code(str(error))
         return False
+
+    _invalidate_schedule_data_caches()
 
     try:
         _log_appointment_action(
@@ -1625,6 +1649,8 @@ def _render_schedule_form(client):
             st.code(str(error))
         return
 
+    _invalidate_schedule_data_caches()
+
     try:
         _log_appointment_action(
             "ADMIN APPOINTMENT SET",
@@ -1742,6 +1768,7 @@ def _render_schedule_list(appointments, client):
                     with st.expander("Technical details"):
                         st.code(str(error))
                 else:
+                    _invalidate_schedule_data_caches()
                     action_type = (
                         "REQUEST CONFIRMED"
                         if status == "Pending" and selected_status == "Scheduled"
@@ -1885,6 +1912,7 @@ def _render_help_requests(client):
                     with st.expander("Technical details"):
                         st.code(str(error))
                 else:
+                    _invalidate_schedule_data_caches()
                     action_type = (
                         "REQUEST CONFIRMED"
                         if status == "Pending" and selected_status == "Scheduled"

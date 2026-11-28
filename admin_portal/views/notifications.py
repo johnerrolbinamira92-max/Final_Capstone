@@ -469,29 +469,51 @@ def _notification_status_pill(status):
     )
 
 
+@st.cache_data(ttl=20, show_spinner=False)
+def _load_notification_table(_client, table_name):
+    if table_name == "appointments":
+        select_columns = (
+            "appointment_id, patient_name, patient_email, contact_number, "
+            "reason, requested_date, requested_time_slot, approval_status, "
+            "created_at, updated_at"
+        )
+        id_column = "appointment_id"
+    elif table_name == "patient_help_requests":
+        select_columns = (
+            "request_id, patient_name, patient_age, patient_email, "
+            "contact_number, message, requested_date, requested_time_slot, "
+            "approval_status, created_at, updated_at"
+        )
+        id_column = "request_id"
+    else:
+        raise ValueError(f"Unsupported notification source: {table_name}")
+
+    response = (
+        _client.table(table_name)
+        .select(select_columns)
+        .order("updated_at", desc=True)
+        .order("created_at", desc=True)
+        .order(id_column, desc=True)
+        .limit(500)
+        .execute()
+    )
+    return response.data or []
+
+
+def _clear_notification_cache():
+    _load_notification_table.clear()
+
+
 def _load_notifications(client):
     items = []
     errors = []
 
     try:
-        response = (
-            client.table("appointments")
-            .select(
-                "appointment_id, patient_name, patient_email, contact_number, "
-                "reason, "
-                "requested_date, requested_time_slot, approval_status, created_at, "
-                "updated_at"
-            )
-            .order("updated_at", desc=True)
-            .order("created_at", desc=True)
-            .order("appointment_id", desc=True)
-            .limit(500)
-            .execute()
-        )
+        appointments = _load_notification_table(client, "appointments")
     except Exception as error:
         errors.append(("appointments", error))
     else:
-        for appointment in response.data or []:
+        for appointment in appointments:
             status = appointment.get("approval_status") or "Pending"
             items.append(
                 {
@@ -514,24 +536,11 @@ def _load_notifications(client):
             )
 
     try:
-        response = (
-            client.table("patient_help_requests")
-            .select(
-                "request_id, patient_name, patient_age, patient_email, "
-                "contact_number, message, "
-                "requested_date, requested_time_slot, approval_status, created_at, "
-                "updated_at"
-            )
-            .order("updated_at", desc=True)
-            .order("created_at", desc=True)
-            .order("request_id", desc=True)
-            .limit(500)
-            .execute()
-        )
+        requests = _load_notification_table(client, "patient_help_requests")
     except Exception as error:
         errors.append(("patient help requests", error))
     else:
-        for request in response.data or []:
+        for request in requests:
             status = request.get("approval_status") or "Pending"
             items.append(
                 {
@@ -943,6 +952,10 @@ def _update_notification(client, item, updates):
         with st.expander("Technical details"):
             st.code(str(error))
         return False
+
+    from views.appointments import _invalidate_schedule_data_caches
+
+    _invalidate_schedule_data_caches()
 
     new_status = updates["approval_status"]
     scheduled_date = updates.get("requested_date", item.get("requested_date"))
