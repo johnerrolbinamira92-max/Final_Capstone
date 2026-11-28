@@ -101,10 +101,50 @@ class PortalEngagementTests(unittest.TestCase):
             ),
         )
         self.assertEqual(daily_end, self.now.astimezone(datetime.timezone.utc))
-        self.assertEqual(weekly_start, daily_end - datetime.timedelta(days=7))
-        self.assertEqual(monthly_start, daily_end - datetime.timedelta(days=30))
-        self.assertEqual(yearly_start, daily_end - datetime.timedelta(days=365))
+        self.assertEqual(
+            weekly_start,
+            datetime.datetime(
+                2026,
+                11,
+                22,
+                16,
+                0,
+                tzinfo=datetime.timezone.utc,
+            ),
+        )
+        self.assertEqual(
+            monthly_start,
+            datetime.datetime(
+                2026,
+                10,
+                31,
+                16,
+                0,
+                tzinfo=datetime.timezone.utc,
+            ),
+        )
+        self.assertEqual(
+            yearly_start,
+            datetime.datetime(
+                2025,
+                12,
+                31,
+                16,
+                0,
+                tzinfo=datetime.timezone.utc,
+            ),
+        )
         self.assertIsNone(all_time_start)
+
+    def test_range_caption_reflects_calendar_window_through_today(self):
+        self.assertEqual(
+            dashboard._portal_engagement_range_caption("Weekly", self.now),
+            "Showing: Nov 23 – Nov 28, 2026 (Mon–Sat, through now)",
+        )
+        self.assertEqual(
+            dashboard._portal_engagement_range_caption("All Time", self.now),
+            "Showing: All time",
+        )
 
     def test_event_counts_are_filtered_by_choice_and_timeframe(self):
         events = [
@@ -128,32 +168,63 @@ class PortalEngagementTests(unittest.TestCase):
             },
         )
 
+    def test_daily_request_filter_uses_created_at_in_manila_time(self):
+        rows = [
+            {
+                "id": "local-midnight",
+                "created_at": "2026-11-27T16:00:00Z",
+            },
+            {
+                "id": "earlier-in-manila",
+                "created_at": "2026-11-27T15:59:59Z",
+            },
+            {
+                "id": "later-today",
+                "created_at": "2026-11-28T03:29:00Z",
+            },
+            {
+                "id": "future-in-manila",
+                "created_at": "2026-11-28T03:31:00Z",
+            },
+        ]
+
+        filtered_rows = dashboard._filter_portal_request_rows_by_created_at(
+            rows,
+            "Daily",
+            self.now,
+        )
+
+        self.assertEqual(
+            [row["id"] for row in filtered_rows],
+            ["local-midnight", "later-today"],
+        )
+
     def test_request_analytics_normalize_status_and_schedule_values(self):
         summary = dashboard._summarize_portal_request_rows(
             [
                 {
                     "approval_status": "Pending",
-                    "requested_date": "2026-11-30",
+                    "created_at": "2026-11-28T00:10:00+08:00",
                     "requested_time_slot": "08:00:00",
                 },
                 {
                     "approval_status": "Scheduled",
-                    "requested_date": "2026-11-30",
+                    "created_at": "2026-11-28T01:10:00+08:00",
                     "requested_time_slot": "8:00 AM",
                 },
                 {
                     "approval_status": "Completed",
-                    "requested_date": "2026-12-01",
+                    "created_at": "2026-11-29T01:10:00+08:00",
                     "requested_time_slot": "13:00:00",
                 },
                 {
                     "approval_status": "Declined",
-                    "requested_date": "2026-11-30",
+                    "created_at": "2026-11-28T02:10:00+08:00",
                     "requested_time_slot": "08:00",
                 },
                 {
                     "approval_status": "No-show",
-                    "requested_date": "invalid",
+                    "created_at": "2026-11-27T02:10:00+08:00",
                     "requested_time_slot": None,
                 },
             ]
@@ -171,7 +242,7 @@ class PortalEngagementTests(unittest.TestCase):
             },
         )
         self.assertEqual(summary["peak_slots"], [("8:00 AM", 3), ("1:00 PM", 1)])
-        self.assertEqual(summary["busiest_day"], ("Monday", 3))
+        self.assertEqual(summary["busiest_day"], ("Saturday", 3))
 
     def test_engagement_panel_switches_from_singleton_to_period_counts(self):
         source = "\n".join(

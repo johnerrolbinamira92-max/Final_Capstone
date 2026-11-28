@@ -5,6 +5,7 @@ import re
 import sqlite3
 from html import escape
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import altair as alt
 import httpx
@@ -43,13 +44,13 @@ PORTAL_ENGAGEMENT_TIMEFRAMES = (
     "Yearly",
     "All Time",
 )
-PORTAL_ENGAGEMENT_TIMEZONE = datetime.timezone(datetime.timedelta(hours=8))
+PORTAL_ENGAGEMENT_TIMEZONE = ZoneInfo("Asia/Manila")
 PORTAL_ENGAGEMENT_EVENT_TYPES = {
     "need_help": "need_help_submitted",
     "no_help": "no_help_submitted",
 }
 PORTAL_REQUEST_QUERY_COLUMNS = (
-    "approval_status,created_at,requested_date,requested_time_slot"
+    "approval_status,created_at,requested_time_slot"
 )
 PORTAL_REQUEST_PAGE_SIZE = 1000
 PORTAL_REQUEST_OUTCOMES = (
@@ -859,7 +860,7 @@ def _load_portal_engagement_snapshot():
     return snapshot, "online", None
 
 
-def _portal_engagement_time_window(timeframe, now=None):
+def _portal_engagement_local_time_window(timeframe, now=None):
     if timeframe not in PORTAL_ENGAGEMENT_TIMEFRAMES:
         raise ValueError(f"Unknown portal engagement timeframe: {timeframe}")
 
@@ -874,12 +875,55 @@ def _portal_engagement_time_window(timeframe, now=None):
     elif timeframe == "Daily":
         start = end.replace(hour=0, minute=0, second=0, microsecond=0)
     elif timeframe == "Weekly":
-        start = end - datetime.timedelta(days=7)
+        monday = end.date() - datetime.timedelta(days=end.weekday())
+        start = datetime.datetime.combine(
+            monday,
+            datetime.time.min,
+            tzinfo=PORTAL_ENGAGEMENT_TIMEZONE,
+        )
     elif timeframe == "Monthly":
-        start = end - datetime.timedelta(days=30)
+        start = end.replace(
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
     else:
-        start = end - datetime.timedelta(days=365)
+        start = end.replace(
+            month=1,
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
 
+    return start, end
+
+
+def _portal_engagement_range_caption(timeframe, now=None):
+    start, end = _portal_engagement_local_time_window(timeframe, now)
+    if start is None:
+        return "Showing: All time"
+    if timeframe == "Daily":
+        return (
+            f"Showing: {end:%b} {end.day}, {end:%Y} "
+            f"({end:%a}, through now)"
+        )
+
+    start_label = f"{start:%b} {start.day}"
+    if start.year != end.year:
+        start_label += f", {start.year}"
+    end_label = f"{end:%b} {end.day}, {end.year}"
+    return (
+        f"Showing: {start_label} – {end_label} "
+        f"({start:%a}–{end:%a}, through now)"
+    )
+
+
+def _portal_engagement_time_window(timeframe, now=None):
+    start, end = _portal_engagement_local_time_window(timeframe, now)
     utc = datetime.timezone.utc
     return (
         start.astimezone(utc) if start is not None else None,
@@ -962,19 +1006,6 @@ def _fetch_portal_request_rows(client, timeframe, now=None):
     return rows
 
 
-def _parse_portal_request_date(value):
-    if isinstance(value, datetime.datetime):
-        return value.date()
-    if isinstance(value, datetime.date):
-        return value
-    if isinstance(value, str):
-        try:
-            return datetime.date.fromisoformat(value[:10])
-        except ValueError:
-            return None
-    return None
-
-
 def _parse_portal_request_time(value):
     if isinstance(value, datetime.datetime):
         return value.time().replace(tzinfo=None)
@@ -996,6 +1027,36 @@ def _parse_portal_request_time(value):
             except ValueError:
                 continue
     return None
+
+
+def _parse_portal_created_at_local(value):
+    if isinstance(value, datetime.datetime):
+        created_at = value
+    elif isinstance(value, str):
+        try:
+            created_at = datetime.datetime.fromisoformat(
+                value.strip().replace("Z", "+00:00")
+            )
+        except ValueError:
+            return None
+    else:
+        return None
+
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=datetime.timezone.utc)
+    return created_at.astimezone(PORTAL_ENGAGEMENT_TIMEZONE)
+
+
+def _filter_portal_request_rows_by_created_at(rows, timeframe, now=None):
+    start, end = _portal_engagement_local_time_window(timeframe, now)
+    filtered_rows = []
+    for row in rows:
+        created_at = _parse_portal_created_at_local(row.get("created_at"))
+        if created_at is None:
+            continue
+        if (start is None or created_at >= start) and created_at <= end:
+            filtered_rows.append(row)
+    return filtered_rows
 
 
 def _summarize_portal_request_rows(rows):
@@ -1028,9 +1089,9 @@ def _summarize_portal_request_rows(rows):
             slot_label = request_time.strftime("%I:%M %p").lstrip("0")
             slot_counts[slot_label] = slot_counts.get(slot_label, 0) + 1
 
-        request_date = _parse_portal_request_date(row.get("requested_date"))
-        if request_date is not None:
-            weekday = request_date.strftime("%A")
+        created_at = _parse_portal_created_at_local(row.get("created_at"))
+        if created_at is not None:
+            weekday = created_at.strftime("%A")
             weekday_counts[weekday] = weekday_counts.get(weekday, 0) + 1
 
     peak_slots = sorted(
@@ -1062,6 +1123,7 @@ def _load_portal_request_analytics(timeframe):
 
     try:
         rows = _fetch_portal_request_rows(client, timeframe)
+        rows = _filter_portal_request_rows_by_created_at(rows, timeframe)
         return _summarize_portal_request_rows(rows), None
     except (httpx.RequestError, PostgrestAPIError) as error:
         if is_supabase_connection_error(error):
@@ -1081,6 +1143,7 @@ def _render_portal_engagement(snapshot):
         key="portal_engagement_timeframe",
         wrap=False,
     )
+    st.caption(_portal_engagement_range_caption(timeframe))
 
     event_error = None
     if timeframe == "All Time" and snapshot:
