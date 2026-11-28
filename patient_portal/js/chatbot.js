@@ -127,6 +127,13 @@ function getLocalClinicInfoFallback(text) {
   return asksAboutBoc ? BOC_INFORMATION_FALLBACK : null;
 }
 
+function getRegionalScopeReply(text) {
+  const asksAboutLocation = /\b(?:location|bicol|where|province|coverage)\b/i.test(text);
+  if (!asksAboutLocation) return null;
+
+  return "Clinical callbacks and in-person consultations are for residents of the Bicol Region (Region V), served from Brothers of Charity Holy Face Center in Tabaco City, Albay. If you’re elsewhere in the Philippines, you’re still welcome to use Safe Space and your journal privately. For national support, contact the National Center for Mental Health (NCMH) at 1553 or 0917-899-8727.";
+}
+
 async function sendMessage(value) {
   const text = value.trim();
   if (!text || text.length > MAX_USER_MESSAGE_LENGTH || sendButton.disabled) return;
@@ -137,6 +144,14 @@ async function sendMessage(value) {
   trimConversation();
   renderMessage("user", text);
   input.value = "";
+  const regionalScopeReply = getRegionalScopeReply(text);
+  if (regionalScopeReply) {
+    messages.push({ role: "assistant", text: regionalScopeReply });
+    trimConversation();
+    renderMessage("assistant", regionalScopeReply);
+    return;
+  }
+
   sendButton.disabled = true;
   starterButtons.forEach((button) => {
     button.disabled = true;

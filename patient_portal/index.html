@@ -25,7 +25,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=13">
+    <link rel="stylesheet" href="styles.css?v=15">
     <link rel="stylesheet" href="css/chatbot.css?v=2">
   </head>
   <body>
@@ -232,6 +232,13 @@
                 </aside>
                 <p class="flow-selection-prompt" id="flow-selection-prompt">Please select an option above to continue.</p>
                 <section class="panel callback-panel" id="callback-panel" aria-labelledby="callback-title">
+                  <aside class="regional-scope-notice" role="note">
+                    <svg class="regional-scope-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                      <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"></path>
+                      <circle cx="12" cy="10" r="2.5"></circle>
+                    </svg>
+                    <p><strong>Service Scope (Bicol Region / Region V):</strong> Clinical callbacks and in-person consultations at Brothers of Charity Holy Face Center (Tabaco City, Albay) are dedicated to residents within the Bicol Region. Outside Region V? You are still welcome to use Safe Space privately or reach the National Center for Mental Health (NCMH) at 1553 / 0917-899-8727.</p>
+                  </aside>
                   <div class="panel-icon" aria-hidden="true">♧</div>
                   <h3 id="callback-title">Request a confidential callback</h3>
                   <p class="panel-intro">These details and your message are visible only to authorized administrators.</p>
@@ -318,7 +325,18 @@
       <div class="page-width footer-inner">
         <div class="footer-brand">
           <img class="brand-logo" src="./assets/boc_logo.png" alt="Brothers of Charity Logo">
-          <div><h2>Holy Face Center for Mental Health</h2><p>Nazareth Complex, Zone 6, Tabiguian, Tabaco City, Albay · Brothers of Charity Philippine Jurisdiction, Inc.</p></div>
+          <div class="footer-brand-copy">
+            <h2>Holy Face Center for Mental Health</h2>
+            <div class="footer-meta">
+              <p>Nazareth Complex, Zone 6, Tabiguian, Tabaco City, Albay · Serving the Bicol Region (Region V) · Brothers of Charity Philippine Jurisdiction, Inc.</p>
+              <a class="footer-facebook-link" href="https://www.facebook.com/HFCMHOfficial/" target="_blank" rel="noopener noreferrer">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M13.4 21v-8.2h2.8l.4-3h-3.2V7.9c0-.9.3-1.5 1.6-1.5h1.7V3.7c-.3 0-1.4-.1-2.7-.1-2.7 0-4.5 1.6-4.5 4.6v1.6h-3v3h3V21h3.9Z"></path>
+                </svg>
+                <span>BOC – Holy Face Center for Mental Health (Facebook)</span>
+              </a>
+            </div>
+          </div>
         </div>
         <div class="footer-contact"><a href="tel:09206915015">0920-691-5015</a><a href="mailto:holyfacecenter@gmail.com">holyfacecenter@gmail.com</a><a href="tel:09206915015">Need support? Call the center</a></div>
       </div>
@@ -460,6 +478,6 @@
 
     <script src="config.js"></script>
     <script type="module" src="js/app.js?v=12"></script>
-    <script type="module" src="js/chatbot.js?v=8"></script>
+    <script type="module" src="js/chatbot.js?v=9"></script>
   </body>
 </html>
