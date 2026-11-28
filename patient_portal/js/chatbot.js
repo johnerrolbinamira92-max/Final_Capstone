@@ -68,9 +68,11 @@ document.body.insertAdjacentHTML("beforeend", `
       aria-controls="care-chatbot-panel"
       aria-expanded="false"
     >
-      <svg class="care-chatbot-toggle-icon" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-        <path d="M27 15.3c0 6.1-5 11-11 11-1.9 0-3.7-.5-5.3-1.4L4 27l1.8-6a10.7 10.7 0 0 1-1.1-4.7c0-6.1 5-11 11-11s11.3 2.9 11.3 10Z"></path>
-        <path d="M11.5 15.5h.01M16.5 15.5h.01M12 19c.8.8 1.8 1.2 3 1.2s2.2-.4 3-1.2M23 3v5M20.5 5.5h5"></path>
+      <svg class="care-chatbot-toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M20.5 11.5a8.5 8.5 0 0 1-12.4 7.6L3.5 21l1.8-5.2a8.5 8.5 0 1 1 15.2-4.3Z"></path>
+        <circle cx="8.5" cy="12" r="0.8" fill="#ffffff" stroke="none"></circle>
+        <circle cx="12" cy="12" r="0.8" fill="#ffffff" stroke="none"></circle>
+        <circle cx="15.5" cy="12" r="0.8" fill="#ffffff" stroke="none"></circle>
       </svg>
     </button>
   </div>

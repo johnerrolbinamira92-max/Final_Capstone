@@ -939,12 +939,12 @@ body .care-chatbot-widget { right: 28px; bottom: 32px; z-index: 9999; }
 }
 .care-chatbot-widget .care-chatbot-toggle-icon {
   display: block;
-  width: 25px;
-  height: 25px;
+  width: 24px;
+  height: 24px;
   flex: 0 0 auto;
   border-radius: 0;
   background: none;
-  fill: #ffffff;
+  fill: none;
   stroke: #ffffff;
   stroke-width: 1.7;
   stroke-linecap: round;
