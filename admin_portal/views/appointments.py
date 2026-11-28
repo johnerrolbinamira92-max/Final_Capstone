@@ -53,6 +53,8 @@ APPOINTMENT_COLUMNS = [
     "requested_time_slot",
     "approval_status",
     "reason",
+    "created_at",
+    "updated_at",
 ]
 PAGE_SIZE = 1000
 APPOINTMENT_STYLES = """
@@ -468,6 +470,49 @@ def _appointment_datetime(appointment, *, now=None):
     )
 
 
+def _activity_timestamp(value):
+    if value is None:
+        return None
+    try:
+        timestamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=ZoneInfo("Asia/Manila"))
+    return timestamp.timestamp()
+
+
+def _latest_activity_sort_key(record):
+    created_at = _activity_timestamp(record.get("created_at"))
+    updated_at = _activity_timestamp(record.get("updated_at"))
+    activity_at = updated_at if updated_at is not None else created_at
+
+    record_id = ""
+    for key in ("request_id", "appointment_id", "record_id", "id"):
+        value = record.get(key)
+        if value is not None and not pd.isna(value):
+            record_id = str(value)
+            break
+
+    return (
+        activity_at if activity_at is not None else float("-inf"),
+        created_at if created_at is not None else float("-inf"),
+        record_id,
+    )
+
+
+def _sort_appointments_by_latest_activity(appointments):
+    if appointments.empty:
+        return appointments
+    records = appointments.to_dict(orient="records")
+    ordered_indexes = sorted(
+        range(len(records)),
+        key=lambda index: _latest_activity_sort_key(records[index]),
+        reverse=True,
+    )
+    return appointments.iloc[ordered_indexes].reset_index(drop=True)
+
+
 def _load_appointments(client):
     records = []
     offset = 0
@@ -475,8 +520,9 @@ def _load_appointments(client):
         response = (
             client.table("appointments")
             .select(", ".join(APPOINTMENT_COLUMNS))
-            .order("requested_date")
-            .order("requested_time_slot")
+            .order("updated_at", desc=True)
+            .order("created_at", desc=True)
+            .order("appointment_id", desc=True)
             .range(offset, offset + PAGE_SIZE - 1)
             .execute()
         )
@@ -490,18 +536,7 @@ def _load_appointments(client):
     if appointments.empty:
         return appointments
 
-    requested_dates = pd.to_datetime(appointments["requested_date"], errors="coerce")
-    today = datetime.now(ZoneInfo("Asia/Manila")).date()
-    appointments["_schedule_group"] = 2
-    active = appointments["approval_status"].isin(ACTIVE_STATUSES)
-    appointments.loc[active & (requested_dates.dt.date >= today), "_schedule_group"] = 0
-    appointments.loc[active & (requested_dates.dt.date < today), "_schedule_group"] = 1
-    appointments = appointments.sort_values(
-        ["_schedule_group", "requested_date", "requested_time_slot", "patient_name"],
-        kind="stable",
-        na_position="last",
-    ).drop(columns="_schedule_group")
-    return appointments.reset_index(drop=True)
+    return _sort_appointments_by_latest_activity(appointments)
 
 
 def _load_calendar_appointments(client, appointments=None):
@@ -520,11 +555,12 @@ def _load_calendar_appointments(client, appointments=None):
             .select(
                 "request_id, patient_name, patient_age, patient_email, "
                 "contact_number, message, requested_date, requested_time_slot, "
-                "approval_status, created_at"
+                "approval_status, created_at, updated_at"
             )
             .in_("approval_status", list(HELP_REQUEST_STATUSES))
-            .order("requested_date")
-            .order("requested_time_slot")
+            .order("updated_at", desc=True)
+            .order("created_at", desc=True)
+            .order("request_id", desc=True)
             .range(offset, offset + PAGE_SIZE - 1)
             .execute()
         )
@@ -536,6 +572,7 @@ def _load_calendar_appointments(client, appointments=None):
     request_rows = [
         {
             "appointment_id": f"help_request:{request['request_id']}",
+            "request_id": request["request_id"],
             "patient_id": None,
             "patient_name": request.get("patient_name"),
             "patient_email": request.get("patient_email"),
@@ -548,16 +585,18 @@ def _load_calendar_appointments(client, appointments=None):
             "patient_age": request.get("patient_age"),
             "message": request.get("message"),
             "created_at": request.get("created_at"),
+            "updated_at": request.get("updated_at"),
         }
         for request in request_records
     ]
     if not request_rows:
         return appointments
 
-    return pd.concat(
+    combined_appointments = pd.concat(
         [appointments, pd.DataFrame(request_rows)],
         ignore_index=True,
     )
+    return _sort_appointments_by_latest_activity(combined_appointments)
 
 
 def _ensure_appointment_snapshot_table(conn):
@@ -625,16 +664,27 @@ def _load_appointment_snapshot():
         payload = json.loads(row["snapshot_json"])
         columns = payload["columns"]
         records = payload["records"]
+        required_columns = set(APPOINTMENT_COLUMNS) - {
+            "created_at",
+            "updated_at",
+        }
         if (
             not isinstance(columns, list)
             or not all(isinstance(column, str) for column in columns)
-            or not set(APPOINTMENT_COLUMNS).issubset(columns)
+            or not required_columns.issubset(columns)
             or "event_source" not in columns
             or not isinstance(records, list)
             or not isinstance(row["synced_at"], str)
         ):
             raise ValueError("The cached appointment snapshot is incomplete.")
-        return pd.DataFrame.from_records(records, columns=columns), row["synced_at"]
+        appointments = pd.DataFrame.from_records(records, columns=columns)
+        for column in ("created_at", "updated_at"):
+            if column not in appointments:
+                appointments[column] = None
+        return (
+            _sort_appointments_by_latest_activity(appointments),
+            row["synced_at"],
+        )
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
         raise ValueError("The cached appointment snapshot is invalid.") from error
 
@@ -1198,12 +1248,7 @@ def _render_appointment_history(appointments):
         status_labels
     )
     history["Reason"] = history["reason"].fillna("")
-    history = history.sort_values(
-        ["requested_date", "requested_time_slot", "patient_name"],
-        ascending=[False, False, True],
-        kind="stable",
-        na_position="last",
-    )
+    history = _sort_appointments_by_latest_activity(history)
     table_rows = []
     for row in history.to_dict(orient="records"):
         cells = (
@@ -1390,13 +1435,10 @@ def _render_awaiting_outcomes(appointments, client, *, now=None):
             continue
         scheduled_at = _appointment_datetime(appointment, now=now)
         if scheduled_at is not None and scheduled_at <= now:
-            waiting.append((scheduled_at, appointment))
+            waiting.append((appointment, scheduled_at))
 
     waiting.sort(
-        key=lambda item: (
-            item[0],
-            str(item[1].get("patient_name") or "").casefold(),
-        ),
+        key=lambda item: _latest_activity_sort_key(item[0]),
         reverse=True,
     )
     if not waiting:
@@ -1406,7 +1448,7 @@ def _render_awaiting_outcomes(appointments, client, *, now=None):
     if client is None:
         st.caption("Outcome actions are unavailable while showing an offline snapshot.")
 
-    for scheduled_at, appointment in waiting:
+    for appointment, scheduled_at in waiting:
         patient_name = appointment.get("patient_name") or "Patient"
         identity = appointment.get("appointment_id")
         if pd.isna(identity):
@@ -1486,6 +1528,14 @@ def _log_appointment_action(action_type, details):
         conn.close()
 
 
+def _is_valid_contact_number(contact_number):
+    return (
+        len(contact_number) == 11
+        and contact_number.isascii()
+        and contact_number.isdigit()
+    )
+
+
 def _render_schedule_form(client):
     st.markdown("### Set an Appointment")
     st.caption(
@@ -1499,14 +1549,11 @@ def _render_schedule_form(client):
                 "Patient Name",
                 key="appointment_form_patient_name",
             ).strip()
-            patient_id = st.text_input(
-                "Patient App ID (Optional)",
-                key="appointment_form_patient_id",
-                help="Use the patient ID from the connected patient app when available.",
-            ).strip()
             contact_number = st.text_input(
                 "Contact Number",
                 key="appointment_form_contact",
+                max_chars=11,
+                help="Enter exactly 11 digits (0–9).",
             ).strip()
         with schedule_column:
             visit_date = st.date_input(
@@ -1536,6 +1583,9 @@ def _render_schedule_form(client):
     if not patient_name:
         st.error("Enter the patient's name before scheduling.")
         return
+    if not _is_valid_contact_number(contact_number):
+        st.error("Enter an 11-digit contact number using digits 0–9 only.")
+        return
     if visit_date is None or visit_time is None:
         st.error("Choose both a visit date and time.")
         return
@@ -1549,9 +1599,8 @@ def _render_schedule_form(client):
             client.table("appointments")
             .insert(
                 {
-                    "patient_id": patient_id or None,
                     "patient_name": patient_name,
-                    "contact_number": contact_number or None,
+                    "contact_number": contact_number,
                     "requested_date": visit_date.isoformat(),
                     "requested_time_slot": appointment_time,
                     "approval_status": "Scheduled",
@@ -1589,7 +1638,9 @@ def _render_schedule_form(client):
         )
 
     st.session_state["appointment_flash"] = (
-        f"Appointment for {patient_name} scheduled successfully."
+        f"Appointed! The appointment for {patient_name} on "
+        f"{visit_date.strftime('%B %d, %Y')} at "
+        f"{_format_time(appointment_time)} has been scheduled."
     )
     st.session_state["appointment_selected_date"] = visit_date
     st.session_state["appointment_calendar_month"] = visit_date.replace(day=1)
@@ -1736,17 +1787,27 @@ def _render_help_requests(client):
         "Keep them confidential and contact the patient using their selected schedule."
     )
     try:
-        response = (
-            client.table("patient_help_requests")
-            .select(
-                "request_id, patient_name, patient_age, patient_email, "
-                "contact_number, message, requested_date, requested_time_slot, "
-                "approval_status, created_at"
+        requests = []
+        offset = 0
+        while True:
+            response = (
+                client.table("patient_help_requests")
+                .select(
+                    "request_id, patient_name, patient_age, patient_email, "
+                    "contact_number, message, requested_date, requested_time_slot, "
+                    "approval_status, created_at, updated_at"
+                )
+                .order("updated_at", desc=True)
+                .order("created_at", desc=True)
+                .order("request_id", desc=True)
+                .range(offset, offset + PAGE_SIZE - 1)
+                .execute()
             )
-            .order("created_at", desc=True)
-            .limit(500)
-            .execute()
-        )
+            page = response.data or []
+            requests.extend(page)
+            if len(page) < PAGE_SIZE:
+                break
+            offset += PAGE_SIZE
     except Exception as error:
         st.error(
             "Unable to load confidential help requests. Run "
@@ -1757,12 +1818,14 @@ def _render_help_requests(client):
             st.code(str(error))
         return
 
-    requests = response.data or []
     if not requests:
         st.info("There are no confidential help requests yet.")
         return
 
-    st.caption(f"{len(requests)} most recent request(s), newest first.")
+    requests.sort(key=_latest_activity_sort_key, reverse=True)
+    st.caption(
+        f"{len(requests)} request(s), sorted by latest activity first."
+    )
     for request in requests:
         request_id = request["request_id"]
         status = request["approval_status"] or "Pending"
@@ -1950,14 +2013,11 @@ def show_appointments_page():
         if "appointment_form_time" not in st.session_state:
             st.session_state["appointment_form_time"] = time(9, 0)
         if st.session_state.pop("appointment_reset_form", False):
-            st.session_state["appointment_form_patient_id"] = ""
             st.session_state["appointment_form_patient_name"] = ""
             st.session_state["appointment_form_contact"] = ""
             st.session_state["appointment_form_reason"] = ""
             st.session_state["appointment_form_time"] = time(9, 0)
 
-        if "appointment_form_patient_id" not in st.session_state:
-            st.session_state["appointment_form_patient_id"] = ""
         if "appointment_form_patient_name" not in st.session_state:
             st.session_state["appointment_form_patient_name"] = ""
         if "appointment_form_contact" not in st.session_state:

@@ -8,7 +8,10 @@ import pandas as pd
 import streamlit as st
 from database import get_local_connection, get_registered_admin_names
 from views.encode import (
+    CONTACT_NUMBER_INPUT_VALIDATION,
     _calculate_age,
+    _is_valid_contact_number,
+    _is_valid_nonnegative_number,
     _load_bicol_address_hierarchy,
     _open_encode_dialog,
     _render_address_dropdowns,
@@ -20,11 +23,15 @@ from views.record_tables import (
     FAMILY_COLUMNS,
     MEDICATION_COLUMN_LABELS,
     MEDICATION_COLUMNS,
+    PERSON_NAME_INPUT_VALIDATION,
     dataframe_from_storage,
     dataframe_to_storage,
     family_column_config,
+    is_valid_person_name,
     format_date_for_display,
     parse_stored_date,
+    validate_person_names,
+    validate_family_composition,
 )
 from views.patient_intake import (
     ADMINISTRATIVE_STATUS_OPTIONS,
@@ -358,6 +365,14 @@ def _render_editable_patient_section(
                 ):
                     st.error("First name and last name are required.")
                     return
+                validation_errors = _view_section_validation_errors(
+                    section_key,
+                    updates,
+                )
+                if validation_errors:
+                    for validation_error in validation_errors:
+                        st.error(validation_error)
+                    return
                 try:
                     _save_view_record_section(
                         patient_id,
@@ -429,6 +444,28 @@ def _view_text_input(patient_id, patient, section_key, field, label):
     )
 
 
+def _view_name_input(patient_id, patient, section_key, field, label):
+    return st.text_input(
+        label,
+        value=str(patient.get(field) or ""),
+        validate=PERSON_NAME_INPUT_VALIDATION,
+        key=_view_edit_key(patient_id, section_key, field),
+    )
+
+
+def _view_contact_input(patient_id, patient, section_key, field, label):
+    return st.text_input(
+        label,
+        value=str(patient.get(field) or ""),
+        max_chars=11,
+        type="phone",
+        placeholder="09XXXXXXXXX",
+        validate=CONTACT_NUMBER_INPUT_VALIDATION,
+        help="If provided, enter 11 digits starting with 09.",
+        key=_view_edit_key(patient_id, section_key, field),
+    )
+
+
 def _view_text_area(patient_id, patient, section_key, field, label):
     return st.text_area(
         label,
@@ -472,6 +509,82 @@ def _view_numeric_value(value, *, integer=False):
         return int(float(value or 0)) if integer else float(value or 0)
     except (TypeError, ValueError, OverflowError):
         return 0 if integer else 0.0
+
+
+def _view_section_validation_errors(section_key, updates):
+    errors = []
+    if section_key == "referral":
+        errors.extend(
+            validate_person_names(
+                {"Worker Name": updates.get("referral_noted_by")}
+            )
+        )
+    elif section_key == "interview":
+        errors.extend(
+            validate_person_names(
+                {"Informant Name": updates.get("primary_source_of_information")}
+            )
+        )
+    elif section_key == "identifying":
+        errors.extend(
+            validate_person_names(
+                {
+                    "First Name": updates.get("first_name"),
+                    "Middle Name": updates.get("middle_name"),
+                    "Last Name": updates.get("last_name"),
+                    "Extension Name": updates.get("extension_name"),
+                }
+            )
+        )
+        if not _is_valid_nonnegative_number(
+            updates.get("calculated_age"),
+            integer=True,
+            max_value=120,
+        ):
+            errors.append("Age must be a whole number from 0 to 120.")
+    elif section_key == "relatives":
+        contact_number = updates.get("g_contact_number")
+        if contact_number and not _is_valid_contact_number(contact_number):
+            errors.append(
+                "Contact Number must contain 11 digits starting with 09."
+            )
+        errors.extend(
+            validate_person_names(
+                {
+                    "Guardian Name": updates.get("guardian_first_name"),
+                    "Guardian Middle Name": updates.get("guardian_middle_name"),
+                    "Guardian Last Name": updates.get("guardian_last_name"),
+                    "Contact Person": updates.get("guardian_contact_person"),
+                }
+            )
+        )
+    elif section_key == "family":
+        family_table = dataframe_from_storage(
+            updates.get("family_composition"),
+            FAMILY_COLUMNS,
+        )
+        errors.extend(validate_family_composition(family_table))
+    elif section_key == "classification":
+        if not _is_valid_nonnegative_number(
+            updates.get("household_member_count"),
+            integer=True,
+        ):
+            errors.append(
+                "No. of Household Members must be a non-negative whole number."
+            )
+        if not _is_valid_nonnegative_number(
+            updates.get("total_annual_income")
+        ):
+            errors.append(
+                "Total annual income must be a valid non-negative amount."
+            )
+        if not _is_valid_nonnegative_number(
+            updates.get("poverty_threshold_per_year")
+        ):
+            errors.append(
+                "Poverty threshold/year must be a valid non-negative amount."
+            )
+    return errors
 
 
 def _render_view_section_editor(patient_id, patient, section_key):
@@ -587,7 +700,7 @@ def _render_view_section_editor(patient_id, patient, section_key):
                 "interview_persons_present",
                 FIELD_LABELS["interview_persons_present"],
             )
-            primary_source = _view_text_input(
+            primary_source = _view_name_input(
                 patient_id,
                 patient,
                 section_key,
@@ -605,19 +718,19 @@ def _render_view_section_editor(patient_id, patient, section_key):
         st.markdown(f"##### {FIELD_LABELS['client_name']}")
         name_columns = st.columns(4)
         with name_columns[0]:
-            first_name = _view_text_input(
+            first_name = _view_name_input(
                 patient_id, patient, section_key, "first_name", "First Name"
             )
         with name_columns[1]:
-            middle_name = _view_text_input(
+            middle_name = _view_name_input(
                 patient_id, patient, section_key, "middle_name", "Middle Name"
             )
         with name_columns[2]:
-            last_name = _view_text_input(
+            last_name = _view_name_input(
                 patient_id, patient, section_key, "last_name", "Last Name"
             )
         with name_columns[3]:
-            extension_name = _view_text_input(
+            extension_name = _view_name_input(
                 patient_id,
                 patient,
                 section_key,
@@ -642,20 +755,31 @@ def _render_view_section_editor(patient_id, patient, section_key):
                 else 0
             )
         )
+        age_is_valid = _is_valid_nonnegative_number(
+            calculated_age,
+            integer=True,
+            max_value=120,
+        )
         age_key = _view_edit_key(
             patient_id,
             section_key,
-            "calculated_age_display",
+            "calculated_age_numeric",
         )
         st.session_state[age_key] = (
-            str(calculated_age) if calculated_age is not None else ""
+            int(float(calculated_age))
+            if age_is_valid and calculated_age is not None
+            else None
         )
-        st.text_input(
+        st.number_input(
             FIELD_LABELS["age"],
+            min_value=0,
+            max_value=120,
+            step=1,
             disabled=True,
-            placeholder="Calculated from Date of Birth",
             key=age_key,
         )
+        if not age_is_valid:
+            st.error("Age must be a whole number from 0 to 120.")
 
         st.markdown(f"**{FIELD_LABELS['address']}**")
         patient_address = _render_address_dropdowns(
@@ -777,10 +901,7 @@ def _render_view_section_editor(patient_id, patient, section_key):
             "middle_name": middle_name,
             "last_name": last_name,
             "extension_name": extension_name,
-            "calculated_age": _view_numeric_value(
-                calculated_age,
-                integer=True,
-            ),
+            "calculated_age": calculated_age if calculated_age is not None else 0,
             "street_address": street_address,
             "purok": purok,
             "barangay": patient_address["barangay"],
@@ -805,6 +926,7 @@ def _render_view_section_editor(patient_id, patient, section_key):
         guardian_name = st.text_input(
             "Name",
             value=initial_guardian_name,
+            validate=PERSON_NAME_INPUT_VALIDATION,
             key=_view_edit_key(
                 patient_id,
                 section_key,
@@ -841,13 +963,14 @@ def _render_view_section_editor(patient_id, patient, section_key):
                 placeholder=(
                     "Same as Nearest Relative (or enter alternate contact)"
                 ),
+                validate=PERSON_NAME_INPUT_VALIDATION,
                 key=_view_edit_key(
                     patient_id,
                     section_key,
                     "guardian_contact_person",
                 ),
             )
-        contact_number = _view_text_input(
+        contact_number = _view_contact_input(
             patient_id,
             patient,
             section_key,
@@ -914,6 +1037,7 @@ def _render_view_section_editor(patient_id, patient, section_key):
                 FIELD_LABELS["total_annual_income"],
                 min_value=0.0,
                 step=500.0,
+                format="%.2f",
                 value=_view_numeric_value(
                     patient.get("total_annual_income")
                 ),
@@ -927,6 +1051,7 @@ def _render_view_section_editor(patient_id, patient, section_key):
                 FIELD_LABELS["poverty_threshold_per_year"],
                 min_value=0.0,
                 step=500.0,
+                format="%.2f",
                 value=_view_numeric_value(
                     patient.get("poverty_threshold_per_year")
                 ),
@@ -1608,12 +1733,6 @@ def _render_selected_patient_detail(selected_id):
                     st.session_state.pop("manage_delete_return_session_id", None)
                     st.rerun()
         if logging_return_session:
-            if st.button(
-                "Back to Patient Details",
-                key=f"return-session-back-{selected_id}",
-            ):
-                st.session_state.pop("manage_return_session_patient_id", None)
-                st.rerun()
             st.subheader("Log Return Session")
             _render_return_session_form(selected_id, case_number)
             return
@@ -1656,7 +1775,40 @@ def _render_selected_patient_detail(selected_id):
             _render_return_session_history(selected_id, case_number)
 
 
+def _reset_return_session_substate(session_state, patient_id):
+    if session_state.get("manage_return_session_patient_id") != patient_id:
+        return False
+
+    session_state.pop("manage_return_session_patient_id", None)
+    for field in (
+        "form",
+        "date",
+        "time",
+        "place",
+        "noted-by-select",
+        "persons-present",
+        "complaint-patient",
+        "complaint-relatives",
+        "manifestations",
+        "hospitalization",
+        "mse",
+        "nurses-observation",
+        "diagnosis",
+        "treatment",
+        "medications",
+    ):
+        session_state.pop(f"return-session-{field}-{patient_id}", None)
+    return True
+
+
 def _close_patient_detail_dialog():
+    selected_patient_id = st.session_state.get("manage_selected_patient_id")
+    if _reset_return_session_substate(
+        st.session_state,
+        selected_patient_id,
+    ):
+        return
+
     for key in (
         "manage_selected_patient_id",
         "manage_edit_patient_id",
@@ -2243,6 +2395,12 @@ def _render_return_session_edit_form(
         if not attendance_status.strip():
             st.error("Attendance / Status is required.")
             return
+        if not is_valid_person_name(information_noted_by):
+            st.error(
+                "Worker Name: Names must contain letters only and cannot "
+                "include numbers."
+            )
+            return
         try:
             _update_return_session(
                 patient_id,
@@ -2404,6 +2562,12 @@ def _render_return_session_form(patient_id: int, case_number: str) -> None:
         )
 
     if submitted:
+        if not is_valid_person_name(information_noted_by):
+            st.error(
+                "Worker Name: Names must contain letters only and cannot "
+                "include numbers."
+            )
+            return
         try:
             _save_return_session(
                 patient_id,
@@ -2985,6 +3149,7 @@ def _render_patient_editor(target_id, p):
                 primary_src = st.text_input(
                     FIELD_LABELS["primary_source_of_information"],
                     value=p.get("primary_source_of_information") or "",
+                    validate=PERSON_NAME_INPUT_VALIDATION,
                     key=f"edit_{target_id}_primary_source",
                 )
 
@@ -3000,24 +3165,28 @@ def _render_patient_editor(target_id, p):
                 f_name = st.text_input(
                     "First Name",
                     value=p.get("first_name") or "",
+                    validate=PERSON_NAME_INPUT_VALIDATION,
                     key=f"edit_{target_id}_first_name",
                 )
             with name_columns[1]:
                 m_name = st.text_input(
                     "Middle Name",
                     value=p.get("middle_name") or "",
+                    validate=PERSON_NAME_INPUT_VALIDATION,
                     key=f"edit_{target_id}_middle_name",
                 )
             with name_columns[2]:
                 l_name = st.text_input(
                     "Last Name",
                     value=p.get("last_name") or "",
+                    validate=PERSON_NAME_INPUT_VALIDATION,
                     key=f"edit_{target_id}_last_name",
                 )
             with name_columns[3]:
                 ext_name = st.text_input(
                     "Extension Name",
                     value=p.get("extension_name") or "",
+                    validate=PERSON_NAME_INPUT_VALIDATION,
                     key=f"edit_{target_id}_extension_name",
                 )
 
@@ -3032,13 +3201,27 @@ def _render_patient_editor(target_id, p):
             calculated_age = _calculate_age(dob)
             if calculated_age is None and isinstance(birth_date_value, str):
                 calculated_age = p.get("calculated_age")
-            st.text_input(
-                FIELD_LABELS["age"],
-                value=str(calculated_age) if calculated_age is not None else "",
-                disabled=True,
-                placeholder="Calculated from Date of Birth",
-                key=f"edit_{target_id}_calculated_age_display",
+            age_is_valid = _is_valid_nonnegative_number(
+                calculated_age,
+                integer=True,
+                max_value=120,
             )
+            age_display_key = f"edit_{target_id}_calculated_age_numeric"
+            st.session_state[age_display_key] = (
+                int(float(calculated_age))
+                if age_is_valid and calculated_age is not None
+                else None
+            )
+            st.number_input(
+                FIELD_LABELS["age"],
+                min_value=0,
+                max_value=120,
+                step=1,
+                disabled=True,
+                key=age_display_key,
+            )
+            if not age_is_valid:
+                st.error("Age must be a whole number from 0 to 120.")
             dob_str = (
                 dob.isoformat()
                 if dob
@@ -3048,7 +3231,7 @@ def _render_patient_editor(target_id, p):
                     else None
                 )
             )
-            calc_age = int(calculated_age) if calculated_age is not None else 0
+            calc_age = calculated_age if calculated_age is not None else 0
 
             st.markdown(f"**{FIELD_LABELS['address']}**")
             address_left, address_right = st.columns(2)
@@ -3139,6 +3322,7 @@ def _render_patient_editor(target_id, p):
             g_first = st.text_input(
                 "Name",
                 value=guardian_name,
+                validate=PERSON_NAME_INPUT_VALIDATION,
                 key=f"edit_{target_id}_guardian_name",
             )
             g_mid = ""
@@ -3173,11 +3357,16 @@ def _render_patient_editor(target_id, p):
                     placeholder=(
                         "Same as Nearest Relative (or enter alternate contact)"
                     ),
+                    validate=PERSON_NAME_INPUT_VALIDATION,
                     key=f"edit_{target_id}_guardian_contact_person",
                 )
             g_contact_number = st.text_input(
                 FIELD_LABELS["contact_number"],
                 value=p.get("g_contact_number") or "",
+                max_chars=11,
+                type="phone",
+                placeholder="09XXXXXXXXX",
+                validate=CONTACT_NUMBER_INPUT_VALIDATION,
                 key=f"edit_{target_id}_guardian_contact_number",
             )
 
@@ -3220,6 +3409,7 @@ def _render_patient_editor(target_id, p):
                     FIELD_LABELS["total_annual_income"],
                     min_value=0.0,
                     step=500.0,
+                    format="%.2f",
                     value=float(p.get("total_annual_income") or 0.0),
                     key=f"edit_{target_id}_total_annual_income",
                 )
@@ -3227,6 +3417,7 @@ def _render_patient_editor(target_id, p):
                     FIELD_LABELS["poverty_threshold_per_year"],
                     min_value=0.0,
                     step=500.0,
+                    format="%.2f",
                     value=float(p.get("poverty_threshold_per_year") or 0.0),
                     key=f"edit_{target_id}_poverty_threshold",
                 )
@@ -3396,6 +3587,55 @@ def _render_patient_editor(target_id, p):
             if not f_name.strip() or not l_name.strip():
                 st.error("First name and last name are required to save this record.")
                 return
+            validation_errors = []
+            validation_errors.extend(
+                validate_person_names(
+                    {
+                        "First Name": f_name,
+                        "Middle Name": m_name,
+                        "Last Name": l_name,
+                        "Extension Name": ext_name,
+                        "Guardian Name": g_first,
+                        "Contact Person": g_contact,
+                        "Informant Name": primary_src,
+                        "Worker Name": ref_by,
+                    }
+                )
+            )
+            if g_contact_number and not _is_valid_contact_number(g_contact_number):
+                validation_errors.append(
+                    "Contact Number must contain 11 digits starting with 09."
+                )
+            if not _is_valid_nonnegative_number(
+                calc_age,
+                integer=True,
+                max_value=120,
+            ):
+                validation_errors.append(
+                    "Age must be a whole number from 0 to 120."
+                )
+            if not _is_valid_nonnegative_number(
+                household_member_count,
+                integer=True,
+            ):
+                validation_errors.append(
+                    "No. of Household Members must be a non-negative whole number."
+                )
+            if not _is_valid_nonnegative_number(ann_inc):
+                validation_errors.append(
+                    "Total annual income must be a valid non-negative amount."
+                )
+            if not _is_valid_nonnegative_number(pov_thresh):
+                validation_errors.append(
+                    "Poverty threshold/year must be a valid non-negative amount."
+                )
+            validation_errors.extend(
+                validate_family_composition(edited_family_table)
+            )
+            if validation_errors:
+                for validation_error in validation_errors:
+                    st.error(validation_error)
+                return
             try:
                 conn = get_local_connection()
             except Exception as error:
@@ -3471,7 +3711,7 @@ def _render_patient_editor(target_id, p):
                             m_name,
                             l_name,
                             ext_name,
-                            int(calc_age),
+                            int(float(calc_age)),
                             sex,
                             dob_str,
                             civ_status,

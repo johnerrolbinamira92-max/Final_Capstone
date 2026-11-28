@@ -1,5 +1,7 @@
 import datetime
 import json
+import math
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -25,14 +27,83 @@ from views.record_tables import (
     FAMILY_COLUMNS,
     MEDICATION_COLUMN_LABELS,
     MEDICATION_COLUMNS,
+    PERSON_NAME_INPUT_VALIDATION,
     dataframe_from_storage,
     dataframe_to_storage,
     family_column_config,
+    validate_person_names,
+    validate_family_composition,
 )
 
 BICOL_ADDRESS_FILE = (
     Path(__file__).resolve().parents[1] / "data" / "bicol_address_hierarchy.json"
 )
+CONTACT_NUMBER_INPUT_VALIDATION = (
+    r"^[0-9]{0,11}$",
+    "Enter digits 0–9 only, up to 11 digits.",
+)
+
+
+def _is_valid_contact_number(value):
+    contact_number = str(value or "")
+    return (
+        not contact_number
+        or re.fullmatch(r"09[0-9]{9}", contact_number) is not None
+    )
+
+
+def _is_valid_nonnegative_number(value, *, integer=False, max_value=None):
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return False
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return (
+        math.isfinite(number)
+        and number >= 0
+        and (not integer or number.is_integer())
+        and (max_value is None or number <= max_value)
+    )
+
+
+def _encode_validation_errors(
+    *,
+    contact_number,
+    calculated_age,
+    household_member_count,
+    annual_income,
+    poverty_threshold,
+    family_composition,
+    name_fields=None,
+):
+    errors = []
+    errors.extend(validate_person_names(name_fields or {}))
+    if not _is_valid_contact_number(contact_number):
+        errors.append("Contact Number must contain 11 digits starting with 09.")
+    if not _is_valid_nonnegative_number(
+        calculated_age,
+        integer=True,
+        max_value=120,
+    ):
+        errors.append("Age must be a whole number from 0 to 120.")
+    if not _is_valid_nonnegative_number(
+        household_member_count,
+        integer=True,
+    ):
+        errors.append(
+            "No. of Household Members must be a non-negative whole number."
+        )
+    if not _is_valid_nonnegative_number(annual_income):
+        errors.append("Total annual income must be a valid non-negative amount.")
+    if not _is_valid_nonnegative_number(poverty_threshold):
+        errors.append(
+            "Poverty threshold/year must be a valid non-negative amount."
+        )
+    errors.extend(validate_family_composition(family_composition))
+    return errors
 
 
 @st.cache_data
@@ -508,6 +579,7 @@ def show_encode_page():
             primary_source_info = st.text_input(
                 FIELD_LABELS["primary_source_of_information"],
                 key=widget_key("primary_source_info"),
+                validate=PERSON_NAME_INPUT_VALIDATION,
             )
 
     with st.container(border=True, key="encode-intake-section-identifying"):
@@ -520,38 +592,51 @@ def show_encode_page():
                 "First Name",
                 placeholder="Juan",
                 key=widget_key("first_name"),
+                validate=PERSON_NAME_INPUT_VALIDATION,
             )
         with name_columns[1]:
             middle_name = st.text_input(
                 "Middle Name",
                 placeholder="R Ramos",
                 key=widget_key("middle_name"),
+                validate=PERSON_NAME_INPUT_VALIDATION,
             )
         with name_columns[2]:
             last_name = st.text_input(
                 "Last Name",
                 placeholder="Dela Cruz",
                 key=widget_key("last_name"),
+                validate=PERSON_NAME_INPUT_VALIDATION,
             )
         with name_columns[3]:
             ext_name = st.text_input(
                 "Extension Name",
                 placeholder="Jr., III",
                 key=widget_key("extension_name"),
+                validate=PERSON_NAME_INPUT_VALIDATION,
             )
 
         dob = _render_birth_date(widget_key)
         calculated_age = _calculate_age(dob)
-        age_key = widget_key("calculated_age")
+        valid_calculated_age = _is_valid_nonnegative_number(
+            calculated_age,
+            integer=True,
+            max_value=120,
+        )
+        age_key = widget_key("calculated_age_numeric")
         st.session_state[age_key] = (
-            str(calculated_age) if calculated_age is not None else ""
+            calculated_age if valid_calculated_age else None
         )
-        st.text_input(
+        st.number_input(
             FIELD_LABELS["age"],
-            key=age_key,
+            min_value=0,
+            max_value=120,
+            step=1,
             disabled=True,
-            placeholder="Calculated from Date of Birth",
+            key=age_key,
         )
+        if not valid_calculated_age:
+            st.error("Age must be a whole number from 0 to 120.")
 
         st.markdown(f"**{FIELD_LABELS['address']}**")
         patient_address = _render_address_dropdowns(
@@ -613,6 +698,7 @@ def show_encode_page():
         guardian_name = st.text_input(
             "Name",
             key=widget_key("guardian_name"),
+            validate=PERSON_NAME_INPUT_VALIDATION,
         )
         g_first_name = guardian_name
         g_middle_name = ""
@@ -636,6 +722,7 @@ def show_encode_page():
                 FIELD_LABELS["contact_person"],
                 placeholder="Same as Nearest Relative (or enter alternate contact)",
                 key=widget_key("guardian_contact_person"),
+                validate=PERSON_NAME_INPUT_VALIDATION,
             )
         g_barangay = guardian_address["barangay"]
         g_city = guardian_address["city_municipality"]
@@ -643,6 +730,11 @@ def show_encode_page():
         g_contact_number = st.text_input(
             FIELD_LABELS["contact_number"],
             key=widget_key("g_contact_number"),
+            max_chars=11,
+            type="phone",
+            placeholder="09XXXXXXXXX",
+            validate=CONTACT_NUMBER_INPUT_VALIDATION,
+            help="Enter 11 digits starting with 09.",
         )
 
     with st.container(border=True, key="encode-intake-section-family"):
@@ -817,6 +909,24 @@ def show_encode_page():
     )
 
     save_succeeded = False
+    validation_errors = _encode_validation_errors(
+        contact_number=g_contact_number,
+        calculated_age=calculated_age,
+        household_member_count=household_member_count,
+        annual_income=annual_income,
+        poverty_threshold=poverty_threshold,
+        family_composition=edited_family_df,
+        name_fields={
+            "First Name": first_name,
+            "Middle Name": middle_name,
+            "Last Name": last_name,
+            "Extension Name": ext_name,
+            "Guardian Name": guardian_name,
+            "Contact Person": g_contact_person,
+            "Informant Name": primary_source_info,
+            "Worker Name": referral_noted_by,
+        },
+    )
     if submit_button:
         if not _is_four_digit_value(patient_year) or not _is_four_digit_value(
             patient_sequence
@@ -825,8 +935,11 @@ def show_encode_page():
                 "⚠️ Validation Error: Year and unique number must each contain "
                 "exactly four digits."
             )
-        elif not last_name or not first_name:
+        elif not str(last_name or "").strip() or not str(first_name or "").strip():
             st.error("⚠️ Validation Error: Last Name and First Name fields must be filled.")
+        elif validation_errors:
+            for validation_error in validation_errors:
+                st.error(validation_error)
         else:
             try:
                 # Convert active UI tabular frames to strings safely

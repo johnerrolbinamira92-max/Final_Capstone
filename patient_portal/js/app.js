@@ -282,6 +282,59 @@ async function recordPortalEngagement(actionType) {
   }
 }
 
+async function recordPortalEngagementEvent(choiceType, userType) {
+  if (
+    !config.supabaseUrl ||
+    config.supabaseUrl.includes("YOUR-PROJECT") ||
+    !config.supabaseAnonKey ||
+    config.supabaseAnonKey.includes("YOUR_SUPABASE")
+  ) {
+    console.warn(
+      "Portal engagement choice could not be recorded because Supabase is not configured."
+    );
+    return;
+  }
+
+  try {
+    if (supabase) {
+      const { error } = await supabase
+        .from("portal_engagement_events")
+        .insert({ choice_type: choiceType, user_type: userType });
+      if (error) throw error;
+      return;
+    }
+
+    const accessToken = currentSession
+      ? currentSession.access_token
+      : config.supabaseAnonKey;
+    const apiUrl = config.supabaseUrl.replace(/\/$/, "");
+    const response = await fetch(
+      `${apiUrl}/rest/v1/portal_engagement_events`,
+      {
+        method: "POST",
+        headers: {
+          apikey: config.supabaseAnonKey,
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal"
+        },
+        body: JSON.stringify({
+          choice_type: choiceType,
+          user_type: userType
+        })
+      }
+    );
+    if (!response.ok) {
+      const details = await response.text();
+      throw new Error(
+        `Supabase rejected the portal engagement event (${response.status}): ${details}`
+      );
+    }
+  } catch (error) {
+    console.error("Could not record the portal engagement choice.", error);
+  }
+}
+
 function activateView(tab, moveFocus = false, scrollToSection = false) {
   viewTabs.forEach((candidate) => {
     const isActive = candidate === tab;
@@ -1609,6 +1662,7 @@ form.addEventListener("submit", async (event) => {
   }
 
   if (mode === "help") {
+    const engagementUserType = currentSession ? "signed_in" : "guest";
     let guestToken = null;
     if (!currentSession) {
       try {
@@ -1629,6 +1683,7 @@ form.addEventListener("submit", async (event) => {
       hideFeedback,
       checkSlotAvailability: callbackSchedule.isSlotAvailable,
       onSuccess: () => {
+        void recordPortalEngagementEvent("need_help", engagementUserType);
         if (guestToken) {
           guestTokenSaveFailed = !saveGuestRequestToken(guestToken);
           if (!guestTokenSaveFailed) {
@@ -1661,7 +1716,9 @@ form.addEventListener("submit", async (event) => {
   }
 
   if (!privateEntries.save(text)) return;
+  const engagementUserType = currentSession ? "signed_in" : "guest";
   const engagementRequest = recordPortalEngagement("no_help_submitted");
+  void recordPortalEngagementEvent("no_help", engagementUserType);
   privateEntries.render();
   form.reset();
   countLabel.textContent = "0 / 10,000";

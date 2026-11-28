@@ -21,7 +21,7 @@ described below rather than opening `index.html` directly.
 
 ## Set up Supabase
 
-1. In the Supabase SQL Editor for the same project as the admin app, run [`../supabase/appointments.sql`](../supabase/appointments.sql) if the appointments table does not exist, then run [`../supabase/patient_help_requests.sql`](../supabase/patient_help_requests.sql), [`../supabase/patient_portal_auth.sql`](../supabase/patient_portal_auth.sql), [`../supabase/portal_engagement.sql`](../supabase/portal_engagement.sql), [`../supabase/patient_request_emails.sql`](../supabase/patient_request_emails.sql), and [`../supabase/callback_slot_availability.sql`](../supabase/callback_slot_availability.sql). The slot-availability migration requires both callback request and appointment tables and provides the `get_taken_callback_slots` RPC. If the project is already configured, rerun `patient_help_requests.sql`, `patient_portal_auth.sql`, and `callback_slot_availability.sql` to refresh callback-time policies and install the slot-availability RPC.
+1. In the Supabase SQL Editor for the same project as the admin app, run [`../supabase/appointments.sql`](../supabase/appointments.sql) if the appointments table does not exist, then run [`../supabase/patient_help_requests.sql`](../supabase/patient_help_requests.sql), [`../supabase/patient_portal_auth.sql`](../supabase/patient_portal_auth.sql), [`../supabase/portal_engagement.sql`](../supabase/portal_engagement.sql), [`../supabase/patient_request_emails.sql`](../supabase/patient_request_emails.sql), and [`../supabase/callback_slot_availability.sql`](../supabase/callback_slot_availability.sql). The slot-availability migration requires both callback request and appointment tables and provides the `get_taken_callback_slots` RPC. If the project is already configured, rerun `patient_help_requests.sql`, `patient_portal_auth.sql`, `portal_engagement.sql`, and `callback_slot_availability.sql` to refresh portal policies, install the engagement events table and slot-availability RPC.
 2. In Supabase **Authentication → Providers**, enable Email/password sign-in. Configure the allowed redirect URLs for the deployed portal if email confirmation is enabled.
 3. In Supabase **Project Settings → API**, copy the project URL and the **publishable** key (or legacy anon key).
 4. Put those two public values in [`config.js`](./config.js). Never put a `service_role` or secret key in this folder.
@@ -29,11 +29,11 @@ described below rather than opening `index.html` directly.
 
 The journal table uses row-level security so authenticated patients can access only their own entries. Authenticated callback requests are linked to the account that submitted them; an older unlinked request is visible to an authenticated patient only when its saved email matches that account. Guest requests stay unlinked unless the visitor later chooses **Import to my account**; guest notification lookups return only responded requests matched by the device-held reference tokens. For manually created appointments, set `patient_user_id` to the patient's Supabase Auth user UUID to show its status to that patient; this separate field avoids changing the admin app's existing internal `patient_id`. The admin app uses its private server-side key to manage requests and appointments. Do not expose a `service_role` or secret key in this folder.
 
-The `portal_engagement.sql` migration adds anonymous completed-submission counters
-and a staff-only RPC that returns sequential code names and saved-entry counts
-for signed-in journal accounts. The Patient Statistics page caches only these
-aggregate and anonymized values in the admin app's local SQLite archive for
-offline viewing.
+The `portal_engagement.sql` migration adds anonymous completed-submission counters,
+timestamped choice events without personal identifiers, and a staff-only RPC that
+returns sequential code names and saved-entry counts for signed-in journal
+accounts. The Patient Statistics page caches only aggregate and anonymized values
+in the admin app's local SQLite archive for offline viewing.
 
 ## Optional wellness check-in emails
 

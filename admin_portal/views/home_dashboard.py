@@ -21,6 +21,7 @@ from views.manage import (
     show_patient_detail_dialog,
 )
 from views.notifications import (
+    UNRESPONDED_STATUSES,
     _format_requested_date,
     _format_requested_time,
     _mark_notifications_read,
@@ -28,6 +29,12 @@ from views.notifications import (
 from views.privacy import mask_patient_name
 from views.map_utils import (
     location_key as _base_location_key,
+)
+from views.patient_care_status import (
+    CARE_STATUS_ACTIVE,
+    CARE_STATUS_DECEASED,
+    CARE_STATUS_LOST_TO_FOLLOW_UP,
+    load_patient_care_statuses,
 )
 
 BICOL_PROVINCES = (
@@ -61,6 +68,22 @@ PROVINCE_COLORS = (
     "#c8cbc5",
 )
 HOME_QUICK_SEARCH_COLUMN_WIDTHS = (112, 135, 54, 36, 72)
+HOME_CARE_STATUS_STYLES = """
+<style>
+.st-key-admin-home-page .home-kpi-icon-amber {
+    background: #fff3d6 !important;
+    color: #a56800 !important;
+}
+</style>
+"""
+
+
+def _is_unresponded_patient_request(item):
+    status = str(item.get("status") or "Pending").strip().casefold()
+    return (
+        item.get("kind") == "help_request"
+        and status in UNRESPONDED_STATUSES
+    )
 
 
 def _search_local_patients(query):
@@ -203,6 +226,12 @@ def _render_overview_toolbar(
     callback_requests_error=None,
     callback_requests_cached_at=None,
 ):
+    if unread_callback_requests is not None:
+        unread_callback_requests = [
+            item
+            for item in unread_callback_requests
+            if _is_unresponded_patient_request(item)
+        ]
     unread_count = len(unread_callback_requests or ())
     notification_help = (
         "Callback requests unavailable"
@@ -398,7 +427,13 @@ def _province_key(value):
 def _get_patient_records():
     conn = get_local_connection()
     try:
-        return pd.read_sql_query("SELECT province, status FROM patients", conn)
+        records = pd.read_sql_query(
+            "SELECT patient_id, province FROM patients",
+            conn,
+        )
+        care_statuses = load_patient_care_statuses(conn)
+        records["status"] = records["patient_id"].map(care_statuses)
+        return records
     finally:
         conn.close()
 
@@ -640,8 +675,8 @@ def show_home_dashboard_page(
     try:
         records = _get_patient_records()
         records["province_key"] = records["province"].map(_province_key)
-        records["status"] = (
-            records["status"].fillna("Alive").str.strip().str.title()
+        records["status"] = records["status"].fillna(
+            CARE_STATUS_LOST_TO_FOLLOW_UP
         )
         bicol_records = records[
             records["province_key"].isin(
@@ -682,6 +717,7 @@ def show_home_dashboard_page(
     )
 
     with st.container(key="admin-home-page"):
+        st.html(HOME_CARE_STATUS_STYLES)
         _render_overview_toolbar(
             notifications_page=notifications_page,
             unread_callback_requests=unread_callback_requests,
@@ -722,21 +758,32 @@ def show_home_dashboard_page(
 
             kpi_data = [
                 (
-                    "Total Patient Records",
-                    _format_count(len(records)),
-                    "♙",
+                    CARE_STATUS_ACTIVE,
+                    _format_count(
+                        int((records["status"] == CARE_STATUS_ACTIVE).sum())
+                    ),
+                    "♡",
                     "teal",
                 ),
                 (
-                    "Alive Patients",
-                    _format_count(int((records["status"] == "Alive").sum())),
-                    "♡",
-                    "blue",
+                    CARE_STATUS_LOST_TO_FOLLOW_UP,
+                    _format_count(
+                        int(
+                            (
+                                records["status"]
+                                == CARE_STATUS_LOST_TO_FOLLOW_UP
+                            ).sum()
+                        )
+                    ),
+                    "↻",
+                    "amber",
                 ),
                 (
-                    "Deceased Patients",
+                    CARE_STATUS_DECEASED,
                     _format_count(
-                        int((records["status"] == "Deceased").sum())
+                        int(
+                            (records["status"] == CARE_STATUS_DECEASED).sum()
+                        )
                     ),
                     "✚",
                     "slate",

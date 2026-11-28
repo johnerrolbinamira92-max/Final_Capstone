@@ -20,7 +20,10 @@ from views.appointments import show_appointments_page
 from views.audit import show_audit_page
 from views.dashboard import show_dashboard_page
 from views.encode import show_encode_page
-from views.home_dashboard import show_home_dashboard_page
+from views.home_dashboard import (
+    _is_unresponded_patient_request,
+    show_home_dashboard_page,
+)
 from views.notifications import (
     _load_notification_read_ids,
     _load_notifications,
@@ -2840,9 +2843,8 @@ else:
     unread_callback_requests = [
         item
         for item in notification_items
-        if item.get("kind") == "help_request"
-        and item.get("status") == "Pending"
-        and item["id"] not in notification_read_ids
+        if _is_unresponded_patient_request(item)
+        and str(item["id"]) not in notification_read_ids
     ]
 
 

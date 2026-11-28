@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 from html import escape
 from zoneinfo import ZoneInfo
 
@@ -17,6 +17,7 @@ from database import (
 from views.appointments import (
     _format_patient_email,
     _format_received_at,
+    _latest_activity_sort_key,
     _log_appointment_action,
 )
 from views.privacy import mask_patient_name
@@ -30,6 +31,14 @@ CALLBACK_TIME_SLOTS = [
     for minute in (0, 30)
     if hour < 16 or minute == 0
 ]
+UNRESPONDED_STATUSES = {
+    "",
+    "awaiting",
+    "awaiting confirmation",
+    "pending",
+    "unresponded",
+}
+ARCHIVED_STATUSES = {"cancelled", "canceled", "declined"}
 NOTIFICATION_STYLES = """
 <style>
 .st-key-admin-notifications-page [class*="st-key-notification-row-"] {
@@ -40,6 +49,14 @@ NOTIFICATION_STYLES = """
     border-radius: 14px;
     background: #112926;
     box-shadow: 0 8px 20px rgba(0, 0, 0, .12);
+}
+.st-key-admin-notifications-page .st-key-notification-date-filter-row {
+    margin-bottom: .45rem;
+}
+.st-key-admin-notifications-page .notification-archive-divider {
+    height: 1px;
+    margin: .45rem 0 .6rem;
+    background: rgba(148, 163, 184, .22);
 }
 .st-key-admin-notifications-page [class*="st-key-notification-row-selected-"] {
     border-color: rgba(45, 212, 191, .22);
@@ -280,13 +297,141 @@ def _format_requested_date(value):
         return str(value or "Not provided")
 
 
+def _parse_notification_date(value):
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_notification_updated_date(value):
+    if not value:
+        return None
+    try:
+        updated_at = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=MANILA_TZ)
+    else:
+        updated_at = updated_at.astimezone(MANILA_TZ)
+    return updated_at.date()
+
+
+def _partition_notification_items(items, today=None):
+    today = today or date.today()
+    not_responded = []
+    responded = []
+    archived = []
+
+    for item in items:
+        status = str(item.get("status") or "Pending").strip().casefold()
+        requested_date = _parse_notification_date(item.get("requested_date"))
+
+        if status in ARCHIVED_STATUSES:
+            reference_date = (
+                _parse_notification_updated_date(item.get("updated_at"))
+                or requested_date
+            )
+            if reference_date is not None and (today - reference_date).days <= 15:
+                archived.append(item)
+            continue
+
+        if status in UNRESPONDED_STATUSES:
+            if requested_date is not None and requested_date < today:
+                if (today - requested_date).days <= 15:
+                    archived.append(item)
+                continue
+            not_responded.append(item)
+            continue
+
+        responded.append(item)
+
+    return not_responded, responded, archived
+
+
+def _filter_notification_items_by_date(items, requested_date):
+    if requested_date is None:
+        return items
+    return [
+        item
+        for item in items
+        if _parse_notification_date(item.get("requested_date")) == requested_date
+    ]
+
+
+def _filter_notification_items_by_search(items, query):
+    normalized_query = str(query or "").strip().casefold()
+    if not normalized_query:
+        return items
+    return [
+        item
+        for item in items
+        if normalized_query
+        in " ".join(
+            str(item.get(field) or "")
+            for field in ("title", "contact")
+        ).casefold()
+    ]
+
+
+def _past_unanswered_sort_key(item):
+    activity_key = _latest_activity_sort_key(item)
+    requested_date = _parse_notification_date(item.get("requested_date"))
+    return (
+        activity_key[0],
+        activity_key[1],
+        requested_date or date.min,
+        activity_key[2],
+    )
+
+
+def _partition_archived_notification_items(items, today=None):
+    today = today or date.today()
+    past_unanswered = []
+    cancelled_requests = []
+
+    for item in items:
+        status = str(item.get("status") or "Pending").strip().casefold()
+        if status in ARCHIVED_STATUSES:
+            cancelled_requests.append(item)
+            continue
+        requested_date = _parse_notification_date(item.get("requested_date"))
+        if (
+            status in UNRESPONDED_STATUSES
+            and requested_date is not None
+            and requested_date < today
+        ):
+            past_unanswered.append(item)
+
+    past_unanswered.sort(key=_past_unanswered_sort_key, reverse=True)
+    cancelled_requests.sort(
+        key=_latest_activity_sort_key,
+        reverse=True,
+    )
+    return past_unanswered, cancelled_requests
+
+
 def _notification_status_label(status):
+    status_text = str(status or "").strip()
     return {
-        "Pending": "Awaiting confirmation",
-        "Scheduled": "Confirmed",
-        "Rescheduled": "Rescheduled",
-        "Cancelled": "Cancelled",
-    }.get(status, status or "Awaiting confirmation")
+        "awaiting": "Awaiting confirmation",
+        "awaiting confirmation": "Awaiting confirmation",
+        "pending": "Awaiting confirmation",
+        "unresponded": "Awaiting confirmation",
+        "scheduled": "Confirmed",
+        "confirmed": "Confirmed",
+        "rescheduled": "Rescheduled",
+        "cancelled": "Cancelled",
+        "canceled": "Cancelled",
+        "declined": "Declined",
+        "done": "Done",
+        "completed": "Done",
+    }.get(status_text.casefold(), status_text or "Awaiting confirmation")
 
 
 def _new_untoasted_notifications(items, read_ids, toasted_ids):
@@ -306,33 +451,22 @@ def _select_notification_item(item_id, tab_key):
 
 
 def _notification_status_pill(status):
-    if status in ("Scheduled", "Rescheduled"):
+    status_key = str(status or "Pending").strip().casefold()
+    if status_key in ("scheduled", "confirmed", "rescheduled", "done", "completed"):
         status_class = "scheduled"
-    elif status == "Cancelled":
+    elif status_key in ARCHIVED_STATUSES:
         status_class = "cancelled"
     else:
         status_class = "awaiting"
     label = escape(
-        "Awaiting" if status == "Pending" else _notification_status_label(status)
+        "Awaiting"
+        if status_key in UNRESPONDED_STATUSES
+        else _notification_status_label(status)
     )
     return (
         '<span class="notification-status-pill '
         f'notification-status-{status_class}">{label}</span>'
     )
-
-
-def _is_recent_notification_update(updated_at):
-    if not updated_at:
-        return False
-    try:
-        scheduled_at = datetime.fromisoformat(str(updated_at).replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        return False
-    if scheduled_at.tzinfo is None:
-        scheduled_at = scheduled_at.replace(tzinfo=MANILA_TZ)
-    else:
-        scheduled_at = scheduled_at.astimezone(MANILA_TZ)
-    return datetime.now(MANILA_TZ) - scheduled_at < timedelta(days=1)
 
 
 def _load_notifications(client):
@@ -348,11 +482,9 @@ def _load_notifications(client):
                 "requested_date, requested_time_slot, approval_status, created_at, "
                 "updated_at"
             )
-            .in_(
-                "approval_status",
-                ["Pending"],
-            )
+            .order("updated_at", desc=True)
             .order("created_at", desc=True)
+            .order("appointment_id", desc=True)
             .limit(500)
             .execute()
         )
@@ -361,12 +493,11 @@ def _load_notifications(client):
     else:
         for appointment in response.data or []:
             status = appointment.get("approval_status") or "Pending"
-            if status != "Pending":
-                continue
             items.append(
                 {
                     "id": f"appointment:{appointment['appointment_id']}",
                     "record_id": appointment["appointment_id"],
+                    "appointment_id": appointment["appointment_id"],
                     "kind": "appointment",
                     "categories": {"schedules"},
                     "title": appointment.get("patient_name") or "New appointment",
@@ -391,11 +522,9 @@ def _load_notifications(client):
                 "requested_date, requested_time_slot, approval_status, created_at, "
                 "updated_at"
             )
-            .in_(
-                "approval_status",
-                ["Pending", "Scheduled", "Rescheduled", "Cancelled"],
-            )
+            .order("updated_at", desc=True)
             .order("created_at", desc=True)
+            .order("request_id", desc=True)
             .limit(500)
             .execute()
         )
@@ -404,14 +533,11 @@ def _load_notifications(client):
     else:
         for request in response.data or []:
             status = request.get("approval_status") or "Pending"
-            if status != "Pending" and not _is_recent_notification_update(
-                request.get("updated_at")
-            ):
-                continue
             items.append(
                 {
                     "id": f"help_request:{request['request_id']}",
                     "record_id": request["request_id"],
+                    "request_id": request["request_id"],
                     "kind": "help_request",
                     "categories": {"schedules", "vent_out"},
                     "title": request.get("patient_name") or "Patient",
@@ -428,7 +554,7 @@ def _load_notifications(client):
                 }
             )
 
-    items.sort(key=lambda item: item.get("created_at") or "", reverse=True)
+    items.sort(key=_latest_activity_sort_key, reverse=True)
     if not errors:
         try:
             _save_notification_snapshot(items)
@@ -527,6 +653,74 @@ def _toggle_callback_detail_revealed():
     st.session_state[key] = not st.session_state[key]
 
 
+def _clear_notification_date_filter():
+    st.session_state["notification-requested-date-filter"] = None
+    st.session_state["notification-requested-date-filter-value"] = None
+
+
+def _save_notification_date_filter():
+    st.session_state["notification-requested-date-filter-value"] = st.session_state[
+        "notification-requested-date-filter"
+    ]
+
+
+def _render_notification_request_rows(
+    items,
+    read_ids,
+    tab_key,
+    list_revealed,
+    selected_id,
+):
+    for item in items:
+        row_id = item["id"].replace(":", "-")
+        is_selected = item["id"] == selected_id
+        row_key = (
+            f"notification-row-selected-{row_id}"
+            if is_selected
+            else f"notification-row-{row_id}"
+        )
+        with st.container(key=row_key):
+            name_column, status_column = st.columns(
+                [1.4, 1], vertical_alignment="center"
+            )
+            with name_column:
+                display_name = (
+                    str(item.get("title") or "Patient")
+                    if list_revealed
+                    else mask_patient_name(item.get("title"))
+                )
+                st.markdown(
+                    '<div class="notification-row-name">'
+                    f"{escape(display_name)}</div>",
+                    unsafe_allow_html=True,
+                )
+                st.caption(
+                    f"{_format_requested_date(item.get('requested_date'))} · "
+                    f"{_format_requested_time(item.get('requested_time'))}"
+                )
+            with status_column:
+                pills = [_notification_status_pill(item.get("status"))]
+                if item["id"] not in read_ids:
+                    pills.append(
+                        '<span class="notification-new-pill">New</span>'
+                    )
+                st.markdown(
+                    '<div class="notification-status-wrap">'
+                    + "".join(pills)
+                    + "</div>",
+                    unsafe_allow_html=True,
+                )
+            st.button(
+                display_name,
+                key=f"notification-select-{tab_key}-{row_id}",
+                type="tertiary",
+                on_click=_select_notification_item,
+                args=(item["id"], tab_key),
+                help="Select this patient request",
+                width="stretch",
+            )
+
+
 def _render_notification_list(items, read_ids, tab_key, client):
     st.session_state.setdefault("callback_list_revealed", False)
     st.session_state.setdefault("callback_detail_revealed", False)
@@ -534,6 +728,54 @@ def _render_notification_list(items, read_ids, tab_key, client):
     detail_revealed = st.session_state["callback_detail_revealed"]
     list_column, detail_column = st.columns([1.05, 1.35], gap="large")
     with list_column:
+        with st.container(key="notification-date-filter-row"):
+            date_column, search_column, clear_column = st.columns(
+                [1.2, 1.15, 0.45],
+                gap="small",
+                vertical_alignment="bottom",
+            )
+            with date_column:
+                requested_date_filter = st.date_input(
+                    "Requested date",
+                    value=st.session_state.get(
+                        "notification-requested-date-filter-value"
+                    ),
+                    key="notification-requested-date-filter",
+                    help="Filter this tab by the requested date.",
+                    on_change=_save_notification_date_filter,
+                )
+            with search_column:
+                search_query = st.text_input(
+                    "Search requests",
+                    placeholder="Search name or contact...",
+                    key="notification-request-search",
+                    label_visibility="collapsed",
+                    autocomplete="off",
+                )
+            with clear_column:
+                st.button(
+                    "Clear",
+                    key="notification-clear-requested-date-filter",
+                    type="tertiary",
+                    width="stretch",
+                    disabled=requested_date_filter is None,
+                    on_click=_clear_notification_date_filter,
+                )
+        visible_items = _filter_notification_items_by_date(
+            items, requested_date_filter
+        )
+        visible_items = _filter_notification_items_by_search(
+            visible_items, search_query
+        )
+        archived_groups = None
+        if tab_key == "archived":
+            archived_groups = _partition_archived_notification_items(
+                visible_items
+            )
+            visible_items = [
+                *archived_groups[0],
+                *archived_groups[1],
+            ]
         with st.container(
             horizontal=True,
             horizontal_alignment="distribute",
@@ -554,17 +796,39 @@ def _render_notification_list(items, read_ids, tab_key, client):
                 width="content",
                 on_click=_toggle_callback_list_revealed,
             )
-    if not items:
+    if not visible_items:
         with list_column:
-            st.info("There are no notifications in this category.")
+            with st.container(
+                height=470,
+                border=False,
+                key="notification-patient-requests-list",
+            ):
+                if archived_groups is None:
+                    st.info(
+                        "There are no requests matching the selected filters."
+                        if requested_date_filter is not None
+                        or search_query.strip()
+                        else "There are no notifications in this category."
+                    )
+                else:
+                    st.markdown("##### Past Unanswered Schedules (0)")
+                    st.caption("None")
+                    st.markdown(
+                        '<div class="notification-archive-divider"></div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown("##### Cancelled Requests (0)")
+                    st.caption("None")
         return
 
     selected_key = f"notification_selected_item:{tab_key}"
     selected_id = st.session_state.get(selected_key)
-    if not any(item["id"] == selected_id for item in items):
-        selected_id = items[0]["id"]
+    if not any(item["id"] == selected_id for item in visible_items):
+        selected_id = visible_items[0]["id"]
         st.session_state[selected_key] = selected_id
-    selected_item = next(item for item in items if item["id"] == selected_id)
+    selected_item = next(
+        item for item in visible_items if item["id"] == selected_id
+    )
 
     read_error = None
     opened_id = st.session_state.pop(
@@ -579,54 +843,52 @@ def _render_notification_list(items, read_ids, tab_key, client):
             read_ids.add(opened_id)
 
     with list_column:
-        for item in items:
-            row_id = item["id"].replace(":", "-")
-            is_selected = item["id"] == selected_id
-            row_key = (
-                f"notification-row-selected-{row_id}"
-                if is_selected
-                else f"notification-row-{row_id}"
-            )
-            with st.container(key=row_key):
-                name_column, status_column = st.columns(
-                    [1.4, 1], vertical_alignment="center"
+        with st.container(
+            height=470,
+            border=False,
+            key="notification-patient-requests-list",
+        ):
+            if archived_groups is None:
+                _render_notification_request_rows(
+                    visible_items,
+                    read_ids,
+                    tab_key,
+                    list_revealed,
+                    selected_id,
                 )
-                with name_column:
-                    display_name = (
-                        str(item.get("title") or "Patient")
-                        if list_revealed
-                        else mask_patient_name(item.get("title"))
-                    )
-                    st.markdown(
-                        '<div class="notification-row-name">'
-                        f"{escape(display_name)}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    st.caption(
-                        f"{_format_requested_date(item.get('requested_date'))} · "
-                        f"{_format_requested_time(item.get('requested_time'))}"
-                    )
-                with status_column:
-                    pills = [_notification_status_pill(item.get("status"))]
-                    if item["id"] not in read_ids:
-                        pills.append(
-                            '<span class="notification-new-pill">New</span>'
-                        )
-                    st.markdown(
-                        '<div class="notification-status-wrap">'
-                        + "".join(pills)
-                        + "</div>",
-                        unsafe_allow_html=True,
-                    )
-                st.button(
-                    display_name,
-                    key=f"notification-select-{tab_key}-{row_id}",
-                    type="tertiary",
-                    on_click=_select_notification_item,
-                    args=(item["id"], tab_key),
-                    help="Select this patient request",
-                    width="stretch",
+            else:
+                past_unanswered, cancelled_requests = archived_groups
+                st.markdown(
+                    "##### Past Unanswered Schedules "
+                    f"({len(past_unanswered)})"
                 )
+                if past_unanswered:
+                    _render_notification_request_rows(
+                        past_unanswered,
+                        read_ids,
+                        tab_key,
+                        list_revealed,
+                        selected_id,
+                    )
+                else:
+                    st.caption("None")
+                st.markdown(
+                    '<div class="notification-archive-divider"></div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f"##### Cancelled Requests ({len(cancelled_requests)})"
+                )
+                if cancelled_requests:
+                    _render_notification_request_rows(
+                        cancelled_requests,
+                        read_ids,
+                        tab_key,
+                        list_revealed,
+                        selected_id,
+                    )
+                else:
+                    st.caption("None")
 
     with detail_column:
         if read_error is not None:
@@ -752,8 +1014,14 @@ def _update_notification(client, item, updates):
 
 def _render_notification_actions(client, item, tab_key):
     st.session_state.setdefault("callback_action_mode", None)
-    status = item["status"]
-    if status not in ("Pending", "Scheduled", "Rescheduled", "Cancelled"):
+    status = str(item.get("status") or "Pending").strip().casefold()
+    if status not in UNRESPONDED_STATUSES | {
+        "scheduled",
+        "confirmed",
+        "rescheduled",
+        "cancelled",
+        "canceled",
+    }:
         return
 
     st.markdown("#### Appointment Response")
@@ -768,8 +1036,8 @@ def _render_notification_actions(client, item, tab_key):
         requested_date = None
     requested_time = _parse_requested_time(item.get("requested_time"))
     is_help_request = item["kind"] == "help_request"
-    is_confirmed = status in ("Scheduled", "Rescheduled")
-    is_cancelled = status == "Cancelled"
+    is_confirmed = status in ("scheduled", "confirmed", "rescheduled")
+    is_cancelled = status in ARCHIVED_STATUSES
     if is_cancelled:
         action_columns = st.columns(1)
         reschedule_column = action_columns[0]
@@ -1086,6 +1354,7 @@ def _render_notification_tab(items, category, read_ids, tab_key, client):
 
 
 def _render_notification_items(items, client):
+    items.sort(key=_latest_activity_sort_key, reverse=True)
     try:
         read_ids = _load_notification_read_ids()
     except Exception as error:
@@ -1094,7 +1363,11 @@ def _render_notification_items(items, client):
             st.code(str(error))
         return
 
-    unread_ids = {item["id"] for item in items if item["id"] not in read_ids}
+    not_responded, responded, archived = _partition_notification_items(items)
+    visible_items = [*not_responded, *responded, *archived]
+    unread_ids = {
+        item["id"] for item in visible_items if item["id"] not in read_ids
+    }
     if unread_ids:
         with st.container(
             horizontal=True,
@@ -1116,12 +1389,11 @@ def _render_notification_items(items, client):
                 else:
                     st.rerun()
 
-    not_responded = [item for item in items if item["status"] == "Pending"]
-    responded = [item for item in items if item["status"] != "Pending"]
-    not_responded_tab, responded_tab = st.tabs(
+    not_responded_tab, responded_tab, archived_tab = st.tabs(
         [
             f"Not Responded ({len(not_responded)})",
             f"Responded ({len(responded)})",
+            f"Archived ({len(archived)})",
         ],
         on_change="rerun",
     )
@@ -1141,6 +1413,15 @@ def _render_notification_items(items, client):
                 None,
                 read_ids,
                 "responded",
+                client,
+            )
+    if archived_tab.open:
+        with archived_tab:
+            _render_notification_tab(
+                archived,
+                None,
+                read_ids,
+                "archived",
                 client,
             )
 

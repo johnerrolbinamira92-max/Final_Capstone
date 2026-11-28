@@ -1,5 +1,6 @@
 import datetime
 import json
+import math
 import re
 import sqlite3
 from html import escape
@@ -20,6 +21,13 @@ from database import (
     is_supabase_connection_error,
 )
 from views.map_utils import location_key as _base_location_key
+from views.patient_care_status import (
+    CARE_STATUS_ACTIVE,
+    CARE_STATUS_COLORS,
+    CARE_STATUS_DECEASED,
+    CARE_STATUS_LOST_TO_FOLLOW_UP,
+    load_patient_care_statuses,
+)
 
 BICOL_ADDRESS_FILE = (
     Path(__file__).resolve().parents[1] / "data" / "bicol_address_hierarchy.json"
@@ -28,6 +36,30 @@ PORTAL_ENGAGEMENT_ACTIONS = {
     "need_help_submitted",
     "no_help_submitted",
 }
+PORTAL_ENGAGEMENT_TIMEFRAMES = (
+    "Daily",
+    "Weekly",
+    "Monthly",
+    "Yearly",
+    "All Time",
+)
+PORTAL_ENGAGEMENT_TIMEZONE = datetime.timezone(datetime.timedelta(hours=8))
+PORTAL_ENGAGEMENT_EVENT_TYPES = {
+    "need_help": "need_help_submitted",
+    "no_help": "no_help_submitted",
+}
+PORTAL_REQUEST_QUERY_COLUMNS = (
+    "approval_status,created_at,requested_date,requested_time_slot"
+)
+PORTAL_REQUEST_PAGE_SIZE = 1000
+PORTAL_REQUEST_OUTCOMES = (
+    "Pending / Awaiting",
+    "Confirmed / Scheduled",
+    "Rescheduled",
+    "Done",
+    "Cancelled",
+    "No-show",
+)
 AGE_GROUPS = (
     "Under 18",
     "18–24",
@@ -53,6 +85,10 @@ STATISTICS_ANALYTICS_STYLES = """
 .st-key-admin-statistics-page .st-key-statistics-gender-summary [data-testid="stMetricValue"] {
     color: #e5efed !important;
 }
+.st-key-admin-statistics-page .statistics-status-row {
+    gap: .45rem;
+    margin: .38rem 0;
+}
 .st-key-admin-statistics-page .st-key-statistics-engagement-kpis [data-testid="stMetric"] {
     border: 1px solid rgba(255, 255, 255, .08) !important;
     border-radius: 16px !important;
@@ -65,11 +101,19 @@ STATISTICS_ANALYTICS_STYLES = """
 }
 .st-key-admin-statistics-page .st-key-statistics-age-distribution [data-testid="stVerticalBlockBorderWrapper"],
 .st-key-admin-statistics-page .st-key-statistics-gender-distribution [data-testid="stVerticalBlockBorderWrapper"],
-.st-key-admin-statistics-page .st-key-statistics-engagement-breakdown [data-testid="stVerticalBlockBorderWrapper"] {
+.st-key-admin-statistics-page .st-key-statistics-engagement-breakdown [data-testid="stVerticalBlockBorderWrapper"],
+.st-key-admin-statistics-page .st-key-statistics-engagement-accounts [data-testid="stVerticalBlockBorderWrapper"],
+.st-key-admin-statistics-page .st-key-statistics-engagement-outcomes [data-testid="stVerticalBlockBorderWrapper"],
+.st-key-admin-statistics-page .st-key-statistics-engagement-peak-times [data-testid="stVerticalBlockBorderWrapper"] {
     border: 1px solid rgba(255, 255, 255, .08) !important;
     border-radius: 16px !important;
     background: #112926 !important;
     box-shadow: 0 8px 20px rgba(0, 0, 0, .12);
+}
+.st-key-admin-statistics-page .st-key-statistics-engagement-outcomes,
+.st-key-admin-statistics-page .st-key-statistics-engagement-peak-times {
+    margin-top: 18px !important;
+    margin-bottom: 24px !important;
 }
 .st-key-admin-statistics-page .st-key-statistics-age-distribution h3,
 .st-key-admin-statistics-page .st-key-statistics-gender-distribution h3 {
@@ -198,6 +242,19 @@ def _age_group_counts(data):
     groups.loc[valid_age & ages.ge(35) & ages.lt(50)] = AGE_GROUPS[3]
     groups.loc[valid_age & ages.ge(50)] = AGE_GROUPS[4]
     return groups.value_counts().reindex(AGE_GROUPS, fill_value=0)
+
+
+def _top_age_group_summary(data):
+    known_age_counts = _age_group_counts(data).drop("Unspecified")
+    known_age_total = int(known_age_counts.sum())
+    if data.empty:
+        return "No records yet", known_age_total
+    if known_age_total == 0:
+        return "No age data", known_age_total
+
+    top_group = str(known_age_counts.idxmax())
+    share = known_age_counts[top_group] / len(data) * 100
+    return f"{top_group} yrs · {share:.0f}%", known_age_total
 
 
 def _gender_counts(data):
@@ -480,14 +537,22 @@ def _render_registration_chart(data):
 def _render_status_distribution(data):
     status_counts = data["status"].value_counts()
     status_rows = [
-        ("Alive", int(status_counts.get("Alive", 0)), "#00a394"),
-        ("Deceased", int(status_counts.get("Deceased", 0)), "#e97954"),
+        (
+            CARE_STATUS_ACTIVE,
+            int(status_counts.get(CARE_STATUS_ACTIVE, 0)),
+            CARE_STATUS_COLORS[CARE_STATUS_ACTIVE],
+        ),
+        (
+            CARE_STATUS_LOST_TO_FOLLOW_UP,
+            int(status_counts.get(CARE_STATUS_LOST_TO_FOLLOW_UP, 0)),
+            CARE_STATUS_COLORS[CARE_STATUS_LOST_TO_FOLLOW_UP],
+        ),
+        (
+            CARE_STATUS_DECEASED,
+            int(status_counts.get(CARE_STATUS_DECEASED, 0)),
+            CARE_STATUS_COLORS[CARE_STATUS_DECEASED],
+        ),
     ]
-    other_count = int(
-        (~data["status"].isin(("Alive", "Deceased"))).sum()
-    )
-    if other_count:
-        status_rows.append(("Other", other_count, "#a68bd1"))
 
     chart_data = pd.DataFrame(
         [
@@ -584,14 +649,17 @@ def _load_patient_locations():
             else "NULL AS calculated_age"
         )
         sex = "sex" if "sex" in columns else "NULL AS sex"
-        return pd.read_sql_query(
+        records = pd.read_sql_query(
             f"""
-            SELECT {registered_date}, {calculated_age}, {sex},
+            SELECT patient_id, {registered_date}, {calculated_age}, {sex},
                    province, city_municipality, barangay, purok, status
             FROM patients
             """,
             conn,
         )
+        care_statuses = load_patient_care_statuses(conn)
+        records["status"] = records["patient_id"].map(care_statuses)
+        return records
     finally:
         conn.close()
 
@@ -791,102 +859,360 @@ def _load_portal_engagement_snapshot():
     return snapshot, "online", None
 
 
+def _portal_engagement_time_window(timeframe, now=None):
+    if timeframe not in PORTAL_ENGAGEMENT_TIMEFRAMES:
+        raise ValueError(f"Unknown portal engagement timeframe: {timeframe}")
+
+    end = now or datetime.datetime.now(PORTAL_ENGAGEMENT_TIMEZONE)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=PORTAL_ENGAGEMENT_TIMEZONE)
+    else:
+        end = end.astimezone(PORTAL_ENGAGEMENT_TIMEZONE)
+
+    if timeframe == "All Time":
+        start = None
+    elif timeframe == "Daily":
+        start = end.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif timeframe == "Weekly":
+        start = end - datetime.timedelta(days=7)
+    elif timeframe == "Monthly":
+        start = end - datetime.timedelta(days=30)
+    else:
+        start = end - datetime.timedelta(days=365)
+
+    utc = datetime.timezone.utc
+    return (
+        start.astimezone(utc) if start is not None else None,
+        end.astimezone(utc),
+    )
+
+
+def _fetch_portal_engagement_event_counts(client, timeframe, now=None):
+    start, end = _portal_engagement_time_window(timeframe, now)
+    counts = {action_type: 0 for action_type in PORTAL_ENGAGEMENT_ACTIONS}
+    for event_type, action_type in PORTAL_ENGAGEMENT_EVENT_TYPES.items():
+        query = (
+            client.table("portal_engagement_events")
+            .select("choice_type", count="exact", head=True)
+            .eq("choice_type", event_type)
+            .lte("created_at", end.isoformat())
+        )
+        if start is not None:
+            query = query.gte("created_at", start.isoformat())
+        response = query.execute()
+        count = response.count
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ValueError(
+                f"Supabase returned an invalid portal engagement event "
+                f"count for {event_type}."
+            )
+        counts[action_type] = count
+    return counts
+
+
+def _load_portal_engagement_event_counts(timeframe):
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return None, "Supabase is not configured for timestamped engagement events."
+    if not is_supabase_connection_available():
+        return None, "Supabase is unavailable for timestamped engagement events."
+
+    client = get_supabase_client()
+    if client is None:
+        return None, "Supabase is unavailable for timestamped engagement events."
+
+    try:
+        return _fetch_portal_engagement_event_counts(client, timeframe), None
+    except (httpx.RequestError, PostgrestAPIError) as error:
+        if is_supabase_connection_error(error):
+            is_supabase_connection_available.clear()
+            return None, "Supabase is unavailable for timestamped engagement events."
+        if getattr(error, "code", None) in {"42P01", "PGRST204", "PGRST205"}:
+            return (
+                None,
+                "Timestamped engagement events are not installed yet. "
+                "Run portal_engagement.sql in Supabase.",
+            )
+        return None, f"Could not load timestamped engagement events: {error}"
+    except (KeyError, TypeError, ValueError) as error:
+        return None, f"Could not load timestamped engagement events: {error}"
+
+
+def _fetch_portal_request_rows(client, timeframe, now=None):
+    start, end = _portal_engagement_time_window(timeframe, now)
+    rows = []
+    for table_name in ("patient_help_requests", "appointments"):
+        offset = 0
+        while True:
+            query = (
+                client.table(table_name)
+                .select(PORTAL_REQUEST_QUERY_COLUMNS)
+                .lte("created_at", end.isoformat())
+            )
+            if start is not None:
+                query = query.gte("created_at", start.isoformat())
+            response = query.range(
+                offset,
+                offset + PORTAL_REQUEST_PAGE_SIZE - 1,
+            ).execute()
+            page = response.data or []
+            rows.extend(page)
+            if len(page) < PORTAL_REQUEST_PAGE_SIZE:
+                break
+            offset += PORTAL_REQUEST_PAGE_SIZE
+    return rows
+
+
+def _parse_portal_request_date(value):
+    if isinstance(value, datetime.datetime):
+        return value.date()
+    if isinstance(value, datetime.date):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.date.fromisoformat(value[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _parse_portal_request_time(value):
+    if isinstance(value, datetime.datetime):
+        return value.time().replace(tzinfo=None)
+    if isinstance(value, datetime.time):
+        return value.replace(tzinfo=None)
+    if not isinstance(value, str):
+        return None
+
+    time_value = value.strip()
+    try:
+        return datetime.time.fromisoformat(time_value)
+    except ValueError:
+        for time_format in ("%I:%M %p", "%I:%M%p", "%I:%M:%S %p"):
+            try:
+                return datetime.datetime.strptime(
+                    time_value.upper(),
+                    time_format,
+                ).time()
+            except ValueError:
+                continue
+    return None
+
+
+def _summarize_portal_request_rows(rows):
+    outcome_counts = {outcome: 0 for outcome in PORTAL_REQUEST_OUTCOMES}
+    slot_counts = {}
+    weekday_counts = {}
+
+    for row in rows:
+        status = str(row.get("approval_status") or "Pending").strip().casefold()
+        if status in {"pending", "awaiting"}:
+            outcome = "Pending / Awaiting"
+        elif status in {"confirmed", "scheduled"}:
+            outcome = "Confirmed / Scheduled"
+        elif status == "rescheduled":
+            outcome = "Rescheduled"
+        elif status in {"done", "completed"}:
+            outcome = "Done"
+        elif status in {"cancelled", "canceled", "declined"}:
+            outcome = "Cancelled"
+        elif status in {"no-show", "no show", "noshow"}:
+            outcome = "No-show"
+        else:
+            continue
+        outcome_counts[outcome] += 1
+
+        request_time = _parse_portal_request_time(
+            row.get("requested_time_slot")
+        )
+        if request_time is not None:
+            slot_label = request_time.strftime("%I:%M %p").lstrip("0")
+            slot_counts[slot_label] = slot_counts.get(slot_label, 0) + 1
+
+        request_date = _parse_portal_request_date(row.get("requested_date"))
+        if request_date is not None:
+            weekday = request_date.strftime("%A")
+            weekday_counts[weekday] = weekday_counts.get(weekday, 0) + 1
+
+    peak_slots = sorted(
+        slot_counts.items(),
+        key=lambda item: (-item[1], _parse_portal_request_time(item[0])),
+    )
+    busiest_day = None
+    if weekday_counts:
+        busiest_day = sorted(
+            weekday_counts.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[0]
+    return {
+        "outcomes": outcome_counts,
+        "peak_slots": peak_slots[:5],
+        "busiest_day": busiest_day,
+    }
+
+
+def _load_portal_request_analytics(timeframe):
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return None, "Supabase is not configured for request analytics."
+    if not is_supabase_connection_available():
+        return None, "Supabase is unavailable for request analytics."
+
+    client = get_supabase_client()
+    if client is None:
+        return None, "Supabase is unavailable for request analytics."
+
+    try:
+        rows = _fetch_portal_request_rows(client, timeframe)
+        return _summarize_portal_request_rows(rows), None
+    except (httpx.RequestError, PostgrestAPIError) as error:
+        if is_supabase_connection_error(error):
+            is_supabase_connection_available.clear()
+            return None, "Supabase is unavailable for request analytics."
+        return None, f"Could not load request analytics: {error}"
+    except (KeyError, TypeError, ValueError) as error:
+        return None, f"Could not load request analytics: {error}"
+
+
 def _render_portal_engagement(snapshot):
-    counts = snapshot["counts"]
-    journal_accounts = snapshot["journal_accounts"]
+    timeframe = st.segmented_control(
+        "Timeframe",
+        PORTAL_ENGAGEMENT_TIMEFRAMES,
+        default="All Time",
+        label_visibility="collapsed",
+        key="portal_engagement_timeframe",
+        wrap=False,
+    )
+
+    event_error = None
+    if timeframe == "All Time" and snapshot:
+        counts = snapshot["counts"]
+    else:
+        counts, event_error = _load_portal_engagement_event_counts(timeframe)
+    request_analytics, request_error = _load_portal_request_analytics(timeframe)
+
+    journal_accounts = snapshot["journal_accounts"] if snapshot else None
+    if counts is not None and timeframe != "All Time" and not any(counts.values()):
+        st.caption("No timestamped choices have been recorded for this period.")
+    if event_error:
+        st.warning(event_error)
+
     with st.container(horizontal=True, key="statistics-engagement-kpis"):
         st.metric(
-            '"I Need Help" Requests Sent',
-            f'{counts["need_help_submitted"]:,}',
+            "I Need Help",
+            (
+                f'{counts["need_help_submitted"]:,}'
+                if counts is not None
+                else "—"
+            ),
             border=True,
         )
         st.metric(
-            '"I Don\'t Need Help" Entries Sent',
-            f'{counts["no_help_submitted"]:,}',
+            "I Don't Need Help",
+            (
+                f'{counts["no_help_submitted"]:,}'
+                if counts is not None
+                else "—"
+            ),
             border=True,
         )
         st.metric(
-            "Signed-In Journal Accounts",
-            f"{len(journal_accounts):,}",
+            "Signed-In Journal Accounts (All Time)",
+            f"{len(journal_accounts):,}" if journal_accounts is not None else "—",
             border=True,
         )
+    st.caption("Choice counts include both guest and signed-in portal users.")
 
-    comparison_data = pd.DataFrame(
-        [
-            {
-                "Submission Type": "I Need Help",
-                "Completed Submissions": counts["need_help_submitted"],
-            },
-            {
-                "Submission Type": "I Don't Need Help",
-                "Completed Submissions": counts["no_help_submitted"],
-            },
-        ]
-    )
-    comparison_chart = (
-        alt.Chart(comparison_data)
-        .mark_bar(size=34, cornerRadiusEnd=6)
-        .encode(
-            x=alt.X(
-                "Completed Submissions:Q",
-                axis=alt.Axis(
-                    format=",",
-                    gridColor="#2b403c",
-                    labelColor="#a7bbb7",
-                    title=None,
-                ),
-                scale=alt.Scale(
-                    domain=[
-                        0,
-                        max(
-                            1,
-                            int(comparison_data["Completed Submissions"].max()),
-                        ),
-                    ]
-                ),
-            ),
-            y=alt.Y(
-                "Submission Type:N",
-                sort=["I Need Help", "I Don't Need Help"],
-                axis=alt.Axis(
-                    domain=False,
-                    labelColor="#e5efed",
-                    ticks=False,
-                    title=None,
-                ),
-            ),
-            color=alt.Color(
-                "Submission Type:N",
-                scale=alt.Scale(
-                    domain=["I Need Help", "I Don't Need Help"],
-                    range=["#2dd4bf", "#43c4b5"],
-                ),
-                legend=None,
-            ),
-            tooltip=[
-                alt.Tooltip("Submission Type:N"),
-                alt.Tooltip("Completed Submissions:Q", format=","),
-            ],
+    comparison_chart = None
+    if counts is not None:
+        comparison_data = pd.DataFrame(
+            [
+                {
+                    "Submission Type": "I Need Help",
+                    "Choice Count": counts["need_help_submitted"],
+                },
+                {
+                    "Submission Type": "I Don't Need Help",
+                    "Choice Count": counts["no_help_submitted"],
+                },
+            ]
         )
-        .properties(height=150, background="#112926")
-    )
+        comparison_max = int(comparison_data["Choice Count"].max())
+        comparison_axis_max = 10 * max(1, math.ceil(comparison_max / 10))
+        comparison_chart = (
+            alt.Chart(comparison_data)
+            .mark_bar(size=34, cornerRadiusEnd=6)
+            .encode(
+                x=alt.X(
+                    "Choice Count:Q",
+                    axis=alt.Axis(
+                        format="d",
+                        values=list(range(0, comparison_axis_max + 1, 10)),
+                        gridColor="#2b403c",
+                        labelColor="#a7bbb7",
+                        title=None,
+                    ),
+                    scale=alt.Scale(
+                        domain=[0, comparison_axis_max],
+                        nice=False,
+                    ),
+                ),
+                y=alt.Y(
+                    "Submission Type:N",
+                    sort=["I Need Help", "I Don't Need Help"],
+                    axis=alt.Axis(
+                        domain=False,
+                        labelColor="#e5efed",
+                        ticks=False,
+                        title=None,
+                    ),
+                ),
+                color=alt.Color(
+                    "Submission Type:N",
+                    scale=alt.Scale(
+                        domain=["I Need Help", "I Don't Need Help"],
+                        range=["#2dd4bf", "#43c4b5"],
+                    ),
+                    legend=None,
+                ),
+                tooltip=[
+                    alt.Tooltip("Submission Type:N"),
+                    alt.Tooltip("Choice Count:Q", format=","),
+                ],
+            )
+            .properties(height=220, background="#112926")
+        )
 
     chart_column, accounts_column = st.columns([1, 1.15])
     with chart_column:
-        with st.container(border=True, key="statistics-engagement-breakdown"):
+        with st.container(
+            height=330,
+            border=True,
+            key="statistics-engagement-breakdown",
+        ):
             st.markdown(
-                '<div class="statistics-card-eyebrow">Completed Submissions</div>',
+                '<div class="statistics-card-eyebrow">'
+                f"Public choices · {escape(timeframe)}"
+                "</div>",
                 unsafe_allow_html=True,
             )
             st.markdown("### I Need Help vs. I Don't Need Help")
-            st.altair_chart(
-                comparison_chart,
-                width="stretch",
-                theme=None,
-                alt="Completed I Need Help and I Don't Need Help submissions",
-            )
+            if comparison_chart is not None:
+                st.altair_chart(
+                    comparison_chart,
+                    width="stretch",
+                    theme=None,
+                    alt=(
+                        "I Need Help and I Don't Need Help choices for "
+                        f"{timeframe}"
+                    ),
+                )
+            else:
+                st.info("Choice counts are unavailable for this timeframe.")
     with accounts_column:
-        with st.container(border=True, key="statistics-engagement-accounts"):
+        with st.container(
+            height=330,
+            border=True,
+            key="statistics-engagement-accounts",
+        ):
             st.markdown(
                 '<div class="statistics-card-eyebrow">Anonymized Accounts</div>',
                 unsafe_allow_html=True,
@@ -908,14 +1234,179 @@ def _render_portal_engagement(snapshot):
                     count_label="Saved Entries",
                     table_label="Anonymized signed-in journal account counts",
                 )
-            else:
+            elif journal_accounts is not None:
                 st.info("No signed-in journal entries have been saved yet.")
+            else:
+                st.info("Signed-in journal account data is unavailable.")
             st.caption(
                 "RA 10173 privacy note: signed-in accounts are shown only as "
                 "sequential code names and saved-entry counts. Guest submissions "
                 "are included only in the aggregate totals above; guest identities "
                 "and entries are not listed."
             )
+
+    outcomes_column, peak_times_column = st.columns(2)
+    with outcomes_column:
+        with st.container(
+            height=390,
+            border=True,
+            key="statistics-engagement-outcomes",
+        ):
+            st.markdown(
+                '<div class="statistics-card-eyebrow">Request activity · '
+                f"{escape(timeframe)}</div>",
+                unsafe_allow_html=True,
+            )
+            st.markdown("### Request Outcome Breakdown")
+            if request_error:
+                st.warning(request_error)
+            elif request_analytics is not None:
+                outcomes = pd.DataFrame(
+                    [
+                        {"Outcome": outcome, "Requests": count}
+                        for outcome, count in request_analytics["outcomes"].items()
+                    ]
+                )
+                max_outcome_count = max(
+                    1,
+                    int(outcomes["Requests"].max()),
+                )
+                outcome_tick_step = max(
+                    1,
+                    math.ceil(max_outcome_count / 5),
+                )
+                outcome_chart = (
+                    alt.Chart(outcomes)
+                    .mark_bar(size=22, cornerRadiusEnd=5, color="#2dd4bf")
+                    .encode(
+                        x=alt.X(
+                            "Requests:Q",
+                            axis=alt.Axis(
+                                format="d",
+                                values=list(
+                                    range(
+                                        0,
+                                        max_outcome_count + 1,
+                                        outcome_tick_step,
+                                    )
+                                ),
+                                gridColor="#2b403c",
+                                labelColor="#a7bbb7",
+                                title=None,
+                            ),
+                            scale=alt.Scale(
+                                domain=[0, max_outcome_count],
+                                nice=False,
+                            ),
+                        ),
+                        y=alt.Y(
+                            "Outcome:N",
+                            sort=list(PORTAL_REQUEST_OUTCOMES),
+                            axis=alt.Axis(
+                                domain=False,
+                                labelColor="#e5efed",
+                                ticks=False,
+                                title=None,
+                            ),
+                        ),
+                        tooltip=[
+                            alt.Tooltip("Outcome:N"),
+                            alt.Tooltip("Requests:Q", format="d"),
+                        ],
+                    )
+                    .properties(height=230, background="#112926")
+                )
+                st.altair_chart(
+                    outcome_chart,
+                    width="stretch",
+                    theme=None,
+                    alt=f"Callback request outcomes for {timeframe}",
+                )
+                if not any(request_analytics["outcomes"].values()):
+                    st.caption("No callback requests or appointments in this period.")
+
+    with peak_times_column:
+        with st.container(
+            height=390,
+            border=True,
+            key="statistics-engagement-peak-times",
+        ):
+            st.markdown(
+                '<div class="statistics-card-eyebrow">Requested schedules · '
+                f"{escape(timeframe)}</div>",
+                unsafe_allow_html=True,
+            )
+            st.markdown("### Peak Request Time Slots")
+            if request_error:
+                st.warning(request_error)
+            elif request_analytics is not None:
+                busiest_day = request_analytics["busiest_day"]
+                if request_analytics["peak_slots"]:
+                    peak_slots = pd.DataFrame(
+                        [
+                            {"Time Slot": slot, "Requests": count}
+                            for slot, count in request_analytics["peak_slots"]
+                        ]
+                    )
+                    peak_max = max(1, int(peak_slots["Requests"].max()))
+                    peak_tick_step = max(1, math.ceil(peak_max / 5))
+                    peak_chart = (
+                        alt.Chart(peak_slots)
+                        .mark_bar(size=22, cornerRadiusEnd=5, color="#43c4b5")
+                        .encode(
+                            x=alt.X(
+                                "Requests:Q",
+                                axis=alt.Axis(
+                                    format="d",
+                                    values=list(
+                                        range(
+                                            0,
+                                            peak_max + 1,
+                                            peak_tick_step,
+                                        )
+                                    ),
+                                    gridColor="#2b403c",
+                                    labelColor="#a7bbb7",
+                                    title=None,
+                                ),
+                                scale=alt.Scale(
+                                    domain=[0, peak_max],
+                                    nice=False,
+                                ),
+                            ),
+                            y=alt.Y(
+                                "Time Slot:N",
+                                sort="-x",
+                                axis=alt.Axis(
+                                    domain=False,
+                                    labelColor="#e5efed",
+                                    ticks=False,
+                                    title=None,
+                                ),
+                            ),
+                            tooltip=[
+                                alt.Tooltip("Time Slot:N"),
+                                alt.Tooltip("Requests:Q", format="d"),
+                            ],
+                        )
+                        .properties(height=230, background="#112926")
+                    )
+                    st.altair_chart(
+                        peak_chart,
+                        width="stretch",
+                        theme=None,
+                        alt=f"Most requested callback times for {timeframe}",
+                    )
+                else:
+                    st.info("No requested time slots in this period.")
+
+                if busiest_day:
+                    st.caption(
+                        f"Busiest day: {busiest_day[0]} · "
+                        f"{busiest_day[1]:,} requests"
+                    )
+                else:
+                    st.caption("Busiest day: No requested dates in this period.")
 
 
 def show_dashboard_page():
@@ -954,7 +1445,7 @@ def show_dashboard_page():
         df["province_key"] = df["province"].map(_location_key)
         df["city_key"] = df["city_municipality"].map(_location_key)
         df["barangay_key"] = df["barangay"].map(_location_key)
-        df["status"] = df["status"].fillna("Alive").str.strip().str.title()
+        df["status"] = df["status"].fillna(CARE_STATUS_LOST_TO_FOLLOW_UP)
 
         province_options = list(address_hierarchy)
         province = st.session_state.get("geo_province")
@@ -1051,39 +1542,35 @@ def show_dashboard_page():
         province_data = df.iloc[0:0]
         city_data = df.iloc[0:0]
         barangay_data = df.iloc[0:0]
-        location_label = "All Patients"
         if province is not None:
             province_data = df[df["province_key"] == _location_key(province)]
             selected_data = province_data
-            location_label = province
         if city is not None:
             city_data = province_data[
                 province_data["city_key"] == _location_key(city)
             ]
             selected_data = city_data
-            location_label = city
         if barangay is not None:
             barangay_data = city_data[
                 city_data["barangay_key"] == _location_key(barangay)
             ]
             selected_data = barangay_data
-            location_label = barangay
 
         with overview_tab:
             with st.container(horizontal=True, key="statistics-kpis"):
                 st.metric(
-                    f"Total Patients · {location_label}",
-                    f"{len(selected_data):,}",
+                    "Active",
+                    f"{int((selected_data['status'] == CARE_STATUS_ACTIVE).sum()):,}",
                     border=True,
                 )
                 st.metric(
-                    "Alive Patients",
-                    f"{int((selected_data['status'] == 'Alive').sum()):,}",
+                    "Lost to Follow-Up",
+                    f"{int((selected_data['status'] == CARE_STATUS_LOST_TO_FOLLOW_UP).sum()):,}",
                     border=True,
                 )
                 st.metric(
-                    "Deceased Patients",
-                    f"{int((selected_data['status'] == 'Deceased').sum()):,}",
+                    "Deceased",
+                    f"{int((selected_data['status'] == CARE_STATUS_DECEASED).sum()):,}",
                     border=True,
                 )
 
@@ -1171,28 +1658,21 @@ def show_dashboard_page():
 
         with age_tab:
             age_counts = _age_group_counts(selected_data)
-            ages = pd.to_numeric(
-                selected_data["calculated_age"],
-                errors="coerce",
-            )
-            ages = ages[ages >= 0]
-            average_age = f"{ages.mean():.1f} years" if not ages.empty else "—"
-            known_age_counts = age_counts.drop("Unspecified")
-            most_common_age_group = (
-                str(known_age_counts.idxmax())
-                if int(known_age_counts.sum()) > 0
-                else "—"
-            )
+            top_age_group, known_age_total = _top_age_group_summary(selected_data)
             with st.container(horizontal=True, key="statistics-age-summary"):
                 st.metric(
                     "Total Filtered Patients",
                     f"{len(selected_data):,}",
                     border=True,
                 )
-                st.metric("Average Age", average_age, border=True)
                 st.metric(
-                    "Most Common Age Group",
-                    most_common_age_group,
+                    "Top Age Group",
+                    top_age_group,
+                    border=True,
+                )
+                st.metric(
+                    "Records with Age Data",
+                    f"{known_age_total:,}",
                     border=True,
                 )
 
@@ -1281,26 +1761,18 @@ def show_dashboard_page():
         with engagement_tab:
             if engagement_tab.open:
                 snapshot, source, error_message = _load_portal_engagement_snapshot()
-                if source == "cached" and snapshot:
-                    st.caption(
-                        "Showing cached offline snapshot · Last refreshed "
-                        f"{snapshot['refreshed_at']}"
-                    )
-                elif source == "unavailable":
+                if source == "unavailable":
                     st.warning(
                         "Supabase is unavailable and no cached engagement snapshot "
                         "is available yet. Open this tab while connected to create one."
                     )
-                elif source in {"online", "online_uncached"}:
-                    st.caption(f"Last refreshed {snapshot['refreshed_at']}")
 
                 if error_message:
                     if source == "online_uncached":
                         st.warning(error_message)
                     else:
                         st.error(error_message)
-                if snapshot:
-                    _render_portal_engagement(snapshot)
+                _render_portal_engagement(snapshot)
 
 
 if __name__ == "__main__":

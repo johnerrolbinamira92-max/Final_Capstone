@@ -44,6 +44,35 @@ insert into public.portal_engagement_counts (
 values (1, 0, 0)
 on conflict (id) do nothing;
 
+create table if not exists public.portal_engagement_events (
+    event_id bigint generated always as identity primary key,
+    choice_type text not null
+        check (choice_type in ('need_help', 'no_help')),
+    user_type text not null
+        check (user_type in ('guest', 'signed_in')),
+    created_at timestamptz not null default now()
+);
+
+create index if not exists portal_engagement_events_time_choice_idx
+    on public.portal_engagement_events (created_at, choice_type);
+
+alter table public.portal_engagement_events enable row level security;
+revoke all on public.portal_engagement_events from public, anon, authenticated;
+grant insert on public.portal_engagement_events to anon, authenticated;
+grant select on public.portal_engagement_events to service_role;
+revoke all on sequence public.portal_engagement_events_event_id_seq
+    from public, anon, authenticated;
+grant usage on sequence public.portal_engagement_events_event_id_seq
+    to anon, authenticated;
+
+drop policy if exists portal_engagement_events_public_insert
+    on public.portal_engagement_events;
+create policy portal_engagement_events_public_insert
+    on public.portal_engagement_events
+    for insert
+    to anon, authenticated
+    with check (true);
+
 do $$
 begin
     if to_regclass('public.portal_engagement_counts_action_rows') is not null then

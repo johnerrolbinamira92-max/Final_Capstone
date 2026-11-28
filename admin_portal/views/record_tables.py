@@ -1,5 +1,6 @@
 import datetime
 import json
+import math
 import re
 
 import pandas as pd
@@ -62,10 +63,57 @@ MEDICATION_COLUMN_LABELS = {
 }
 
 DATE_DISPLAY_FORMAT = "MM/DD/YYYY"
+PERSON_NAME_PATTERN = r"[A-Za-zÀ-ÿÑñ\s.'-]+"
+PERSON_NAME_INPUT_PATTERN = r"^[A-Za-zÀ-ÖØ-öø-ÿÑñ\s.'-]*$"
+PERSON_NAME_INPUT_VALIDATION = (
+    PERSON_NAME_INPUT_PATTERN,
+    "Names must contain letters only and cannot include numbers.",
+)
+PERSON_NAME_VALIDATION_MESSAGE = (
+    "Names must contain letters only and cannot include numbers."
+)
+
+
+def is_valid_person_name(value):
+    if value is None:
+        return True
+    try:
+        if pd.isna(value):
+            return True
+    except (TypeError, ValueError):
+        pass
+    name = str(value).strip()
+    return (
+        not name
+        or (
+            re.fullmatch(PERSON_NAME_PATTERN, name) is not None
+            and any(character.isalpha() for character in name)
+            and all(
+                character.isalpha()
+                or character.isspace()
+                or character in ".'-"
+                for character in name
+            )
+        )
+    )
+
+
+def validate_person_names(fields):
+    return [
+        f"{label}: {PERSON_NAME_VALIDATION_MESSAGE}"
+        for label, value in fields.items()
+        if value is not None
+        and str(value).strip()
+        and not is_valid_person_name(value)
+    ]
 
 
 def family_column_config(dataframe):
     column_config = {}
+    column_config["Name"] = st.column_config.TextColumn(
+        "Name",
+        validate=PERSON_NAME_INPUT_PATTERN,
+    )
     for column, preset_options in FAMILY_SELECTBOX_OPTIONS.items():
         options = list(preset_options)
         if column in dataframe:
@@ -77,7 +125,74 @@ def family_column_config(dataframe):
             column,
             options=options,
         )
+    column_config["Age"] = st.column_config.NumberColumn(
+        "Age",
+        min_value=0,
+        max_value=120,
+        step=1,
+        format="%d",
+    )
+    column_config["Monthly Income"] = st.column_config.NumberColumn(
+        "Monthly Income",
+        min_value=0.0,
+        step=0.01,
+        format="%.2f",
+    )
     return column_config
+
+
+def validate_family_composition(dataframe):
+    errors = []
+    for row_number, (_, row) in enumerate(dataframe.iterrows(), start=1):
+        name = row.get("Name")
+        if not _is_empty_numeric_value(name) and not is_valid_person_name(name):
+            errors.append(
+                f"Family composition row {row_number}: "
+                f"{PERSON_NAME_VALIDATION_MESSAGE}"
+            )
+
+        age = row.get("Age")
+        if not _is_empty_numeric_value(age) and not _is_valid_family_age(age):
+            errors.append(
+                f"Family composition row {row_number}: Age must be a whole "
+                "number from 0 to 120."
+            )
+
+        monthly_income = row.get("Monthly Income")
+        if (
+            not _is_empty_numeric_value(monthly_income)
+            and not _is_valid_nonnegative_amount(monthly_income)
+        ):
+            errors.append(
+                f"Family composition row {row_number}: Monthly Income must "
+                "be a valid non-negative amount."
+            )
+    return errors
+
+
+def _is_empty_numeric_value(value):
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return True
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _is_valid_nonnegative_amount(value):
+    try:
+        amount = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return math.isfinite(amount) and amount >= 0
+
+
+def _is_valid_family_age(value):
+    try:
+        age = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return math.isfinite(age) and age.is_integer() and 0 <= age <= 120
 
 
 def parse_stored_date(value):
