@@ -653,7 +653,8 @@ def _toggle_callback_detail_revealed():
     st.session_state[key] = not st.session_state[key]
 
 
-def _clear_notification_date_filter():
+def _clear_notification_filters():
+    st.session_state["notification-request-search"] = ""
     st.session_state["notification-requested-date-filter"] = None
     st.session_state["notification-requested-date-filter-value"] = None
 
@@ -730,7 +731,7 @@ def _render_notification_list(items, read_ids, tab_key, client):
     with list_column:
         with st.container(key="notification-date-filter-row"):
             date_column, search_column, clear_column = st.columns(
-                [1.2, 1.15, 0.45],
+                [1.2, 1.15, 0.22],
                 gap="small",
                 vertical_alignment="bottom",
             )
@@ -754,12 +755,16 @@ def _render_notification_list(items, read_ids, tab_key, client):
                 )
             with clear_column:
                 st.button(
-                    "Clear",
+                    "✕",
                     key="notification-clear-requested-date-filter",
+                    help="Clear search",
                     type="tertiary",
-                    width="stretch",
-                    disabled=requested_date_filter is None,
-                    on_click=_clear_notification_date_filter,
+                    width="content",
+                    disabled=(
+                        not search_query.strip()
+                        and requested_date_filter is None
+                    ),
+                    on_click=_clear_notification_filters,
                 )
         visible_items = _filter_notification_items_by_date(
             items, requested_date_filter

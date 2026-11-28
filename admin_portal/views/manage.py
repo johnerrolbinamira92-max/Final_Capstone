@@ -3775,6 +3775,10 @@ def _render_patient_editor(target_id, p):
                 conn.close()
 
 
+def _clear_patient_name_lookup():
+    st.session_state["patient_name_lookup_query"] = ""
+
+
 def show_manage_page():
     selected_id = st.session_state.get("manage_selected_patient_id")
     success_message = st.session_state.pop("manage_success_message", None)
@@ -3881,18 +3885,35 @@ def show_manage_page():
             gap="small",
             vertical_alignment="center",
         )
+        st.session_state.setdefault("patient_name_lookup_query", "")
+        st.session_state.pop("patient_name_lookup_visible", None)
         with name_lookup_column:
-            st.session_state.setdefault("patient_name_lookup_query", "")
-            with st.container(key="record-name-lookup"):
-                name_search_term = st.text_input(
-                    "Restricted Name Lookup",
-                    key="patient_name_lookup_query",
-                    placeholder="Enter a patient name",
-                    type="password",
-                    autocomplete="off",
-                    label_visibility="collapsed",
-                    width="stretch",
-                ).strip()
+            with st.container(
+                horizontal=True,
+                wrap=False,
+                vertical_alignment="center",
+                gap="small",
+                key="record-name-lookup-controls",
+            ):
+                with st.container(key="record-name-lookup", width="stretch"):
+                    name_search_term = st.text_input(
+                        "Restricted Name Lookup",
+                        key="patient_name_lookup_query",
+                        placeholder="Enter a patient name",
+                        type="password",
+                        autocomplete="off",
+                        label_visibility="collapsed",
+                        width="stretch",
+                    ).strip()
+                st.button(
+                    "✕",
+                    help="Clear search",
+                    key="patient-name-lookup-clear",
+                    type="tertiary",
+                    disabled=not st.session_state["patient_name_lookup_query"],
+                    width="content",
+                    on_click=_clear_patient_name_lookup,
+                )
         with filter_button_column:
             with st.popover(
                 "",

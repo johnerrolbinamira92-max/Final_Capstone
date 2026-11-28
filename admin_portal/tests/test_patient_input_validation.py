@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 import pandas as pd
+from streamlit.testing.v1 import AppTest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 encode = importlib.import_module("views.encode")
@@ -128,6 +129,24 @@ class PatientInputValidationTests(unittest.TestCase):
         self.assertNotIn("return-session-date-42", state)
         self.assertNotIn("return-session-complaint-patient-42", state)
         self.assertFalse(manage._reset_return_session_substate(state, 42))
+
+    def test_clearing_restricted_name_lookup_resets_search(self):
+        app = AppTest.from_string(
+            "\n".join(
+                [
+                    "import streamlit as st",
+                    "from views.manage import _clear_patient_name_lookup",
+                    "st.text_input('Restricted Name Lookup', type='password', key='patient_name_lookup_query')",
+                    "st.button('✕', key='clear-name', on_click=_clear_patient_name_lookup, disabled=not st.session_state.get('patient_name_lookup_query'))",
+                ]
+            )
+        )
+        app.session_state["patient_name_lookup_query"] = "Example Patient"
+        app.run()
+
+        app.button(key="clear-name").click().run()
+
+        self.assertEqual(app.session_state["patient_name_lookup_query"], "")
 
 
 if __name__ == "__main__":

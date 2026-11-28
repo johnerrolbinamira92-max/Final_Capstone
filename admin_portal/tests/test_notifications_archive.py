@@ -4,12 +4,41 @@ import unittest
 from datetime import date
 from pathlib import Path
 
+from streamlit.testing.v1 import AppTest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 appointments = importlib.import_module("views.appointments")
 notifications = importlib.import_module("views.notifications")
 
 
 class NotificationArchiveTests(unittest.TestCase):
+    def test_clear_control_resets_search_and_requested_date(self):
+        app = AppTest.from_string(
+            "\n".join(
+                [
+                    "import streamlit as st",
+                    "from views.notifications import _clear_notification_filters",
+                    "st.date_input('Requested date', value=st.session_state.get('notification-requested-date-filter-value'), key='notification-requested-date-filter')",
+                    "st.text_input('Search requests', key='notification-request-search')",
+                    "st.button('✕', key='clear-filters', help='Clear search', on_click=_clear_notification_filters)",
+                ]
+            )
+        )
+        app.session_state["notification-requested-date-filter"] = date(2026, 3, 2)
+        app.session_state["notification-requested-date-filter-value"] = date(
+            2026, 3, 2
+        )
+        app.session_state["notification-request-search"] = "Jordan"
+        app.run()
+
+        app.button(key="clear-filters").click().run()
+
+        self.assertIsNone(app.session_state["notification-requested-date-filter"])
+        self.assertIsNone(
+            app.session_state["notification-requested-date-filter-value"]
+        )
+        self.assertEqual(app.session_state["notification-request-search"], "")
+
     def test_partitions_requests_and_enforces_archive_retention(self):
         today = date(2026, 3, 2)
         items = [

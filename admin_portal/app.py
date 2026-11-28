@@ -787,7 +787,6 @@ st.markdown(
     .st-key-hfrc-sidebar-nav-logout {
         margin-bottom: 6px !important;
         padding: 4px 0;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
     }
 
     .st-key-hfrc-sidebar-nav-activity,
@@ -795,12 +794,12 @@ st.markdown(
         margin-bottom: 0 !important;
     }
 
-    .st-key-hfrc-sidebar-nav-home a,
-    .st-key-hfrc-sidebar-nav-statistics a,
-    .st-key-hfrc-sidebar-nav-records a,
-    .st-key-hfrc-sidebar-nav-appointments a,
-    .st-key-hfrc-sidebar-nav-callbacks a,
-    .st-key-hfrc-sidebar-nav-activity a,
+    .st-key-hfrc-sidebar-nav-home button,
+    .st-key-hfrc-sidebar-nav-statistics button,
+    .st-key-hfrc-sidebar-nav-records button,
+    .st-key-hfrc-sidebar-nav-appointments button,
+    .st-key-hfrc-sidebar-nav-callbacks button,
+    .st-key-hfrc-sidebar-nav-activity button,
     .st-key-hfrc-sidebar-nav-logout button {
         display: flex;
         width: 100%;
@@ -810,13 +809,22 @@ st.markdown(
         gap: 10px;
         padding: 13px 16px !important;
         border-radius: 8px;
-        border: none !important;
-        background: transparent !important;
         color: #d7ebe7 !important;
         font-size: 1.02rem !important;
-        font-weight: 500 !important;
         text-align: left !important;
         box-shadow: none !important;
+    }
+
+    .st-key-hfrc-sidebar-nav-home button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]),
+    .st-key-hfrc-sidebar-nav-statistics button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]),
+    .st-key-hfrc-sidebar-nav-records button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]),
+    .st-key-hfrc-sidebar-nav-appointments button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]),
+    .st-key-hfrc-sidebar-nav-callbacks button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]),
+    .st-key-hfrc-sidebar-nav-activity button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]),
+    .st-key-hfrc-sidebar-nav-logout button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]) {
+        border: none !important;
+        background: transparent !important;
+        font-weight: 500 !important;
     }
 
     .st-key-hfrc-sidebar-nav-logout button {
@@ -846,12 +854,12 @@ st.markdown(
         margin: 0;
     }
 
-    .st-key-hfrc-sidebar-nav-home a svg,
-    .st-key-hfrc-sidebar-nav-statistics a svg,
-    .st-key-hfrc-sidebar-nav-records a svg,
-    .st-key-hfrc-sidebar-nav-appointments a svg,
-    .st-key-hfrc-sidebar-nav-callbacks a svg,
-    .st-key-hfrc-sidebar-nav-activity a svg,
+    .st-key-hfrc-sidebar-nav-home button svg,
+    .st-key-hfrc-sidebar-nav-statistics button svg,
+    .st-key-hfrc-sidebar-nav-records button svg,
+    .st-key-hfrc-sidebar-nav-appointments button svg,
+    .st-key-hfrc-sidebar-nav-callbacks button svg,
+    .st-key-hfrc-sidebar-nav-activity button svg,
     .st-key-hfrc-sidebar-nav-logout button svg {
         width: 17px;
         height: 17px;
@@ -867,25 +875,21 @@ st.markdown(
         transition: background-color 0.15s ease, color 0.15s ease !important;
     }
 
-    .st-key-hfrc-sidebar-nav-home a,
-    .st-key-hfrc-sidebar-nav-statistics a,
-    .st-key-hfrc-sidebar-nav-records a,
-    .st-key-hfrc-sidebar-nav-appointments a,
-    .st-key-hfrc-sidebar-nav-callbacks a,
-    .st-key-hfrc-sidebar-nav-activity a {
+    .st-key-hfrc-sidebar-nav-home button,
+    .st-key-hfrc-sidebar-nav-statistics button,
+    .st-key-hfrc-sidebar-nav-records button,
+    .st-key-hfrc-sidebar-nav-appointments button,
+    .st-key-hfrc-sidebar-nav-callbacks button,
+    .st-key-hfrc-sidebar-nav-activity button {
         transition: background-color 0.15s ease, color 0.15s ease !important;
     }
 
-    [data-testid="stSidebar"] [data-testid="stSidebarNavLink"]:not([aria-current="page"]):hover {
-        background-color: rgba(255, 255, 255, 0.10) !important;
-    }
-
-    .st-key-hfrc-sidebar-nav-home a:not([aria-current="page"]):hover,
-    .st-key-hfrc-sidebar-nav-statistics a:not([aria-current="page"]):hover,
-    .st-key-hfrc-sidebar-nav-records a:not([aria-current="page"]):hover,
-    .st-key-hfrc-sidebar-nav-appointments a:not([aria-current="page"]):hover,
-    .st-key-hfrc-sidebar-nav-callbacks a:not([aria-current="page"]):hover,
-    .st-key-hfrc-sidebar-nav-activity a:not([aria-current="page"]):hover {
+    .st-key-hfrc-sidebar-nav-home button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover,
+    .st-key-hfrc-sidebar-nav-statistics button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover,
+    .st-key-hfrc-sidebar-nav-records button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover,
+    .st-key-hfrc-sidebar-nav-appointments button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover,
+    .st-key-hfrc-sidebar-nav-callbacks button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover,
+    .st-key-hfrc-sidebar-nav-activity button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover {
         background-color: rgba(255, 255, 255, 0.10) !important;
     }
 
@@ -901,16 +905,14 @@ st.markdown(
         box-shadow: none !important;
     }
 
-    .st-key-hfrc-sidebar-nav-home a[aria-current="page"],
-    .st-key-hfrc-sidebar-nav-statistics a[aria-current="page"],
-    .st-key-hfrc-sidebar-nav-records a[aria-current="page"],
-    .st-key-hfrc-sidebar-nav-appointments a[aria-current="page"],
-    .st-key-hfrc-sidebar-nav-callbacks a[aria-current="page"],
-    .st-key-hfrc-sidebar-nav-activity a[aria-current="page"] {
-        border-left: 3px solid #f2a477;
-        background: #006d65;
-        color: #ffffff;
-        font-weight: 500;
+    [data-testid="stSidebar"] button[kind="primary"],
+    [data-testid="stSidebar"] button[data-testid="stBaseButton-primary"] {
+        background-color: #071916 !important;
+        border: 1px solid rgba(20, 184, 166, 0.35) !important;
+        border-left: 3px solid #14b8a6 !important;
+        border-radius: 10px !important;
+        color: #ffffff !important;
+        font-weight: 600 !important;
     }
 
     [data-testid="stSidebar"] button[kind="secondary"] {
@@ -2298,6 +2300,17 @@ st.markdown(
             padding-left: 38px !important;
         }
 
+        .st-key-admin-search-page .st-key-record-name-lookup input::-ms-reveal,
+        .st-key-admin-search-page .st-key-record-name-lookup input::-ms-clear {
+            display: none !important;
+        }
+
+        .st-key-record-name-lookup-controls [data-testid="stButton"] button {
+            min-width: 2.5rem;
+            min-height: 2.5rem;
+            padding: .45rem;
+        }
+
         .st-key-patient-case-search-code [data-testid="stHorizontalBlock"] {
             gap: 6px !important;
             align-items: center;
@@ -3053,12 +3066,24 @@ with st.sidebar:
                 ),
             ):
                 with st.container(key=key):
-                    st.page_link(page, label=label, icon=icon, width="stretch")
+                    is_active_page = page.url_path == pg.url_path or (
+                        page == search_page
+                        and pg.url_path == encode_page.url_path
+                    )
+                    if st.button(
+                        label,
+                        icon=icon,
+                        key=f"{key}-button",
+                        type="primary" if is_active_page else "secondary",
+                        width="stretch",
+                    ) and not is_active_page:
+                        st.switch_page(page)
             with st.container(key="hfrc-sidebar-nav-logout"):
                 if st.button(
                     "Log out",
                     icon=":material/logout:",
                     key="hfrc-sidebar-logout",
+                    type="secondary",
                     width="stretch",
                 ):
                     st.session_state["admin_authenticated"] = False
